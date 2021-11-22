@@ -76,7 +76,7 @@ namespace VSharp
             var maxBound = 15u;
             var options =
                 new SiliOptions(explorationMode.NewTestCoverageMode(coverageZone.MethodZone, searchMode.DFSMode),
-                    executionMode.SymbolicMode, maxBound);
+                    executionMode.ConcolicMode, maxBound);
             SILI explorer = new SILI(options);
             UnitTests unitTests = new UnitTests(resultsFolder);
             Core.API.ConfigureSolver(SolverPool.mkSolver());
