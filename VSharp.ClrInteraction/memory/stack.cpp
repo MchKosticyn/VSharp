@@ -24,7 +24,7 @@ StackFrame::StackFrame(unsigned resolvedToken, unsigned unresolvedToken, const b
     resetPopsTracking();
 }
 
-//StackFrame::~StackFrame()
+//StackFrame::~StackFrame() // TODO: use #do
 //{
 //    // TODO: why double free?
 //    delete [] concreteness;
@@ -92,6 +92,7 @@ void StackFrame::push1Concrete()
 
 bool StackFrame::pop1()
 {
+    tout << "pop1" << std::endl;
 #ifdef _DEBUG
     if (isEmpty()) {
         LOG(tout << "Corrupted frame info: token = " << HEX(m_resolvedToken) << ", stackSize = " << m_capacity);
@@ -101,9 +102,12 @@ bool StackFrame::pop1()
     m_lastPoppedSymbolics.clear();
     --m_concretenessTop;
     unsigned cell = m_concreteness[m_concretenessTop];
+    tout << "cell = " << cell << std::endl;
     if (cell != CONCRETE) {
+        tout << "cell != concrete" << std::endl;
         --m_symbolsCount;
         m_lastPoppedSymbolics.push_back(std::make_pair(cell, 0u));
+        tout << "len = " << m_lastPoppedSymbolics.size() << std::endl;
         return false;
     }
     return true;
@@ -226,12 +230,14 @@ const std::vector<std::pair<unsigned, unsigned>> &StackFrame::poppedSymbolics() 
 
 void Stack::pushFrame(unsigned resolvedToken, unsigned unresolvedToken, const bool *args, unsigned argsCount)
 {
+    tout << "frame pushed!" << std::endl;
     m_frames.push_back(StackFrame(resolvedToken, unresolvedToken, args, argsCount));
 }
 
 
 void Stack::popFrame()
 {
+    tout << "frame popped!" << std::endl;
     popFrameUntracked();
     if (m_frames.size() < m_minTopSinceLastSent) {
         m_minTopSinceLastSent = m_frames.size();

@@ -131,13 +131,19 @@ void initCommand(OFFSET offset, bool isBranch, unsigned opsCount, EvalStackOpera
     command.callStackFramesPops = stack.unsentPops();
     unsigned afterPop = top.symbolicsCount();
     const std::vector<std::pair<unsigned, unsigned>> &poppedSymbs = top.poppedSymbolics();
+    tout << "poppedSymbs.len = " << poppedSymbs.size() << std::endl;
     unsigned currentSymbs = afterPop + poppedSymbs.size();
+    tout << "afterPop = " << afterPop << std::endl;
+    tout << "currentSymbs = " << currentSymbs << std::endl;
     for (auto &pair : poppedSymbs) {
         assert((int)opsCount - (int)pair.second - 1 >= 0);
         unsigned idx = opsCount - pair.second - 1;
+        tout << "idx = " << idx << std::endl;
         assert(idx < opsCount);
         ops[idx].typ = OpSymbolic;
+        tout << "pair.first = " << pair.first << std::endl;
         ops[idx].content.number = (long long)(currentSymbs - pair.first);
+        tout << "ops[idx].content.number = " << ops[idx].content.number << std::endl;
     }
     command.evaluationStackPushesCount = opsCount;
     command.evaluationStackPops = top.evaluationStackPops();
@@ -207,11 +213,15 @@ void freeCommand(ExecCommand &command) {
 bool sendCommand(OFFSET offset, unsigned opsCount, EvalStackOperand *ops) {
     ExecCommand command;
     initCommand(offset, false, opsCount, ops, command);
+    tout << "sending command with offset = " << std::hex << offset << std::endl;
     protocol->sendSerializable(ExecuteCommand, command);
+    tout << "sent" << std::endl;
     freeCommand(command);
     StackFrame &top = icsharp::topFrame();
     int framesCount;
+    tout << "before readExecResponse" << std::endl;
     bool allConcrete = readExecResponse(top, ops, opsCount, framesCount);
+    tout << "after readExecResponse" << std::endl;
     if (allConcrete) {
         const std::vector<std::pair<unsigned, unsigned>> &poppedSymbs = top.poppedSymbolics();
         for (const auto &poppedSymb : poppedSymbs) {
@@ -239,6 +249,7 @@ bool sendCommand(OFFSET offset, unsigned opsCount, EvalStackOperand *ops) {
         }
     }
     icsharp::stack().resetPopsTracking(framesCount);
+    tout << "got response" << std::endl;
     return allConcrete;
 }
 
@@ -636,6 +647,7 @@ PROBE(void, Track_Mkrefany, ()) {
 }
 
 PROBE(void, Track_Enter, (mdMethodDef token, unsigned maxStackSize, unsigned argsCount, unsigned localsCount)) {
+    tout << "track enter! token = " << std::hex << token << std::endl;
     Stack &stack = icsharp::stack();
     assert(!stack.isEmpty());
     StackFrame *top = &stack.topFrame();
@@ -661,6 +673,7 @@ PROBE(void, Track_Enter, (mdMethodDef token, unsigned maxStackSize, unsigned arg
 }
 
 PROBE(void, Track_EnterMain, (mdMethodDef token, UINT16 argsCount, bool argsConcreteness, unsigned maxStackSize, unsigned localsCount)) {
+    tout << "track enter main!" << std::endl;
     mainEntered();
     Stack &stack = icsharp::stack();
     assert(stack.isEmpty());
@@ -746,6 +759,7 @@ PROBE(COND, Track_Call, (UINT16 argsCount)) {
 }
 
 PROBE(VOID, PushFrame, (mdToken unresolvedToken, mdMethodDef resolvedToken, bool newobj, UINT16 argsCount, OFFSET offset)) {
+    tout << "PushFrame" << std::endl;
     Stack &stack = icsharp::stack();
     StackFrame &top = stack.topFrame();
     argsCount = newobj ? argsCount + 1 : argsCount;

@@ -18,9 +18,13 @@ module public Prelude =
     let public internalfailf format = Printf.ksprintf internalfail format
     let undefinedBehaviour reason = internalfailf "Undefined behaviour: %s" reason
 
-    let inline public __notImplemented__() = raise (NotImplementedException())
+    let inline public __notImplemented__() =
+        internalfailf "stack trace = %O" Environment.StackTrace
+//        raise (NotImplementedException())
     let inline public __notImplemented'__ message = raise (NotImplementedException (message + " is not implemented yet"))
-    let inline public __unreachable__() = raise (UnreachableException "unreachable branch hit!")
+    let inline public __unreachable__() =
+        internalfailf "stack trace = %O" Environment.StackTrace
+//        raise (UnreachableException "unreachable branch hit!")
     let public __insufficientInformation__ format = Printf.ksprintf (fun reason -> InsufficientInformationException ("Insufficient information! " + reason) |> raise) format
     let public createInsufficientInformation format = Printf.ksprintf (fun reason -> InsufficientInformationException ("Insufficient information! " + reason)) format
     let inline public toString x = x.ToString()

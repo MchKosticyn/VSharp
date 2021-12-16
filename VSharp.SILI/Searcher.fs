@@ -63,7 +63,11 @@ type ForwardSearcher(maxBound) =
     let violatesLevel (s : cilState) =
         // TODO: report states which violate level as incomplete
         levelToUnsignedInt s.level > maxBound
-    let isStopped s = isIIEState s || stoppedByException s || not(isExecutable(s)) || violatesLevel s
+    let isStopped s =
+        let a = isIIEState s || stoppedByException s || not(isExecutable(s)) || violatesLevel s
+        if a then
+            Logger.error "stopped = %O, isIIEState = %O, stoppedByException = %O, not isExecutable = %O, violatesLevel = %O" (currentOffset s) (isIIEState s) (stoppedByException s) (not <| isExecutable s) (violatesLevel s)
+        a
     let add (s : cilState) =
         if not <| isStopped s then
             assert(forPropagation.Contains s |> not)

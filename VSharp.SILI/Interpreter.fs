@@ -130,7 +130,10 @@ module internal InstructionsSet =
         let pushOnEvaluationStack (term : term, cilState : cilState) =
             match term.term with
             | Nop -> ()
-            | _ -> push term cilState
+            | _ ->
+                cilState.state.evaluationStack <- EvaluationStack.Push term cilState.state.evaluationStack
+                cilState.lastPushInfo <- Some Nop // TODO: hack #do
+//                push term cilState
         match result with
         | :? term as r ->
             let cilState = changeState cilState s

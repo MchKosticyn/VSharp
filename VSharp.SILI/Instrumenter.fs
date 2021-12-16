@@ -72,7 +72,7 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
         result
 
     member private x.PrependProbeWithOffset(methodAddress : uint64, args : (OpCode * ilInstrOperand) list, signature, beforeInstr : ilInstr byref) =
-        x.PrependProbe(methodAddress, List.append args [(OpCodes.Ldc_I4, beforeInstr.offset |> int32 |> Arg32)], signature, &beforeInstr) // TODO: offset may be wrong?! #do
+        x.PrependProbe(methodAddress, List.append args [(OpCodes.Ldc_I4, beforeInstr.offset |> int32 |> Arg32)], signature, &beforeInstr)
 
     member private x.AppendProbe(methodAddress : uint64, args : (OpCode * ilInstrOperand) list, signature, afterInstr : ilInstr) =
         let mutable newInstr = afterInstr
@@ -228,7 +228,7 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
             x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 0)], x.tokens.i_i1_sig, &instr) |> ignore
             x.PrependProbeWithOffset(probes.leaveMain_p, [], x.tokens.void_i_offset_sig, &instr) |> ignore
             x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 0)], x.tokens.i_i1_sig, &instr) |> ignore
-        | _ -> __unreachable__()
+        | _ -> internalfailf "PrependValidLeaveMain: unexpected stack state! %O" instr.stackState
 
     member private x.PlaceLeaveProbe(instr : ilInstr byref) =
         if x.m = entryPoint then
@@ -316,7 +316,7 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
         let mutable atLeastOneReturnFound = false
         let mutable hasPrefix = false
         let mutable prefix : ilInstr byref = &instructions.[0]
-        x.PlaceEnterProbe(&instructions.[0])  |> ignore
+        x.PlaceEnterProbe(&instructions.[0]) |> ignore
         for i in 0 .. instructions.Length - 1 do
             let instr = &instructions.[i]
             if not hasPrefix then prefix <- instr
@@ -377,6 +377,26 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                 | OpCodeValues.Brtrue_S
                 | OpCodeValues.Brtrue -> x.PrependProbeWithOffset(probes.brtrue, [], x.tokens.void_offset_sig, &prependTarget) |> ignore
                 | OpCodeValues.Switch -> x.PrependProbeWithOffset(probes.switch, [], x.tokens.void_offset_sig, &prependTarget) |> ignore
+//                | OpCodeValues.Beq_S ->
+//                | OpCodeValues.Bge_S ->
+//                | OpCodeValues.Bgt_S ->
+//                | OpCodeValues.Ble_S ->
+//                | OpCodeValues.Blt_S ->
+//                | OpCodeValues.Bne_Un_S ->
+//                | OpCodeValues.Bge_Un_S ->
+//                | OpCodeValues.Bgt_Un_S ->
+//                | OpCodeValues.Ble_Un_S ->
+//                | OpCodeValues.Blt_Un_S ->
+//                | OpCodeValues.Beq ->
+//                | OpCodeValues.Bge ->
+//                | OpCodeValues.Bgt ->
+//                | OpCodeValues.Ble ->
+//                | OpCodeValues.Blt ->
+//                | OpCodeValues.Bne_Un ->
+//                | OpCodeValues.Bge_Un ->
+//                | OpCodeValues.Bgt_Un ->
+//                | OpCodeValues.Ble_Un ->
+//                | OpCodeValues.Blt_Un ->
 
                 // Symbolic stack instructions
                 | OpCodeValues.Ldarg_0 -> x.AppendProbeWithOffset(probes.ldarg_0, [], x.tokens.void_offset_sig, instr)
@@ -452,7 +472,7 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
 
                     // Mem and get exec with unmem
                     let execProbe, execSig, unmem1Probe, unmem1Sig, unmem2Probe, unmem2Sig =
-                        match instr.stackState with
+                        match instr.stackState with // TODO: unify getting stackState #do
                         | Some (evaluationStackCellType.I4 :: evaluationStackCellType.I4 :: _)
                         | Some (evaluationStackCellType.I1 :: evaluationStackCellType.I1 :: _)
                         | Some (evaluationStackCellType.I1 :: evaluationStackCellType.I2 :: _)
@@ -716,7 +736,8 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                      x.PrependProbeWithOffset(probes.ldobj, [], x.tokens.void_i_offset_sig, &prependTarget) |> ignore
                 | OpCodeValues.Ldstr ->
                      x.AppendProbe(probes.ldstr, [], x.tokens.void_i_sig, instr)
-                     x.AppendDup instr
+                     x.AppendInstr OpCodes.Conv_I NoArg instr
+                     x.AppendInstr OpCodes.Ldc_I8 instr.arg instr
                 | OpCodeValues.Castclass ->
                      x.PrependDup &prependTarget
                      x.PrependInstr(OpCodes.Ldc_I4, instr.arg, &prependTarget)
@@ -821,6 +842,73 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                     x.PrependDup &prependTarget
                     x.PrependProbe(probes.ldsflda, [], x.tokens.void_sig, &prependTarget) |> ignore
                 | OpCodeValues.Stsfld ->
+                    // box [if struct]
+                    // calli mem2
+                    // ldc token
+                    // calli unmem 0
+                    // calli unmem 1
+                    // calli track_stfld
+                    // calli unmem 0
+                    // calli unmem 1
+                    // unbox [if struct]
+                    // stfld
+
+                    let isStruct =
+                        match instr.stackState with
+                        | Some (evaluationStackCellType.Struct :: _) -> true
+                        | _ -> false
+                    let typeTokenArg = instr.arg
+
+                    if isStruct then
+                        x.PrependInstr(OpCodes.Box, typeTokenArg, &prependTarget)
+
+                    let probe, signature, unmem2Probe, unmem2Sig =
+                        match instr.stackState with
+                        | Some (evaluationStackCellType.I1 :: evaluationStackCellType.I :: _)
+                        | Some (evaluationStackCellType.I2 :: evaluationStackCellType.I :: _)
+                        | Some (evaluationStackCellType.I4 :: evaluationStackCellType.I :: _)
+                        | Some (evaluationStackCellType.I1 :: evaluationStackCellType.Ref :: _)
+                        | Some (evaluationStackCellType.I2 :: evaluationStackCellType.Ref :: _)
+                        | Some (evaluationStackCellType.I4 :: evaluationStackCellType.Ref :: _) ->
+                            x.PrependMem2_p_4 &prependTarget
+                            probes.stfld_4, x.tokens.void_token_i_i4_offset_sig, probes.unmem_4, x.tokens.i4_i1_sig
+                        | Some (evaluationStackCellType.I8 :: evaluationStackCellType.I :: _)
+                        | Some (evaluationStackCellType.I8 :: evaluationStackCellType.Ref :: _) ->
+                            x.PrependMem2_p_8 &prependTarget
+                            probes.stfld_8, x.tokens.void_token_i_i8_offset_sig, probes.unmem_8, x.tokens.i8_i1_sig
+                        | Some (evaluationStackCellType.R4 :: evaluationStackCellType.I :: _)
+                        | Some (evaluationStackCellType.R4 :: evaluationStackCellType.Ref :: _) ->
+                            x.PrependMem2_p_f4 &prependTarget
+                            probes.stfld_f4, x.tokens.void_token_i_r4_offset_sig, probes.unmem_f4, x.tokens.r4_i1_sig
+                        | Some (evaluationStackCellType.R8 :: evaluationStackCellType.I :: _)
+                        | Some (evaluationStackCellType.R8 :: evaluationStackCellType.Ref :: _) ->
+                            x.PrependMem2_p_f8 &prependTarget
+                            probes.stfld_f8, x.tokens.void_token_i_r8_offset_sig, probes.unmem_f8, x.tokens.r8_i1_sig
+                        | Some (evaluationStackCellType.I :: evaluationStackCellType.I :: _)
+                        | Some (evaluationStackCellType.I :: evaluationStackCellType.Ref :: _)
+                        | Some (evaluationStackCellType.Ref :: evaluationStackCellType.I :: _)
+                        | Some (evaluationStackCellType.Ref :: evaluationStackCellType.Ref :: _) ->
+                            x.PrependMem2_p &prependTarget
+                            probes.stfld_p, x.tokens.void_token_i_i_offset_sig, probes.unmem_p, x.tokens.i_i1_sig
+                        | Some (evaluationStackCellType.Struct :: evaluationStackCellType.I :: _)
+                        | Some (evaluationStackCellType.Struct :: evaluationStackCellType.Ref :: _) ->
+                            x.PrependMem2_p &prependTarget
+                            probes.stfld_struct, x.tokens.void_token_i_i_offset_sig, probes.unmem_p, x.tokens.i_i1_sig
+                        | _ -> __unreachable__()
+
+                    x.PrependInstr(OpCodes.Ldc_I4, instr.arg, &prependTarget)
+                    x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 0)], x.tokens.i_i1_sig, &prependTarget) |> ignore
+//                    x.PrependInstr(OpCodes.Conv_I, NoArg, &prependTarget)
+                    x.PrependProbe(unmem2Probe, [(OpCodes.Ldc_I4, Arg32 1)], unmem2Sig, &prependTarget) |> ignore
+                    x.PrependProbeWithOffset(probe, [], signature, &prependTarget) |> ignore
+                    x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 0)], x.tokens.i_i1_sig, &prependTarget) |> ignore
+//                    let field = Reflection.resolveField x.m instr.Arg32
+//                    x.PrependInstr(OpCodes.Mkrefany, Arg32 field.FieldType.MetadataToken, &prependTarget)
+                    x.PrependProbe(unmem2Probe, [(OpCodes.Ldc_I4, Arg32 1)], unmem2Sig, &prependTarget) |> ignore
+                    if isStruct then
+                        x.PrependInstr(OpCodes.Unbox_Any, typeTokenArg, &prependTarget)
+
+
                     x.PrependInstr(OpCodes.Ldc_I4, instr.arg, &prependTarget)
                     x.PrependProbeWithOffset(probes.stsfld, [], x.tokens.void_token_offset_sig, &prependTarget) |> ignore
                 | OpCodeValues.Stobj -> __notImplemented__() // ?????????????????
@@ -1067,8 +1155,9 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                         x.PrependProbe(probes.call, [(OpCodes.Ldc_I4, Arg32 argsCount)], x.tokens.bool_u2_sig, &prependTarget) |> ignore
                         let br_true = x.PrependBranch(OpCodes.Brtrue_S, &prependTarget)
                         x.PrependProbeWithOffset(probes.execCall, [(OpCodes.Ldc_I4, Arg32 argsCount)], x.tokens.void_i4_offset_sig, &prependTarget) |> ignore
-                        let isInternalCall = Map.containsKey (Reflection.fullGenericMethodName callee) Loader.FSharpImplementations // TODO: add other cases
+                        let isInternalCall = InstructionsSet.isFSharpInternalCall callee // TODO: add other cases
                         if isInternalCall then
+                            // TODO: if symbolic use mem and unmem #do
                             x.PrependLdcDefault(Reflection.getMethodReturnType callee, &instr)
                         let br = x.PrependBranch(OpCodes.Br, &prependTarget)
 

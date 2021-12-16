@@ -36,7 +36,7 @@ type CoverageTool(testDir : string, runnerDir : string) =
                 else raise (InvalidOperationException "JetBrains.DotCover tool not found! Either install it locally by running 'dotnet tool restore' in build directory, or globally by running 'dotnet tool install JetBrains.dotCover.GlobalTool -g'")
         fun (directory : DirectoryInfo) ->
             let filters = ["-:module=Microsoft.*"; "-:module=FSharp.*"; "-:class=VSharp.*"; "-:module=VSharp.Utils"]
-            let code, _, error = runDotnet <| sprintf "dotcover --dcFilters=\"%s\" %s%cVSharp.TestRunner.dll %s --dcReportType=DetailedXML %s" (filters |> join ";") runnerDir Path.DirectorySeparatorChar directory.FullName globalArg
+            let code, _, error = runDotnet <| sprintf " %s%cVSharp.TestRunner.dll %s" runnerDir Path.DirectorySeparatorChar directory.FullName
             code = 0, error
 
     let mutable doc : XmlDocument = null
@@ -74,8 +74,8 @@ type CoverageTool(testDir : string, runnerDir : string) =
         let success, error = run testDir
         if not success then
             raise <| InvalidOperationException ("Running dotCover failed: " + error)
-        doc <- XmlDocument()
-        doc.Load(sprintf "%s%cdotCover.Output.xml" testDir.FullName Path.DirectorySeparatorChar)
+//        doc <- XmlDocument()
+//        doc.Load(sprintf "%s%cdotCover.Output.xml" testDir.FullName Path.DirectorySeparatorChar)
 
     member x.GetCoverage (m : MethodInfo) =
         if String.IsNullOrEmpty m.DeclaringType.Namespace then

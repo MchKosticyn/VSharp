@@ -141,8 +141,7 @@ module private EvaluationStackTyper =
 
     let abstractType (typ : Type) =
         if typ.IsValueType then
-            let typ =
-                if typ.IsEnum then typ.GetEnumUnderlyingType() else typ
+            let typ = if typ.IsEnum then typ.GetEnumUnderlyingType() else typ
             let result = ref evaluationStackCellType.I1
             if typeAbstraction.TryGetValue((typ.Module.MetadataToken, typ.MetadataToken), result) then !result
             else evaluationStackCellType.Struct
@@ -884,7 +883,78 @@ type ILRewriter(body : rawMethodBody) =
         x.RecalculateOffsets() |> ignore
         maxStackSize <- body.properties.maxStackSize
 
-    member x.Export() =
+    member x.ExportNew() =
+        let codeSize = x.RecalculateOffsets()
+        let outputIL = Array.zeroCreate (int codeSize)
+
+        let mutable switchBase = 0
+        x.TraverseProgram (fun instr ->
+            let offset = int instr.offset
+
+            match instr.opcode with
+            | OpCode op when op = OpCodes.Switch ->
+                match instr.arg with
+                | Arg32 arg ->
+                    switchBase <- int instr.offset + 1 + sizeof<int32> * (arg + 1)
+                | _ -> __unreachable__()
+            | OpCode op ->
+                OpCodeOperations.writeOpCode outputIL offset op
+                match instr.arg with
+                | NoArg -> ()
+                | Arg8 arg ->
+                    outputIL.[offset] <- arg
+                | Arg16 arg ->
+                    let success = BitConverter.TryWriteBytes(Span(outputIL, offset, sizeof<int16>), arg)
+                    assert(success)
+                | Arg32 arg ->
+                    let success = BitConverter.TryWriteBytes(Span(outputIL, offset, sizeof<int32>), arg)
+                    assert(success)
+                | Arg64 arg ->
+                    let success = BitConverter.TryWriteBytes(Span(outputIL, offset, sizeof<int64>), arg)
+                    assert(success)
+                | Target tgt ->
+                    let delta = int tgt.offset - int instr.next.offset
+                    match op.OperandType with
+                    | OperandType.ShortInlineBrTarget ->
+                        outputIL.[int instr.next.offset - sizeof<int8>] <- byte (int8 delta)
+                    | OperandType.InlineBrTarget ->
+                        let success = BitConverter.TryWriteBytes(Span(outputIL, int instr.next.offset - sizeof<int32>, sizeof<int32>), delta)
+                        assert(success)
+                    | _ -> __unreachable__()
+            | SwitchArg ->
+                match instr.arg with
+                | Target tgt ->
+                    let success = BitConverter.TryWriteBytes(Span(outputIL, int instr.offset, sizeof<int>), int tgt.offset - switchBase)
+                    assert(success)
+                | _ -> __unreachable__())
+
+        let methodProps = {ilCodeSize = codeSize; maxStackSize = maxStackSize}
+        let encodeEH (eh : ehClause) = {
+            flags = eh.flags
+            tryOffset = eh.tryBegin.offset
+            tryLength = eh.tryEnd.offset - eh.tryBegin.offset
+            handlerOffset = eh.handlerBegin.offset
+            handlerLength = eh.handlerEnd.next.offset - eh.handlerBegin.offset
+            matcher =
+                match eh.matcher with
+                | ClassToken tok -> tok
+                | Filter instr -> instr.offset
+        }
+        let ehs = Array.map encodeEH ehs
+        {properties = methodProps; il = Array.truncate (int methodProps.ilCodeSize) outputIL; ehs = ehs}
+
+
+
+
+
+
+
+
+
+
+
+
+    member x.Export() = // TODO: use another export!!!! #do
         // One instruction produces 2 + sizeof(native int) bytes in the worst case which can be 10 bytes for 64-bit.
         // For simplification we just use 10 here.
         let maxSize = int instrCount * 10
