@@ -378,7 +378,7 @@ namespace IntegrationTests
             return x1 == xorig & x2 == xorig + 1 & x3 == xorig + 2 & x4 == xorig + 3;
         }
 
-        [TestSvm]
+        [TestSvm(concolicMode:true)]
         public static int BigSum(int x)
         {
             return x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x;
@@ -390,7 +390,7 @@ namespace IntegrationTests
             return x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x;
         }
 
-        [TestSvm]
+        [TestSvm(concolicMode:true)]
         public static int BigSumCycle(int x)
         {
             int res = 0;
@@ -989,7 +989,7 @@ namespace IntegrationTests
         }
 
         // abs(x)
-        [TestSvm]
+        [TestSvm(concolicMode:true)]
         public static double AbsMethod(double x)
         {
             return Math.Abs(x);

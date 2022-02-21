@@ -138,7 +138,7 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
                 // TODO: what about StackLocation and StaticLocation? #do
                 let address = ConcreteHeapAddress [int32 baseAddress]
                 let typ = TypeOfAddress cilState.state address
-                if offset = 0UL then
+                if offset = UIntPtr.Zero then
                     HeapRef address typ
                 else
                     let offset = int offset - metadataSizeOfAddress cilState.state address

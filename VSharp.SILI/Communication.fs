@@ -62,7 +62,7 @@ type evalStackArgType =
 
 type evalStackOperand =
     | NumericOp of evalStackArgType * int64
-    | PointerOp of uint64 * uint64
+    | PointerOp of UIntPtr * UIntPtr
 
 [<type: StructLayout(LayoutKind.Sequential, Pack=1, CharSet=CharSet.Ansi)>]
 type private execCommandStatic = {
@@ -320,10 +320,10 @@ type Communicator(pipeFile) =
                 let evalStackArgType = LanguagePrimitives.EnumOfValue evalStackArgTypeNum
                 match evalStackArgType with
                 | evalStackArgType.OpRef -> // TODO: mb use UIntPtr? #do
-                    let baseAddr = BitConverter.ToUInt64(dynamicBytes, offset)
-                    offset <- offset + sizeof<uint64>
-                    let shift = BitConverter.ToUInt64(dynamicBytes, offset)
-                    offset <- offset + sizeof<uint64>
+                    let baseAddr = x.ToUIntPtr dynamicBytes offset
+                    offset <- offset + UIntPtr.Size
+                    let shift = x.ToUIntPtr dynamicBytes offset
+                    offset <- offset + UIntPtr.Size
                     PointerOp(baseAddr, shift)
                 | evalStackArgType.OpSymbolic
                 | evalStackArgType.OpI4
@@ -342,8 +342,8 @@ type Communicator(pipeFile) =
             let newAddressesTypes = Array.init (int staticPart.newAddressesCount) (fun _ (*i*) ->
 //                let size = int newAddressesTypesLengths.[i]
                 let rec readType () =
-                    let isValid = BitConverter.ToBoolean(dynamicBytes, offset)
-                    offset <- offset + sizeof<bool>
+                    let isValid = dynamicBytes[offset] = 1uy
+                    offset <- offset + sizeof<byte>
                     if isValid then
                         let isArray = BitConverter.ToBoolean(dynamicBytes, offset)
                         offset <- offset + sizeof<bool>
