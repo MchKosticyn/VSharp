@@ -190,6 +190,7 @@ type MethodWithBody internal (m : MethodBase) =
 
     member x.IsEntryPoint with get() =
         m = (m.Module.Assembly.EntryPoint :> MethodBase)
+    member x.IsExternal = Reflection.isExternalMethod m
 
     member x.IsInternalCall with get() = isInternalCall.Value
 
