@@ -42,6 +42,56 @@ module private MemoryKeyUtils =
 
     let regionsOfIntegerTerms = List.map regionOfIntegerTerm >> listProductRegion<points<int>>.OfSeq
 
+    let compressVectorTime (t : vectorTime) =
+        match t with
+        | _ when List.length t = 1 -> List.head t |> makeNumber
+        | _ -> internalfailf "compressing vectorTime: unexpected time %O" t
+
+    let getNumberFromAddress address =
+        match address.term with
+        | Concrete(:? concreteHeapAddress as address, AddressType) ->
+            compressVectorTime address
+        | Constant(_, _, AddressType) -> address
+        | _ -> internalfailf "expected address, but got %O" address
+
+    let keyInVectorTimeIntervals address acc (reg : vectorTime intervals) =
+        let address = getNumberFromAddress address
+        let onePointCondition acc (point : vectorTime endpoint) =
+            let bound = compressVectorTime point.elem
+            let condition =
+                match point.sort with
+                | endpointSort.OpenRight -> simplifyLess address bound id
+                | endpointSort.ClosedRight -> simplifyLessOrEqual address bound id
+                | endpointSort.OpenLeft -> simplifyGreater address bound id
+                | endpointSort.ClosedLeft -> simplifyGreaterOrEqual address bound id
+                | _ -> __unreachable__()
+            acc &&& condition
+        let intervalWithoutLeftZeroBound = reg.points |> List.filter (fun ep -> VectorTime.less VectorTime.zero ep.elem)
+        List.fold onePointCondition acc intervalWithoutLeftZeroBound
+
+    let keyInIntPoints key acc (region : int points) =
+        let points, operation =
+            match region with
+            | {points = points; thrown = true} -> points, (!!)
+            | {points = points; thrown = false} -> points, id
+        let handleOne acc (point : int) =
+            let point = makeNumber point
+            acc &&& operation(key === point)
+        PersistentSet.fold handleOne acc points
+
+    let keyInProductRegion keyInFst keyInSnd acc (region : productRegion<'a, 'b>) =
+        let checkKeyInOne acc (fst, snd) = acc &&& keyInFst acc fst &&& keyInSnd acc snd
+        List.fold checkKeyInOne acc region.products
+
+    let rec keysInIntPointsListProductRegion keys acc (region : int points listProductRegion) =
+        match region, keys with
+        | NilRegion, Seq.Empty -> acc
+        | ConsRegion products, Seq.Cons(key, others) ->
+            let keyInPoints = keyInIntPoints key
+            let keysInProductList = keysInIntPointsListProductRegion others
+            keyInProductRegion keyInPoints keysInProductList acc products
+        | _ -> __unreachable__()
+
 [<StructuralEquality;CustomComparison>]
 type heapAddressKey =
     {address : heapAddress}
@@ -66,8 +116,10 @@ type heapAddressKey =
         override x.IsUnion = isUnion x.address
         override x.Unguard = Merging.unguard x.address |> List.map (fun (g, addr) -> (g, {address = addr}))
         override x.EqualityTerm reg other =
-            // TODO: use reg!!!
-            x.address === other.address
+            let address = other.address
+            let keysEq = x.address === address
+            MemoryKeyUtils.keyInVectorTimeIntervals address keysEq reg
+
     interface IComparable with
         override x.CompareTo y =
             match y with
@@ -90,8 +142,11 @@ type heapArrayIndexKey =
         override x.IsUnion = isUnion x.address
         override x.Unguard = Merging.unguard x.address |> List.map (fun (g, addr) -> (g, {address = addr; indices = x.indices}))  // TODO: if x.indices is the union of concrete values, then unguard indices as well
         override x.EqualityTerm reg other =
-            // TODO: use reg!!!
-            x.address === other.address &&& List.fold2 (fun acc i j -> acc &&& (i === j)) True x.indices other.indices
+            let keysEq = x.address === other.address &&& List.fold2 (fun acc i j -> acc &&& (i === j)) True x.indices other.indices
+            let addressInRegion = MemoryKeyUtils.keyInVectorTimeIntervals other.address
+            let indicesInRegion = MemoryKeyUtils.keysInIntPointsListProductRegion other.indices
+            MemoryKeyUtils.keyInProductRegion addressInRegion indicesInRegion keysEq reg
+
     interface IComparable with
         override x.CompareTo y =
             match y with
@@ -117,8 +172,11 @@ type heapVectorIndexKey =
         override x.IsUnion = isUnion x.address
         override x.Unguard = Merging.unguard x.address |> List.map (fun (g, addr) -> (g, {address = addr; index = x.index}))  // TODO: if x.index is the union of concrete values, then unguard index as well
         override x.EqualityTerm reg other =
-            // TODO: use reg!!!
-            x.address === other.address &&& x.index === other.index
+            let keysEq = x.address === other.address &&& x.index === other.index
+            let addressInRegion = MemoryKeyUtils.keyInVectorTimeIntervals other.address
+            let indicesInRegion = MemoryKeyUtils.keyInIntPoints other.index
+            MemoryKeyUtils.keyInProductRegion addressInRegion indicesInRegion keysEq reg
+
     interface IComparable with
         override x.CompareTo y =
             match y with
@@ -146,8 +204,8 @@ type stackBufferIndexKey =
             | Union gvs when List.forall (fst >> isConcrete) gvs -> gvs |> List.map (fun (g, idx) -> (g, {index = idx}))
             | _ -> [(True, x)]
         override x.EqualityTerm reg other =
-            // TODO: use reg!!!
-            x.index === other.index
+            let keysEq = x.index === other.index
+            MemoryKeyUtils.keyInIntPoints other.index keysEq reg
     interface IComparable with
         override x.CompareTo y =
             match y with
