@@ -342,82 +342,20 @@ module internal Z3 =
         member private x.EncodeSymbolicAddress encCtx (heapRefSource : IMemoryAccessConstantSource) structFields name =
             x.EncodeMemoryAccessConstant encCtx name heapRefSource structFields AddressType
 
-        member private x.KeyInVectorTimeIntervals encCtx (key : Expr) acc (region : vectorTime intervals) =
-            let onePointCondition acc (y : vectorTime endpoint) =
-                let bound = ctx.MkNumeral(encCtx.addressOrder.[y.elem], x.Type2Sort AddressType) :?> BitVecExpr
-                let condition =
-                    match y.sort with
-                    | endpointSort.OpenRight -> ctx.MkBVSLT(key :?> BitVecExpr, bound)
-                    | endpointSort.ClosedRight -> ctx.MkBVSLE(key :?> BitVecExpr, bound)
-                    | endpointSort.OpenLeft -> ctx.MkBVSGT(key :?> BitVecExpr, bound)
-                    | endpointSort.ClosedLeft -> ctx.MkBVSGE(key :?> BitVecExpr, bound)
-                    | _ -> __unreachable__()
-                x.MkAnd(acc, condition)
-            let intervalWithoutLeftZeroBound = region.points |> List.filter (fun ep -> VectorTime.less VectorTime.zero ep.elem)
-            List.fold onePointCondition acc intervalWithoutLeftZeroBound
-
-        member private x.HeapAddressKeyInRegion encCtx acc (key : heapAddressKey) (keyExpr : Expr) =
-            let region = (key :> IMemoryKey<heapAddressKey, vectorTime intervals>).Region
-            x.KeyInVectorTimeIntervals encCtx keyExpr acc region
-
-        member private x.KeyInIntPoints key acc (region : int points) =
-            let points, operation =
-                match region with
-                | {points = points; thrown = true} -> points, ctx.MkNot << x.MkEq
-                | {points = points; thrown = false} -> points, x.MkEq
-            let handleOne acc (point : int) =
-                let pointExpr = ctx.MkNumeral(point, x.Type2Sort Types.IndexType)
-                x.MkAnd(acc, operation(key, pointExpr))
-            PersistentSet.fold handleOne acc points
-
-        member private x.KeyInProductRegion keyInFst keyInSnd acc (region : productRegion<'a, 'b>) =
-            let checkKeyInOne acc (fst, snd) = x.MkAnd(acc, keyInFst acc fst, keyInSnd acc snd)
-            List.fold checkKeyInOne acc region.products
-
-        member private x.KeysInIntPointsListProductRegion keys acc (region : int points listProductRegion) =
-            match region, keys with
-            | NilRegion, Seq.Empty -> acc
-            | ConsRegion products, Seq.Cons(key, others) ->
-                let keyInPoints = x.KeyInIntPoints key
-                let keysInProductList = x.KeysInIntPointsListProductRegion others
-                x.KeyInProductRegion keyInPoints keysInProductList acc products
-            | _ -> __unreachable__()
-
-        member private x.ArrayIndexKeyInRegion encCtx acc (key : heapArrayIndexKey) (keyExpr : Expr[]) =
-            assert(Array.length keyExpr = List.length key.indices + 1)
-            let region = (key :> IMemoryKey<heapArrayIndexKey, productRegion<vectorTime intervals, int points listProductRegion>>).Region
-            let addressInRegion = x.KeyInVectorTimeIntervals encCtx (Array.head keyExpr)
-            let indicesInRegion = x.KeysInIntPointsListProductRegion (Array.tail keyExpr)
-            x.KeyInProductRegion addressInRegion indicesInRegion acc region
-
-        member private x.VectorIndexKeyInRegion encCtx acc (key : heapVectorIndexKey) (keyExpr : Expr[]) =
-            assert(Array.length keyExpr = 2)
-            let region = (key :> IMemoryKey<heapVectorIndexKey, productRegion<vectorTime intervals, int points>>).Region
-            let addressInRegion = x.KeyInVectorTimeIntervals encCtx keyExpr.[0]
-            let indicesInRegion = x.KeyInIntPoints keyExpr.[1]
-            x.KeyInProductRegion addressInRegion indicesInRegion acc region
-
-        member private x.stackBufferIndexKeyInRegion acc (key : stackBufferIndexKey) keyExpr =
-            let region = (key :> IMemoryKey<stackBufferIndexKey, int points>).Region
-            x.KeyInIntPoints keyExpr acc region
-
         member private x.GetRegionConstant (name : string) sort (structFields : fieldId list) (regSort : regionSort) =
             let mkConst () = ctx.MkConst(name, sort) :?> ArrayExpr
             getMemoryConstant mkConst (regSort, structFields)
 
-        member private x.MemoryReading encCtx keyInRegion keysAreEqual encodeKey inst structFields left mo =
+        member private x.MemoryReading encCtx assumptions LI structFields left mo =
+            let keysAreMatch (l : IMemoryKey<_, _>) r =
+                let reg = (r :> IMemoryKey<_, _>).Region
+                let assumptions, eqTerm = l.EqualityTerm reg r |> x.EncodeTerm encCtx |> toTuple
+                ctx.MkAnd((eqTerm :?> BoolExpr) :: assumptions)
             let updates = MemoryRegion.flatten mo
-            let assumptions, leftExpr = encodeKey left
-            let leftInRegion = keyInRegion x.True left leftExpr
-            let assumptions = leftInRegion :: assumptions
-            let inst = inst leftExpr
+            let assumptions = keysAreMatch left left :: assumptions
             let checkOneKey (right, value) (acc, assumptions) =
-                let rightAssumptions, rightExpr = encodeKey right
-                // TODO: [style] auto append assumptions
-                let assumptions = List.append assumptions rightAssumptions
                 // NOTE: we need constraints on right key, because value may contain it
-                let keysEquality = keysAreEqual(leftExpr, rightExpr)
-                let keysAreMatch = keyInRegion keysEquality right rightExpr
+                let keysAreMatch = keysAreMatch left right
                 let readFieldIfNeed structTerm field =
                     assert(IsStruct structTerm)
                     Memory.ReadField emptyState structTerm field
@@ -425,18 +363,17 @@ module internal Z3 =
                 let valueExpr = x.EncodeTerm encCtx value
                 let assumptions = List.append assumptions valueExpr.assumptions
                 ctx.MkITE(keysAreMatch, valueExpr.expr, acc), assumptions
-            let expr, assumptions = List.foldBack checkOneKey updates (inst, assumptions)
+            let expr, assumptions = List.foldBack checkOneKey updates (LI, assumptions)
             encodingResult.Create(expr, assumptions)
 
-        member private x.HeapReading encCtx key mo typ source structFields name =
+        member private x.HeapReading encCtx (key : heapAddressKey) mo typ source structFields name =
             assert mo.defaultValue.IsNone
-            let encodeKey (k : heapAddressKey) = x.EncodeTerm encCtx k.address |> toTuple
             let sort = ctx.MkArraySort(x.Type2Sort AddressType, x.Type2Sort typ)
             let regionSort = GetHeapReadingRegionSort source
             let array = x.GetRegionConstant name sort structFields regionSort
-            let inst (k : Expr) = ctx.MkSelect(array, k)
-            let keyInRegion = x.HeapAddressKeyInRegion encCtx
-            let res = x.MemoryReading encCtx keyInRegion x.MkEq encodeKey inst structFields key mo
+            let assumptions, keyExpr = x.EncodeTerm encCtx key.address |> toTuple
+            let LI = ctx.MkSelect(array, keyExpr)
+            let res = x.MemoryReading encCtx assumptions LI structFields key mo
             match regionSort with
             | HeapFieldSort field when field = Reflection.stringLengthField -> x.GenerateLengthAssumptions res
             | _ -> res
@@ -459,17 +396,18 @@ module internal Z3 =
             let cond = ctx.MkBVSGT(expr, ctx.MkBV(32, expr.SortSize))
             {expr = expr; assumptions = cond :: assumptions}
 
-        member private x.ArrayReading encCtx keyInRegion keysAreEqual encodeKey hasDefaultValue indices key mo typ source structFields name =
+        member private x.ArrayReading encCtx encodeKey hasDefaultValue indices key mo typ source structFields name =
             assert mo.defaultValue.IsNone
-            let domainSort = x.Type2Sort AddressType :: List.map (x.Type2Sort Types.IndexType |> always) indices |> Array.ofList
             let valueSort = x.Type2Sort typ
-            let inst (k : Expr[]) =
+            let assumptions, keysExpr : BoolExpr list * Expr[] = encodeKey key
+            let LI =
                 if hasDefaultValue then x.DefaultValue valueSort
                 else
+                    let domainSort = x.Type2Sort AddressType :: List.map (x.Type2Sort Types.IndexType |> always) indices |> Array.ofList
                     let sort = ctx.MkArraySort(domainSort, valueSort)
                     let array = GetHeapReadingRegionSort source |> x.GetRegionConstant name sort structFields
-                    ctx.MkSelect(array, k)
-            let res = x.MemoryReading encCtx keyInRegion keysAreEqual encodeKey inst structFields key mo
+                    ctx.MkSelect(array, keysExpr)
+            let res = x.MemoryReading encCtx assumptions LI structFields key mo
             let res = if typ = Types.Char then x.GenerateCharAssumptions res else res
             match GetHeapReadingRegionSort source with
             | ArrayLengthSort _ -> x.GenerateLengthAssumptions res
@@ -477,11 +415,11 @@ module internal Z3 =
 
         member private x.StackBufferReading encCtx key mo typ source structFields name =
             assert mo.defaultValue.IsNone
-            let encodeKey (k : stackBufferIndexKey) = x.EncodeTerm encCtx k.index |> toTuple
+            let assumptions, keyExpr = x.EncodeTerm encCtx key.index |> toTuple
             let sort = ctx.MkArraySort(x.Type2Sort AddressType, x.Type2Sort typ)
             let array = GetHeapReadingRegionSort source |> x.GetRegionConstant name sort structFields
-            let inst (k : Expr) = ctx.MkSelect(array, k)
-            x.MemoryReading encCtx x.stackBufferIndexKeyInRegion x.MkEq encodeKey inst structFields key mo
+            let LI = ctx.MkSelect(array, keyExpr)
+            x.MemoryReading encCtx assumptions LI structFields key mo
 
         member private x.StaticsReading encCtx (key : symbolicTypeKey) mo typ source structFields (name : string) =
             assert mo.defaultValue.IsNone
@@ -504,19 +442,11 @@ module internal Z3 =
             match source with
             | HeapReading(key, mo) -> x.HeapReading encCtx key mo typ source structFields name
             | ArrayIndexReading(hasDefaultValue, key, mo) ->
-                let encodeKey (k : heapArrayIndexKey) =
-                    k.address :: k.indices |> x.EncodeTerms encCtx
-                let keyInRegion = x.ArrayIndexKeyInRegion encCtx
-                let arraysEquality (left, right) =
-                    Seq.zip left right |> Seq.fold (fun acc (left, right) -> x.MkAnd(acc, x.MkEq(left, right))) x.True
-                x.ArrayReading encCtx keyInRegion arraysEquality encodeKey hasDefaultValue key.indices key mo typ source structFields name
+                let encodeKey (k : heapArrayIndexKey) = k.address :: k.indices |> x.EncodeTerms encCtx
+                x.ArrayReading encCtx encodeKey hasDefaultValue key.indices key mo typ source structFields name
             | VectorIndexReading(hasDefaultValue, key, mo) ->
-                let encodeKey (k : heapVectorIndexKey) =
-                    [|k.address; k.index|] |> x.EncodeTerms encCtx
-                let keyInRegion = x.VectorIndexKeyInRegion encCtx
-                let keysAreEqual (left : Expr[], right : Expr[]) =
-                    x.MkAnd(x.MkEq(left.[0], right.[0]), x.MkEq(left.[1], right.[1]))
-                x.ArrayReading encCtx keyInRegion keysAreEqual encodeKey hasDefaultValue [key.index] key mo typ source structFields name
+                let encodeKey (k : heapVectorIndexKey) = [|k.address; k.index|] |> x.EncodeTerms encCtx
+                x.ArrayReading encCtx encodeKey hasDefaultValue [key.index] key mo typ source structFields name
             | StackBufferReading(key, mo) -> x.StackBufferReading encCtx key mo typ source structFields name
             | StaticsReading(key, mo) -> x.StaticsReading encCtx key mo typ source structFields name
             | StructFieldSource(structSource, field) -> x.StructReading encCtx structSource field typ structFields name
