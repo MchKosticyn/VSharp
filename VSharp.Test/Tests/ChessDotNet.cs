@@ -171,7 +171,7 @@ namespace IntegrationTests
             return game.IsCheckmated(Player.Black);
         }
 
-        [Ignore("Not ready")]
+        [TestSvm(100)]
         public static bool CheckMate2(int dst)
         {
             var data = CreateDataForCheckMate();
