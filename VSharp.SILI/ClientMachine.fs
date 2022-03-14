@@ -21,7 +21,11 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
     [<DefaultValue>] val mutable probes : probes
     [<DefaultValue>] val mutable instrumenter : Instrumenter
 
-    let initSymbolicFrame state (method : Method) =
+    let mutable cilState : cilState =
+        cilState.suspended <- true
+        cilState
+
+    let initSymbolicFrame (method : Method) = // TODO: unify with InitFunctionFrame
         let parameters = method.Parameters |> Seq.map (fun param ->
             (ParameterKey param, None, param.ParameterType)) |> List.ofSeq
         let locals =
@@ -35,11 +39,11 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
             if method.HasThis then
                 (ThisKey method, None, method.DeclaringType) :: parameters // TODO: incorrect type when ``this'' is Ref to stack
             else parameters
-        Memory.NewStackFrame state (Some method) (parametersAndThis @ locals)
-
-    let mutable cilState : cilState =
-        cilState.suspended <- true
-        cilState
+        Memory.NewStackFrame cilState.state (Some method) (parametersAndThis @ locals)
+        // NOTE: initializing all ipStack frames with -1 offset, because real offset of previous frames is unknown,
+        //       but length of ipStack must be equal to length of stack frames
+        let ip = Offset.from -1 |> ipOperations.instruction method
+        CilStateOperations.pushToIp ip cilState
 
     let bindNewCilState newState =
         if not <| LanguagePrimitives.PhysicalEquality cilState newState then
@@ -117,13 +121,17 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
     member x.IsRunning = isRunning
 
     member x.SynchronizeStates (c : execCommand) =
-        Memory.ForcePopFrames (int c.callStackFramesPops) cilState.state
+        let toPop = int c.callStackFramesPops
+        if toPop > 0 then CilStateOperations.popFramesOf toPop cilState
         assert(Memory.CallStackSize cilState.state > 0)
-        let initFrame state token =
-            let topMethod = Memory.GetCurrentExploringFunction state :?> Method
+        let initFrame token =
+            let topMethod = Memory.GetCurrentExploringFunction cilState.state :?> Method
             let method = topMethod.ResolveMethod token |> Application.getMethod
-            initSymbolicFrame state method
-        Array.iter (initFrame cilState.state) c.newCallStackFrames
+            initSymbolicFrame method
+        Array.iter initFrame c.newCallStackFrames
+        let topMethod = Memory.GetCurrentExploringFunction cilState.state :?> Method
+        let topIP = Instruction(int c.offset |> Offset.from, topMethod)
+        cilState.ipStack <- topIP :: List.tail cilState.ipStack
         let evalStack = EvaluationStack.PopMany (int c.evaluationStackPops) cilState.state.evaluationStack |> snd
         let allocatedTypes = Array.fold2 (fun types address typ -> PersistentDict.add [int address] (ConcreteType typ) types) cilState.state.allocatedTypes c.newAddresses c.newAddressesTypes
         cilState.state.allocatedTypes <- allocatedTypes
@@ -140,7 +148,7 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
                 | evalStackArgType.OpI8 ->
                     Concrete content TypeUtils.int64Type
                 | evalStackArgType.OpR4 ->
-                    Concrete (BitConverter.Int32BitsToSingle (int content)) TypeUtils.float32Type
+                    Concrete (BitConverter.Int64BitsToDouble content |> float32) TypeUtils.float32Type
                 | evalStackArgType.OpR8 ->
                     Concrete (BitConverter.Int64BitsToDouble content) TypeUtils.float64Type
                 | _ -> __unreachable__()
@@ -158,7 +166,6 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
         operands <- Array.toList newEntries
         let evalStack = Array.fold (fun stack x -> EvaluationStack.Push x stack) evalStack newEntries
         cilState.state.evaluationStack <- evalStack
-        cilState.ipStack <- [Instruction(c.offset |> int |> Offset.from, Memory.GetCurrentExploringFunction cilState.state :?> Method)]
         cilState.lastPushInfo <- None
 
     member x.State with get() = cilState
@@ -220,9 +227,9 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
         | None -> None
 
     member x.StepDone (steppedStates : cilState list) =
-        let method = CilStateOperations.currentMethod cilState
-        if method.IsInternalCall then
-            callIsSkipped <- true
+        if CilStateOperations.methodEnded cilState then
+            let method = CilStateOperations.currentMethod cilState
+            if method.IsInternalCall then callIsSkipped <- true
             cilState
         else
             let concretizedOps =
