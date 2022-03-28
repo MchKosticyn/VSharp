@@ -201,7 +201,7 @@ module TypeUtils =
     let (|ArrayType|_|) = function
         | (a : Type) when a = typeof<Array> -> Some(typeof<obj>, SymbolicDimension)
         | a when a.IsArray ->
-            let dim = if a = a.GetElementType().MakeArrayType() then Vector else ConcreteDimension <| a.GetArrayRank()
+            let dim = if a.IsSZArray then Vector else ConcreteDimension <| a.GetArrayRank()
             Some(ArrayType(a.GetElementType(), dim))
         | _ -> None
 
