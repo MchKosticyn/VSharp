@@ -7,6 +7,8 @@ open System.Runtime.InteropServices
 
 [<type: StructLayout(LayoutKind.Sequential, Pack=1, CharSet=CharSet.Ansi)>]
 type probes = {
+    mutable enableInstrumentation : uint64
+    mutable disableInstrumentation : uint64
     mutable ldarg_0 : uint64
     mutable ldarg_1 : uint64
     mutable ldarg_2 : uint64
@@ -909,7 +911,7 @@ module EvaluationStackTyper =
     let createEHStackState (m : Reflection.MethodBase) (flags : int) (startInstr : ilInstr) =
         let catchFlags = LanguagePrimitives.EnumToValue System.Reflection.ExceptionHandlingClauseOptions.Clause
         if flags = catchFlags then // NOTE: is catch
-            startInstr.stackState <- Some [evaluationStackCellType.Ref] // TODO: finially and filter! #do
+            startInstr.stackState <- Some [evaluationStackCellType.Ref]
         else startInstr.stackState <- Some Stack.empty
         createStackState m startInstr
 
@@ -941,7 +943,7 @@ type ILRewriter(body : rawMethodBody) =
                         match instr.arg with
                         | Arg32 token ->
                             let callee = Reflection.resolveMethod m token
-                            Reflection.methodToString callee
+                            sprintf "%s [%x]" (Reflection.methodToString callee) token
                         | _ -> __unreachable__()
                     elif op = OpCodes.Calli then
                         match tokens with
