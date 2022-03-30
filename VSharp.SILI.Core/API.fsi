@@ -241,6 +241,8 @@ module API =
         val CallStackContainsFunction : state -> IMethod -> bool
         val CallStackSize : state -> int
         val GetCurrentExploringFunction : state -> IMethod
+        val FindParameterByIndex : state -> int -> int -> stackKey
+        val FindLocalVariableByIndex : state -> int -> int -> stackKey
 
         val BoxValueType : state -> term -> term
 

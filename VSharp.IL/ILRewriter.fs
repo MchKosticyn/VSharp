@@ -253,6 +253,7 @@ type signatureTokens = {
     mutable void_r4_i1_i1_sig : uint32
     mutable void_r8_i1_i1_sig : uint32
     mutable void_i_i1_i1_sig : uint32
+    mutable void_i_i4_i2_sig : uint32
     mutable void_token_u2_bool_u4_u4_sig : uint32
     mutable void_offset_sig : uint32
     mutable void_u1_offset_sig : uint32
@@ -263,6 +264,7 @@ type signatureTokens = {
     mutable void_r8_offset_sig : uint32
     mutable void_i_offset_sig : uint32
     mutable void_token_offset_sig : uint32
+    mutable void_i4_i4_offset_sig : uint32
     mutable void_i_i1_offset_sig : uint32
     mutable void_i_i2_offset_sig : uint32
     mutable void_i_i4_offset_sig : uint32
@@ -289,12 +291,18 @@ type signatureTokens = {
     mutable void_i_i_r4_offset_sig : uint32
     mutable void_i_i_r8_offset_sig : uint32
     mutable void_i_i1_i_offset_sig : uint32
+    mutable void_i4_i_i4_offset_sig : uint32
+    mutable void_i4_i_i8_offset_sig : uint32
+    mutable void_i4_i_r4_offset_sig : uint32
+    mutable void_i4_i_r8_offset_sig : uint32
+    mutable void_i4_i_i_offset_sig : uint32
     mutable void_token_u4_u4_u4_sig : uint32
     mutable void_token_i_i_offset_sig : uint32
     mutable void_token_i_i4_offset_sig : uint32
     mutable void_token_i_i8_offset_sig : uint32
     mutable void_token_i_r4_offset_sig : uint32
     mutable void_token_i_r8_offset_sig : uint32
+    mutable void_i4_i4_i_i_offset_sig : uint32
     mutable void_token_token_bool_u2_offset_sig : uint32
     mutable void_token_u4_u4_u4_i1_sig : uint32
 }
