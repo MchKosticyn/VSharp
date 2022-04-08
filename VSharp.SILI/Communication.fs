@@ -111,6 +111,10 @@ type commandForConcolic =
     | ParseTypesInfoFromMethod
     | ParseTypeRef
     | ParseTypeSpec
+    | ReadHeapBytes
+    | ReadExecResponse
+    | Unmarshall
+    | ReadWholeObject
 
 type Communicator(pipeFile) =
 
@@ -122,6 +126,10 @@ type Communicator(pipeFile) =
     let parseTypesInfoByte = byte(0x60)
     let parseTypeRefByte = byte(0x61)
     let parseTypeSpecByte = byte(0x62)
+    let readHeapBytesByte = byte(0x63)
+    let readExecResponseByte = byte(0x64)
+    let unmarshallByte = byte(0x65)
+    let readWholeObjectByte = byte(0x66)
 
     let confirmation = Array.singleton confirmationByte
 
@@ -242,6 +250,10 @@ type Communicator(pipeFile) =
             | ParseTypesInfoFromMethod -> parseTypesInfoByte
             | ParseTypeRef -> parseTypeRefByte
             | ParseTypeSpec -> parseTypeSpecByte
+            | ReadHeapBytes -> readHeapBytesByte
+            | ReadExecResponse -> readExecResponseByte
+            | Unmarshall -> unmarshallByte
+            | ReadWholeObject -> readWholeObjectByte
         Array.singleton byte
 
     member x.Connect() =
@@ -302,6 +314,33 @@ type Communicator(pipeFile) =
         x.SendCommand ParseTypeSpec
         x.SendStringAndParseTypeToken string
 
+    member x.ReadHeapBytes (address : UIntPtr) offset size isRef : byte[] =
+        x.SendCommand ReadHeapBytes
+        let isRef = [| if isRef then 1uy else 0uy |]
+        Array.concat [x.Serialize<UIntPtr> address; x.Serialize<int> offset; x.Serialize<int> size; isRef] |> writeBuffer
+        match readBuffer() with
+        | Some bytes -> bytes
+        | None -> internalfail "Reading bytes from concolic: got nothing"
+
+    member private x.SendParametersAndReadObject (address : UIntPtr) isArray refOffsets : byte[] =
+        let isArray = [| if isArray then 1uy else 0uy |]
+        let refOffsets = Array.collect x.Serialize<int> refOffsets
+        let offsetsLength = Array.length refOffsets |> x.Serialize<int>
+        Array.concat [x.Serialize<UIntPtr> address; isArray; offsetsLength; refOffsets] |> writeBuffer
+        match readBuffer() with
+        | Some bytes -> bytes
+        | None -> internalfail "Reading bytes from concolic: got nothing"
+
+    // NOTE: 'Unmarshall' and 'ReadWholeObject' functions take 'isArray' argument to
+    // justify resolving references inside elements in conoclic
+    member x.Unmarshall (address : UIntPtr) isArray refOffsets : byte[] =
+        x.SendCommand Unmarshall
+        x.SendParametersAndReadObject address isArray refOffsets
+
+    member x.ReadWholeObject (address : UIntPtr) isArray refOffsets : byte[] =
+        x.SendCommand ReadWholeObject
+        x.SendParametersAndReadObject address isArray refOffsets
+
     member x.ReadMethodBody() =
         match readBuffer() with
         | Some bytes ->
@@ -322,10 +361,6 @@ type Communicator(pipeFile) =
             let ehs = Array.init ehCount (fun i -> x.Deserialize<rawExceptionHandler>(ehBytes, i * ehSize))
             {properties = properties; tokens = signatureTokens; assembly = assemblyName; moduleName = moduleName; il = ilBytes; ehs = ehs}
         | None -> unexpectedlyTerminated()
-
-    member private x.ToUIntPtr =
-        if IntPtr.Size = 4 then fun (bytes : byte[]) index -> BitConverter.ToUInt32(bytes, index) |> UIntPtr
-        else fun (bytes : byte[]) index -> BitConverter.ToUInt64(bytes, index) |> UIntPtr
 
     member private x.corElementTypeToType (elemType : CorElementType) =
         match elemType with
@@ -371,9 +406,9 @@ type Communicator(pipeFile) =
                         let id = BitConverter.ToInt16(dynamicBytes, offset)
                         offset <- offset + 2
                         id
-                    let baseAddr = x.ToUIntPtr dynamicBytes offset
+                    let baseAddr = Reflection.BitConverterToUIntPtr dynamicBytes offset
                     offset <- offset + UIntPtr.Size
-                    let shift = x.ToUIntPtr dynamicBytes offset
+                    let shift = Reflection.BitConverterToUIntPtr dynamicBytes offset
                     offset <- offset + UIntPtr.Size
                     let locationType = dynamicBytes[offset]
                     offset <- offset + 1
@@ -395,7 +430,7 @@ type Communicator(pipeFile) =
                     NumericOp(evalStackArgType, content)
                 | _ -> internalfailf "unexpected evaluation stack argument type %O" evalStackArgType)
             let newAddresses = Array.init (int staticPart.newAddressesCount) (fun _ ->
-                let res = x.ToUIntPtr dynamicBytes offset in offset <- offset + IntPtr.Size; res)
+                let res = Reflection.BitConverterToUIntPtr dynamicBytes offset in offset <- offset + UIntPtr.Size; res)
             // TODO: 2Misha what's with these sizes?
 //            let newAddressesTypesLengths = Array.init (int staticPart.newAddressesCount) (fun _ ->
 //                let res = BitConverter.ToUInt64(dynamicBytes, offset) in offset <- offset + sizeof<uint64>; res)
@@ -412,11 +447,8 @@ type Communicator(pipeFile) =
                             offset <- offset + sizeof<byte>
                             let rank = BitConverter.ToInt32(dynamicBytes, offset)
                             offset <- offset + sizeof<int32>
-                            match x.corElementTypeToType corElementType with
-                            | Some t -> t.MakeArrayType(rank)
-                            | None ->
-                                let t : Type = readType()
-                                t.MakeArrayType(rank)
+                            let t = Option.defaultWith readType (x.corElementTypeToType corElementType)
+                            if rank = 1 then t.MakeArrayType() else t.MakeArrayType(rank)
                         else
                             let token = BitConverter.ToInt32(dynamicBytes, offset)
                             offset <- offset + sizeof<int>
@@ -500,13 +532,13 @@ type Communicator(pipeFile) =
             index <- index + sizeof<uint64>
         else
             // NOTE: nonnull refs handling
-            let address, offset = obj :?> UIntPtr * UIntPtr
+            let address, offset = obj :?> UIntPtr * int32
             let success = BitConverter.TryWriteBytes(Span(bytes, index, sizeof<int>), LanguagePrimitives.EnumToValue evalStackArgType.OpRef) in assert success
             index <- index + sizeof<int>
-            let success = BitConverter.TryWriteBytes(Span(bytes, index, sizeof<UIntPtr>), uint64 address) in assert success
-            index <- index + sizeof<uint64>
-            let success = BitConverter.TryWriteBytes(Span(bytes, index, sizeof<UIntPtr>), uint64 offset) in assert success
-            index <- index + sizeof<uint64>
+            let success = BitConverter.TryWriteBytes(Span(bytes, index, sizeof<uint64>), uint64 address) in assert success
+            index <- index + sizeof<int64>
+            let success = BitConverter.TryWriteBytes(Span(bytes, index, sizeof<uint64>), uint64 offset) in assert success
+            index <- index + sizeof<int64>
         bytes
 
     member private x.SerializeOperands (ops : (obj * Type) list) =
@@ -521,6 +553,7 @@ type Communicator(pipeFile) =
         bytes
 
     member x.SendExecResponse (ops : (obj * Type) list option) (result : (obj * Type) option) lastPush (framesCount : int) =
+        x.SendCommand ReadExecResponse
         let lastPush =
             match lastPush with
             | Some isConcrete when isConcrete -> 2uy

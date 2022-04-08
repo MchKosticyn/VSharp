@@ -54,9 +54,7 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
 
     let metadataSizeOfAddress state address =
         let t = TypeOfAddress state address
-        if t = typeof<string> then CSharpUtils.LayoutUtils.StringElementsOffset
-        elif Types.IsArrayType t then CSharpUtils.LayoutUtils.ArrayElementsOffset
-        else 0
+        CSharpUtils.LayoutUtils.MetadataSize t
 
     static let mutable id = 0
 
@@ -116,6 +114,7 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
         concolicProcess.BeginOutputReadLine()
         concolicProcess.BeginErrorReadLine()
         Logger.info "Successfully spawned pid %d, working dir \"%s\"" concolicProcess.Id env.WorkingDirectory
+        cilState.state.concreteMemory <- ConcolicMemory(x.communicator)
         if x.communicator.Connect() then
             x.probes <- x.communicator.ReadProbes()
             x.communicator.SendEntryPoint entryPoint.Module.FullyQualifiedName entryPoint.MetadataToken
@@ -132,7 +131,8 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
     member private x.MarshallRefFromConcolic baseAddress offset key =
         match key with
         | ReferenceType ->
-            let address = ConcreteHeapAddress [int32 baseAddress]
+            let cm = cilState.state.concreteMemory
+            let address = cm.GetVirtualAddress baseAddress |> ConcreteHeapAddress
             let typ = TypeOfAddress cilState.state address
             if offset = UIntPtr.Zero then HeapRef address typ
             else
@@ -168,8 +168,11 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
         let topIP = Instruction(int c.offset |> Offset.from, topMethod)
         cilState.ipStack <- topIP :: List.tail cilState.ipStack
         let evalStack = EvaluationStack.PopMany (int c.evaluationStackPops) cilState.state.evaluationStack |> snd
-        let allocatedTypes = Array.fold2 (fun types address typ -> PersistentDict.add [int address] (ConcreteType typ) types) cilState.state.allocatedTypes c.newAddresses c.newAddressesTypes
-        cilState.state.allocatedTypes <- allocatedTypes
+        let concreteMemory = cilState.state.concreteMemory
+        let allocateAddress address typ =
+            let concreteAddress = lazy(Memory.AllocateEmptyType cilState.state typ)
+            concreteMemory.Allocate address concreteAddress
+        Array.iter2 allocateAddress c.newAddresses c.newAddressesTypes
         let mutable maxIndex = 0
         let newEntries = c.evaluationStackPushes |> Array.map (function
             | NumericOp(evalStackArgType, content) ->
@@ -188,7 +191,6 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
                     Concrete (BitConverter.Int64BitsToDouble content) TypeUtils.float64Type
                 | _ -> __unreachable__()
             | PointerOp(baseAddress, offset, key) ->
-                // TODO: what about StackLocation and StaticLocation? #do
                 x.MarshallRefFromConcolic baseAddress offset key)
         let _, evalStack = EvaluationStack.PopMany maxIndex evalStack
         operands <- Array.toList newEntries
@@ -205,12 +207,12 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
             | Instrument methodBody ->
                 if int methodBody.properties.token = entryPoint.MetadataToken && methodBody.moduleName = entryPoint.Module.FullyQualifiedName then
                     mainReached <- true
-                let mb =
+                let methodBody =
                     if mainReached then
                         Logger.trace "Got instrument command! bytes count = %d, max stack size = %d, eh count = %d" methodBody.il.Length methodBody.properties.maxStackSize methodBody.ehs.Length
                         x.instrumenter.Instrument methodBody
                     else x.instrumenter.Skip methodBody
-                x.communicator.SendMethodBody mb
+                x.communicator.SendMethodBody methodBody
                 true
             | ExecuteInstruction c ->
                 Logger.trace "Got execute instruction command!"
@@ -233,22 +235,26 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
         let evalRefType baseAddress offset typ =
             // NOTE: deserialization of object location is not needed, because Concolic needs only address and offset
             match baseAddress, offset.term with
-            | HeapLocation({term = ConcreteHeapAddress [address]} as a, _), Concrete(offset, _) ->
+            | HeapLocation({term = ConcreteHeapAddress address} as a, _), Concrete(offset, _) ->
+                let address = cilState.state.concreteMemory.GetPhysicalAddress address
                 let offset = offset :?> int + metadataSizeOfAddress cilState.state a
                 assert(offset > 0)
-                let obj = (uint address |> UIntPtr, uint offset |> UIntPtr) :> obj
+                let obj = (address, offset) :> obj
                 Some (obj, typ)
             | StackLocation stackKey, Concrete(offset, _) ->
                 let address = getStackKeyAddress stackKey
-                let obj = (address, offset :?> int |> uint |> UIntPtr) :> obj
+                let obj = (address, offset :?> int) :> obj
                 Some (obj, typ)
             | StaticLocation _, Concrete _ ->
-                internalfail "unmarshalling for ptr on static location is not implemented!"
+                internalfail "Unmarshalling for ptr on static location is not implemented!"
             | _ -> None
         match term with
         | {term = Concrete(obj, typ)} -> Some (obj, typ)
         | NullRef t -> Some (null, t)
-        | {term = HeapRef({term = ConcreteHeapAddress _}, _)} -> __notImplemented__()
+        | {term = HeapRef({term = ConcreteHeapAddress address}, typ)} ->
+            let address = cilState.state.concreteMemory.GetPhysicalAddress address
+            let content = (address, 0) :> obj
+            Some (content, typ)
         | {term = Ref address} ->
             let baseAddress, offset = AddressToBaseAndOffset address
             evalRefType baseAddress offset (TypeOf term)
@@ -270,7 +276,9 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
         | None -> None
 
     member x.StepDone (steppedStates : cilState list) =
-        if CilStateOperations.methodEnded cilState then
+        let methodEnded = CilStateOperations.methodEnded cilState
+        let notEndOfEntryPoint = CilStateOperations.currentIp cilState <> Exit entryPoint
+        if methodEnded && notEndOfEntryPoint then
             let method = CilStateOperations.currentMethod cilState
             if method.IsInternalCall then callIsSkipped <- true
             cilState
@@ -278,10 +286,10 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
             let concretizedOps =
                 if callIsSkipped then Some List.empty
                 else steppedStates |> List.tryPick x.EvalOperands
-            cilState.suspended <- true
+            cilState.suspended <- notEndOfEntryPoint
             let lastPushInfo =
                 match cilState.lastPushInfo with
-                | Some x when IsConcrete x && CilStateOperations.currentIp cilState <> Exit entryPoint ->
+                | Some x when IsConcrete x && notEndOfEntryPoint ->
                     CilStateOperations.pop cilState |> ignore
                     Some true
                 | Some _ -> Some false

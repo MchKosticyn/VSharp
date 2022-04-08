@@ -30,6 +30,7 @@
         <Compile Include="BidirectionalSearcher.fs" />
         <Compile Include="Communication.fs" />
         <Compile Include="Instrumenter.fs" />
+        <Compile Include="ConcolicMemory.fs" />
         <Compile Include="ClientMachine.fs" />
         <Compile Include="TestGenerator.fs" />
         <Compile Include="SILI.fs" />

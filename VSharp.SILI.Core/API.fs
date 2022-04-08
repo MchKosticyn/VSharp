@@ -305,7 +305,7 @@ module API =
             match reference.term with
             | HeapRef(address, typ) when isSuitableField address typ |> not ->
                 Logger.trace "[WARNING] unsafe cast of term %O in safe context" reference
-                let offset = Reflection.getFieldOffset fieldId |> MakeNumber
+                let offset = Reflection.relativeFieldOffset fieldId |> MakeNumber
                 Ptr (HeapLocation(address, typ)) fieldId.typ offset
             | HeapRef(address, typ) when fieldId.declaringType.IsValueType ->
                 // TODO: Need to check mostConcreteTypeOfHeapRef using pathCondition?
@@ -319,7 +319,7 @@ module API =
                 assert(Memory.baseTypeOfAddress state address |> TypeUtils.isStruct)
                 StructField(address, fieldId) |> Ref
             | Ptr(baseAddress, _, offset) ->
-                let fieldOffset = Reflection.getFieldOffset fieldId |> makeNumber
+                let fieldOffset = Reflection.relativeFieldOffset fieldId |> makeNumber
                 Ptr baseAddress fieldId.typ (add offset fieldOffset)
             | Union gvs -> gvs |> List.map (fun (g, v) -> (g, ReferenceField state v fieldId)) |> Merging.merge
             | _ -> internalfailf "Referencing field: expected reference, but got %O" reference
@@ -407,6 +407,9 @@ module API =
             let ref = PrimitiveStackLocation tmpKey |> Ref
             Memory.allocateOnStack state tmpKey term
             ref
+
+        let AllocateEmptyType state typ =
+            Memory.allocateType state typ
 
         let AllocateDefaultClass state typ =
             if typ = typeof<string> then Memory.allocateString state ""

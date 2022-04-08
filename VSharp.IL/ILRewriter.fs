@@ -238,6 +238,7 @@ type signatureTokens = {
     mutable void_r8_r8_sig : uint32
     mutable bool_i_i4_sig : uint32
     mutable bool_i_i_sig : uint32
+    mutable bool_i_i_i4_sig : uint32
     mutable void_i_i_i_sig : uint32
     mutable void_i_i_i1_sig : uint32
     mutable void_i_i_i2_sig : uint32

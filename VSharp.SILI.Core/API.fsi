@@ -249,6 +249,7 @@ module API =
         val InitializeStaticMembers : state -> Type -> unit
 
         val AllocateTemporaryLocalVariable : state -> Type -> term -> term
+        val AllocateEmptyType : state -> Type -> concreteHeapAddress
         val AllocateDefaultClass : state -> Type -> term
         val AllocateDefaultArray : state -> term list -> Type -> term
         val AllocateVectorArray : state -> term -> Type -> term
