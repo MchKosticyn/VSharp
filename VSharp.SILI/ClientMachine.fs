@@ -227,7 +227,7 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
         with
         | :? IOException ->
             Logger.trace "exception caught in concolic machine, waiting process to terminate..."
-            concolicProcess.WaitForExit()
+            if concolicProcess.WaitForExit(1000) |> not then x.Terminate()
             Logger.trace "process terminated, exit code = %d" concolicProcess.ExitCode
             reraise()
 
