@@ -67,7 +67,8 @@ module internal CallStack =
         if stack.frames.Length = 1 && stack.frames.Head.func = None && (stack.frames.Head.entries |> PersistentDict.forall (fun (key', _) -> key <> key')) then
             // This state is formed by SMT solver model, just return the default value
             match key with
-            | ParameterKey pi -> pi.ParameterType |> makeDefaultValue
+            | ParameterKey pi -> makeDefaultValue pi.ParameterType
+            | LocalVariableKey(lvi, _) -> makeDefaultValue lvi.LocalType
             | ThisKey m -> nullRef m.DeclaringType
             | _ -> __unreachable__()
         else
