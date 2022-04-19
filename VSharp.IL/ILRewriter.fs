@@ -15,7 +15,8 @@ type probes = {
     mutable ldarg_3 : uint64
     mutable ldarg_S : uint64
     mutable ldarg : uint64
-    mutable ldarga : uint64
+    mutable ldarga_primitive : uint64
+    mutable ldarga_struct : uint64
 
     mutable ldloc_0 : uint64
     mutable ldloc_1 : uint64
@@ -23,7 +24,8 @@ type probes = {
     mutable ldloc_3 : uint64
     mutable ldloc_S : uint64
     mutable ldloc : uint64
-    mutable ldloca : uint64
+    mutable ldloca_primitive : uint64
+    mutable ldloca_struct : uint64
 
     mutable starg_S : uint64
     mutable starg : uint64
