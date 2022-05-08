@@ -22,7 +22,7 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
     [<DefaultValue>] val mutable probes : probes
     [<DefaultValue>] val mutable instrumenter : Instrumenter
 
-    let mutable cilState : cilState =
+    let cilState : cilState =
         cilState.suspended <- true
         cilState
 
