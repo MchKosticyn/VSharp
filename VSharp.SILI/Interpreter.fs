@@ -146,6 +146,11 @@ module internal InstructionsSet =
             r |> List.map (fun (t, s) -> let s' = changeState cilState s in pushOnEvaluationStack(t, s'); s') |> k
         | _ -> internalfail "internal call should return tuple term * state!"
 
+    let isInternalCall (method : MethodBase) =
+        let methodName = Reflection.fullGenericMethodName method
+        Map.containsKey methodName Loader.FSharpImplementations
+        || Map.containsKey methodName Loader.CSharpImplementations
+
     // ------------------------------- CIL instructions -------------------------------
 
     let referenceLocalVariable index (method : Method) =
@@ -976,7 +981,7 @@ type internal ILInterpreter(isConcolicMode : bool) as this =
                 allMethods |> Seq.find (fun mi -> mi.GetBaseDefinition() = genericCalledMethod.GetBaseDefinition())
         let targetMethod =
             if genericMethodInfo.IsGenericMethodDefinition then
-                genericMethodInfo.MakeGenericMethod(calledMethod.GetGenericArguments())
+                genericMethodInfo.MakeGenericMethod(calledMethod.GenericArguments)
             else genericMethodInfo
             |> Application.getMethod
         if targetMethod.IsAbstract
@@ -1469,13 +1474,15 @@ type internal ILInterpreter(isConcolicMode : bool) as this =
 
     member x.Box (m : Method) offset (cilState : cilState) =
         let t = resolveTypeFromMetadata m (offset + Offset.from OpCodes.Box.Size)
+        let v = pop cilState
         if Types.IsValueType t then
-            let v = pop cilState
             if Types.IsNullable t then x.BoxNullable t v cilState
             else
                 allocateValueTypeInHeap v cilState
                 [cilState]
-        else [cilState]
+        else
+            push v cilState
+            [cilState]
     member private x.UnboxCommon cilState obj t handleRestResults k =
         let nonExceptionCont (cilState : cilState) res k =
             push res cilState

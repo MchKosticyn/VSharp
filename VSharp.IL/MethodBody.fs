@@ -107,14 +107,11 @@ type MethodWithBody internal (m : MethodBase) =
     member x.IsStaticConstructor with get() = isStaticConstructor.Force()
 
     member x.IsGenericMethod = isGenericMethod
+    member x.IsConstructedGenericMethod = m.IsConstructedGenericMethod
     member x.GenericArguments with get() = genericArguments.Force()
     member x.GetGenericMethodDefinition() =
         match m with
         | :? MethodInfo as m -> if isGenericMethod then m.GetGenericMethodDefinition() else m
-        | _ -> internalfailf $"Asking generic method definition for non-method {x}"
-    member x.GetGenericArguments() =
-        match m with
-        | :? MethodInfo as m -> if isGenericMethod then m.GetGenericArguments() else Array.empty
         | _ -> internalfailf $"Asking generic method definition for non-method {x}"
 
     member x.Attributes = attributes

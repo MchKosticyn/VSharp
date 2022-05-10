@@ -4,6 +4,7 @@ open System
 open System.Collections.Generic
 open System.Diagnostics
 open System.IO
+open System.Reflection.Emit
 open System.Runtime.InteropServices
 open VSharp
 open VSharp.Core
@@ -92,10 +93,33 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
     let getStackKeyAddress stackKey =
         concolicStackKeys[stackKey]
 
-    member x.Spawn() =
-        let test = UnitTest((entryPoint :> IMethod).MethodBase)
+    member private x.CreateTest() =
+        let methodBase = (entryPoint :> IMethod).MethodBase
+        assert(methodBase <> null)
+        let test = UnitTest(methodBase)
+        let state = cilState.state
+        let model =
+            match TryGetModel state with
+            | Some model -> model
+            | None -> internalfail "Creating test for concolic: unable to get model"
+        match TypeSolver.solveTypes model state with
+        | Some(classParams, methodParams) ->
+            let concreteClassParams = Array.zeroCreate classParams.Length
+            let mockedClassParams = Array.zeroCreate classParams.Length
+            let concreteMethodParams = Array.zeroCreate methodParams.Length
+            let mockedMethodParams = Array.zeroCreate methodParams.Length
+            let processSymbolicType (concreteArr : Type array) _ i = function
+                | ConcreteType t -> concreteArr.[i] <- t
+                | MockType _ -> ()
+            classParams |> Seq.iteri (processSymbolicType concreteClassParams mockedClassParams)
+            methodParams |> Seq.iteri (processSymbolicType concreteMethodParams mockedMethodParams)
+            test.SetTypeGenericParameters concreteClassParams mockedClassParams
+            test.SetMethodGenericParameters concreteMethodParams mockedMethodParams
+        | None -> raise (InsufficientInformationException "Could not detect appropriate substitution of generic parameters")
         test.Serialize(tempTest id)
 
+    member x.Spawn() =
+        x.CreateTest()
         let pipe, pipePath =
             if RuntimeInformation.IsOSPlatform(OSPlatform.Windows) then
                 let pipe = sprintf "concolic_fifo_%d.pipe" id
@@ -158,6 +182,17 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
             let offset = MakeNumber (fieldOffset + int offset)
             Ptr (StaticLocation fieldInfo.DeclaringType) typeof<Void> offset
 
+    member private x.CalleeArgTypesIfPossible() =
+        let m = Memory.GetCurrentExploringFunction cilState.state :?> Method
+        let offset = CilStateOperations.currentOffset cilState
+        match offset with
+        | Some offset ->
+            let opCode, callee = m.ParseCallSite offset
+            assert(opCode = OpCodes.Call || opCode = OpCodes.Callvirt || opCode = OpCodes.Newobj)
+            let argTypes = m.Parameters |> Array.map (fun p -> p.ParameterType)
+            if Reflection.hasThis callee then Array.append [|callee.DeclaringType|] argTypes else argTypes
+        | None -> internalfail "CalleeParamsIfPossible: could not get offset"
+
     member x.SynchronizeStates (c : execCommand) =
         let toPop = int c.callStackFramesPops
         if toPop > 0 then CilStateOperations.popFramesOf toPop cilState
@@ -178,8 +213,10 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
             let concreteAddress = lazy(Memory.AllocateEmptyType cilState.state typ)
             concreteMemory.Allocate address concreteAddress
         Array.iter2 allocateAddress c.newAddresses c.newAddressesTypes
+        let argTypes = lazy x.CalleeArgTypesIfPossible()
         let mutable maxIndex = 0
-        let newEntries = c.evaluationStackPushes |> Array.map (function
+        let createTerm i operand =
+            match operand with
             | NumericOp(evalStackArgType, content) ->
                 match evalStackArgType with
                 | evalStackArgType.OpSymbolic ->
@@ -196,7 +233,11 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
                     Concrete (BitConverter.Int64BitsToDouble content) TypeUtils.float64Type
                 | _ -> __unreachable__()
             | PointerOp(baseAddress, offset, key) ->
-                x.MarshallRefFromConcolic baseAddress offset key)
+                x.MarshallRefFromConcolic baseAddress offset key
+            | EmptyOp ->
+                let argTypes = argTypes.Value
+                Memory.DefaultOf argTypes[i]
+        let newEntries = c.evaluationStackPushes |> Array.mapi createTerm
         let _, evalStack = EvaluationStack.PopMany maxIndex evalStack
         operands <- Array.toList newEntries
         let evalStack = Array.fold (fun stack x -> EvaluationStack.Push x stack) evalStack newEntries
@@ -284,6 +325,7 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
     member x.StepDone (steppedStates : cilState list) =
         let methodEnded = CilStateOperations.methodEnded cilState
         let notEndOfEntryPoint = CilStateOperations.currentIp cilState <> Exit entryPoint
+        let isIIEState = CilStateOperations.isIIEState cilState
         if methodEnded && notEndOfEntryPoint then
             let method = CilStateOperations.currentMethod cilState
             if method.IsInternalCall then callIsSkipped <- true
@@ -292,7 +334,7 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
             let concretizedOps =
                 if callIsSkipped then Some List.empty
                 else steppedStates |> List.tryPick x.EvalOperands
-            cilState.suspended <- notEndOfEntryPoint
+            cilState.suspended <- notEndOfEntryPoint && not isIIEState
             let lastPushInfo =
                 match cilState.lastPushInfo with
                 | Some x when IsConcrete x && notEndOfEntryPoint ->
