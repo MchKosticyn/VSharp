@@ -140,6 +140,7 @@ type probes = {
     mutable setArgSize : uint64
     mutable setLocSize : uint64
     mutable enter : uint64
+    mutable enterStructCtor : uint64
     mutable enterMain : uint64
     mutable leave : uint64
     mutable leaveMain_0 : uint64
@@ -153,10 +154,10 @@ type probes = {
     mutable execInternalCall : uint64
     mutable call : uint64
     mutable pushFrame : uint64
+    mutable pushTemporaryAllocatedStruct : uint64
     mutable pushInternalCallResult : uint64
     mutable callVirt : uint64
     mutable newobj : uint64
-    mutable newobjStruct : uint64
     mutable calli : uint64
     mutable throw : uint64
     mutable rethrow : uint64
@@ -253,6 +254,7 @@ type signatureTokens = {
     mutable void_r8_offset_sig : uint32
     mutable void_i_offset_sig : uint32
     mutable void_token_offset_sig : uint32
+    mutable void_size_offset_sig : uint32
     mutable void_i4_i4_offset_sig : uint32
     mutable void_i_i1_offset_sig : uint32
     mutable void_i_i2_offset_sig : uint32

@@ -383,6 +383,10 @@ type Communicator(pipeFile) =
         // TODO: 2Misha
         __notImplemented__()
 
+    member x.ParseDeclaringTypeToken (methodToken : int) : uint32 =
+        // TODO: 2Misha
+        __notImplemented__()
+
     member x.ReadMethodBody() =
         match readBuffer() with
         | Some bytes ->
