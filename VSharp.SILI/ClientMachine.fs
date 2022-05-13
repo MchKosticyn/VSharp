@@ -189,7 +189,7 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
         | Some offset ->
             let opCode, callee = m.ParseCallSite offset
             assert(opCode = OpCodes.Call || opCode = OpCodes.Callvirt || opCode = OpCodes.Newobj)
-            let argTypes = m.Parameters |> Array.map (fun p -> p.ParameterType)
+            let argTypes = callee.GetParameters() |> Array.map (fun p -> p.ParameterType)
             if Reflection.hasThis callee then Array.append [|callee.DeclaringType|] argTypes else argTypes
         | None -> internalfail "CalleeParamsIfPossible: could not get offset"
 
