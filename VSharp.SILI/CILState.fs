@@ -29,6 +29,7 @@ type cilState =
       mutable targets : Set<codeLocation> option
       mutable status : status
       mutable lastPushInfo : term option
+      mutable path : Coverage.path
     }
     with
     member x.Result with get() =
@@ -69,6 +70,7 @@ module internal CilStateOperations =
           targets = None
           status = PurelySymbolic
           lastPushInfo = None
+          path = []
         }
 
     let makeInitialState m state = makeCilState (instruction m 0<offsets>) 0u state
@@ -309,23 +311,6 @@ module internal CilStateOperations =
         | None -> true
 
     // ------------------------------- Helper functions for cilState -------------------------------
-
-    let moveIp offset (m : Method) cilState =
-        assert m.HasBody
-        let opCode = MethodBody.parseInstruction m offset
-        let newIps =
-            let nextTargets = MethodBody.findNextInstructionOffsetAndEdges opCode m.ILBytes offset
-            match nextTargets with
-            | UnconditionalBranch nextInstruction
-            | FallThrough nextInstruction -> instruction m nextInstruction :: []
-            | Return -> exit m :: []
-            | ExceptionMechanism ->
-                // TODO: use ExceptionMechanism? #do
-//                let toObserve = __notImplemented__()
-//                searchingForHandler toObserve 0 :: []
-                __notImplemented__()
-            | ConditionalBranch (fall, targets) -> fall :: targets |> List.map (instruction m)
-        List.map (fun ip -> setCurrentIp ip cilState) newIps
 
     let GuardedApplyCIL (cilState : cilState) term (f : cilState -> term -> ('a list -> 'b) -> 'b) (k : 'a list -> 'b) =
         let mkCilState state =
