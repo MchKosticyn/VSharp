@@ -151,6 +151,7 @@ type probes = {
     mutable leaveMain_p : uint64
     mutable finalizeCall : uint64
     mutable execCall : uint64
+    mutable execThisCall : uint64
     mutable execInternalCall : uint64
     mutable call : uint64
     mutable pushFrame : uint64

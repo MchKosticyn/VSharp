@@ -122,6 +122,8 @@ type commandForConcolic =
     | ParseFieldDefTypeToken
     | ParseArgTypeToken
     | ParseLocalTypeToken
+    | ParseReturnTypeToken
+    | ParseDeclaringTypeToken
 
 type Communicator(pipeFile) =
 
@@ -141,6 +143,8 @@ type Communicator(pipeFile) =
     let parseFieldDefTypeTokenByte = byte(0x69)
     let parseArgTypeTokenByte = byte(0x70)
     let parseLocalTypeTokenByte = byte(0x71)
+    let parseReturnTypeTokenByte = byte(0x72)
+    let parseDeclaringTypeTokenByte = byte(0x73)
 
     let confirmation = Array.singleton confirmationByte
 
@@ -269,6 +273,8 @@ type Communicator(pipeFile) =
             | ParseFieldDefTypeToken -> parseFieldDefTypeTokenByte
             | ParseArgTypeToken -> parseArgTypeTokenByte
             | ParseLocalTypeToken -> parseLocalTypeTokenByte
+            | ParseReturnTypeToken -> parseReturnTypeTokenByte
+            | ParseDeclaringTypeToken -> parseDeclaringTypeTokenByte
         Array.singleton byte
 
     member x.Connect() =
@@ -342,9 +348,9 @@ type Communicator(pipeFile) =
 
     member private x.SendParametersAndReadObject (address : UIntPtr) isArray refOffsets : byte[] =
         let isArray = [| if isArray then 1uy else 0uy |]
-        let refOffsets = Array.collect x.Serialize<int> refOffsets
+        let refOffsetBytes = Array.collect x.Serialize<int> refOffsets
         let offsetsLength = Array.length refOffsets |> x.Serialize<int>
-        Array.concat [x.Serialize<UIntPtr> address; isArray; offsetsLength; refOffsets] |> writeBuffer
+        Array.concat [x.Serialize<UIntPtr> address; isArray; offsetsLength; refOffsetBytes] |> writeBuffer
         match readBuffer() with
         | Some bytes -> bytes
         | None -> internalfail "Reading bytes from concolic: got nothing"
@@ -380,12 +386,13 @@ type Communicator(pipeFile) =
         x.ReadTypeToken()
 
     member x.ParseReturnTypeToken () : uint32 =
-        // TODO: 2Misha
-        __notImplemented__()
+        x.SendCommand ParseReturnTypeToken
+        x.ReadTypeToken()
 
     member x.ParseDeclaringTypeToken (methodToken : int) : uint32 =
-        // TODO: 2Misha
-        __notImplemented__()
+        x.SendCommand ParseDeclaringTypeToken
+        x.Serialize<int> methodToken |> writeBuffer
+        x.ReadTypeToken()
 
     member x.ReadMethodBody() =
         match readBuffer() with
