@@ -16,7 +16,7 @@ type TargetedSearcher(maxBound, target) =
         base.Insert states
         for state in states do
             match x.TryGetWeight state with
-            | None when not state.suspended ->
+            | None when isSuspended state |> not ->
                 removeTarget state target
             | _ -> ()
 
@@ -39,7 +39,7 @@ type TargetedSearcher(maxBound, target) =
 
         for state in Seq.append [parent] newStates do
             match x.TryGetWeight state with
-            | None when not state.suspended ->
+            | None when isSuspended state |> not ->
                 removeTarget state target
 
             | _ -> ()
@@ -173,7 +173,7 @@ type GuidedSearcher(maxBound, threshold : uint, baseSearcher : IForwardSearcher,
         updateTargetedSearchers parent newStates
 
     let suspend (state : cilState) : unit =
-        state.suspended <- true
+        state.status <- status.Suspended
         update state Seq.empty
 
     let setTargetOrSuspend state =

@@ -6,6 +6,12 @@ open System.Collections.Generic
 open VSharp.Core
 open ipOperations
 
+type status =
+    | Suspended
+    | PurelySymbolic
+    | RunningConcolic
+    | WaitingConcolic
+
 [<ReferenceEquality>]
 type cilState =
     { mutable ipStack : ipStack
@@ -20,8 +26,8 @@ type cilState =
       mutable startingIP : ip
       mutable initialEvaluationStackSize : uint32
       mutable stepsNumber : uint
-      mutable suspended : bool
       mutable targets : Set<codeLocation> option
+      mutable status : status
       mutable lastPushInfo : term option
     }
     with
@@ -60,8 +66,8 @@ module internal CilStateOperations =
           startingIP = curV
           initialEvaluationStackSize = initialEvaluationStackSize
           stepsNumber = 0u
-          suspended = false
           targets = None
+          status = PurelySymbolic
           lastPushInfo = None
         }
 
@@ -102,6 +108,25 @@ module internal CilStateOperations =
         match currentIp s with
         | SearchingForHandler([], []) -> true
         | _ -> false
+
+    let isSuspended (s : cilState) =
+        match s.status with
+        | Suspended
+        | RunningConcolic -> true
+        | _ -> false
+
+    let controlledByConcolic (s : cilState) =
+        match s.status with
+        | WaitingConcolic
+        | RunningConcolic -> true
+        | _ -> false
+
+    let moveControlToConcolic (s : cilState) =
+        s.status <- RunningConcolic
+
+    let moveControlFromConcolic (s : cilState) =
+        assert(s.status = RunningConcolic)
+        s.status <- WaitingConcolic
 
     let isStopped s = isIIEState s || stoppedByException s || not(isExecutable(s))
 
