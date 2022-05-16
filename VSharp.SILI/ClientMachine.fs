@@ -197,9 +197,8 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
         let toPop = int c.callStackFramesPops
         if toPop > 0 then CilStateOperations.popFramesOf toPop cilState
         assert(Memory.CallStackSize cilState.state > 0)
-        let initFrame token =
-            let topMethod = Memory.GetCurrentExploringFunction cilState.state :?> Method
-            let method = topMethod.ResolveMethod token |> Application.getMethod
+        let initFrame (moduleToken, methodToken) =
+            let method = Coverage.resolveMethod moduleToken methodToken |> Application.getMethod
             initSymbolicFrame method
         Array.iter initFrame c.newCallStackFrames
         let setIp ip offset =
@@ -334,10 +333,23 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
             let concretizedOps =
                 if callIsSkipped then Some List.empty
                 else steppedStates |> List.tryPick x.EvalOperands
-            steppedStates |> List.iter (fun s -> s.status <- PurelySymbolic)
-            if notEndOfEntryPoint && not isIIEState then cilState.status <- RunningConcolic
+            let concolicMemory = cilState.state.concreteMemory
+            let disconnectConcolic cilState =
+                cilState.status <- PurelySymbolic
+                cilState.state.concreteMemory <- Memory.EmptyConcreteMemory()
+            steppedStates |> List.iter disconnectConcolic
+            let connectConcolic cilState =
+                cilState.status <- RunningConcolic
+                cilState.state.concreteMemory <- concolicMemory
+            if notEndOfEntryPoint && not isIIEState then connectConcolic cilState
+            let topIsEmpty = EvaluationStack.TopIsEmpty cilState.state.evaluationStack
             let lastPushInfo =
                 match cilState.lastPushInfo with
+                | Some x when IsConcrete x && notEndOfEntryPoint && topIsEmpty ->
+                    // NOTE: Newobj case
+                    let evaluationStack = EvaluationStack.PopFromAnyFrame cilState.state.evaluationStack |> snd
+                    cilState.state.evaluationStack <- evaluationStack
+                    None
                 | Some x when IsConcrete x && notEndOfEntryPoint ->
                     CilStateOperations.pop cilState |> ignore
                     Some true
