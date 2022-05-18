@@ -3,6 +3,7 @@
 #include "cComPtr.h"
 #include "reflection.h"
 #include <vector>
+#include <map>
 #include <stdexcept>
 #include <corhlpr.cpp>
 #include "memory/memory.h"
@@ -24,6 +25,7 @@ using namespace vsharp;
 #define ELEMENT_TYPE_SIZE ELEMENT_TYPE_U
 
 struct MethodBodyInfo {
+    BYTE instrumentationEnabled;
     unsigned token;
     unsigned codeLength;
     unsigned assemblyNameLength;
@@ -38,9 +40,10 @@ struct MethodBodyInfo {
     const char *ehs;
 
     void serialize(char *&bytes, unsigned &count) const {
-        count = codeLength + 6 * sizeof(unsigned) + ehsLength + assemblyNameLength + moduleNameLength + signatureTokensLength;
+        count = codeLength + sizeof(BYTE) + 6 * sizeof(unsigned) + ehsLength + assemblyNameLength + moduleNameLength + signatureTokensLength;
         bytes = new char[count];
         char *buffer = bytes;
+        *(BYTE *)buffer = instrumentationEnabled; buffer += sizeof(BYTE);
         unsigned size = sizeof(unsigned);
         *(unsigned *)buffer = token; buffer += size;
         *(unsigned *)buffer = codeLength; buffer += size;
@@ -88,6 +91,7 @@ HRESULT initTokens(const CComPtr<IMetaDataEmit> &metadataEmit, std::vector<mdSig
     SIG_DEF(IMAGE_CEE_CS_CALLCONV_STDCALL, 0x02, ELEMENT_TYPE_VOID, ELEMENT_TYPE_I, ELEMENT_TYPE_R8)
     SIG_DEF(IMAGE_CEE_CS_CALLCONV_STDCALL, 0x02, ELEMENT_TYPE_VOID, ELEMENT_TYPE_I, ELEMENT_TYPE_I)
     SIG_DEF(IMAGE_CEE_CS_CALLCONV_STDCALL, 0x02, ELEMENT_TYPE_VOID, ELEMENT_TYPE_I1, ELEMENT_TYPE_SIZE)
+    SIG_DEF(IMAGE_CEE_CS_CALLCONV_STDCALL, 0x02, ELEMENT_TYPE_VOID, ELEMENT_TYPE_I4, ELEMENT_TYPE_TOKEN)
     SIG_DEF(IMAGE_CEE_CS_CALLCONV_STDCALL, 0x02, ELEMENT_TYPE_COND, ELEMENT_TYPE_I, ELEMENT_TYPE_I4)
     SIG_DEF(IMAGE_CEE_CS_CALLCONV_STDCALL, 0x02, ELEMENT_TYPE_COND, ELEMENT_TYPE_I, ELEMENT_TYPE_I)
     SIG_DEF(IMAGE_CEE_CS_CALLCONV_STDCALL, 0x03, ELEMENT_TYPE_COND, ELEMENT_TYPE_I, ELEMENT_TYPE_I, ELEMENT_TYPE_I4)
@@ -170,18 +174,13 @@ Instrumenter::Instrumenter(ICorProfilerInfo8 &profilerInfo, Protocol &protocol)
     , m_signatureTokens(nullptr)
     , m_generateTinyHeader(false)
     , m_pEH(nullptr)
-    , m_reJitInstrumentedStarted(false)
-    , m_mainModuleName(nullptr)
-    , m_mainModuleSize(0)
-    , m_mainMethod(0)
-    , m_mainReached(false)
 {
+    moduleIDs = std::map<INT32, ModuleID>();
 }
 
 Instrumenter::~Instrumenter()
 {
     delete[] m_signatureTokens;
-    delete[] m_mainModuleName;
 }
 
 unsigned Instrumenter::codeSize() const
@@ -220,28 +219,6 @@ LPBYTE Instrumenter::allocateILMemory(unsigned size)
         return nullptr;
 
     return (LPBYTE)m_methodMalloc->Alloc(size);
-}
-
-void Instrumenter::configureEntryPoint() {
-    char *bytes; int messageLength;
-    m_protocol.acceptEntryPoint(bytes, messageLength);
-    char *start = bytes;
-    m_mainModuleSize = *(INT32*) bytes; bytes += sizeof(INT32);
-    m_mainMethod = *(INT32*) bytes; bytes += sizeof(INT32);
-    m_mainModuleName = new WCHAR[m_mainModuleSize];
-    unsigned bytesCount = m_mainModuleSize * sizeof(WCHAR);
-    memcpy(m_mainModuleName, bytes, m_mainModuleSize * sizeof(WCHAR)); bytes += bytesCount;
-    assert(bytes - start == messageLength);
-    delete[] start;
-}
-
-bool Instrumenter::currentMethodIsMain(const WCHAR *moduleName, int moduleSize, mdMethodDef method) const {
-    // NOTE: decrementing 'moduleSize', because of null terminator
-    if (m_mainModuleSize != moduleSize - 1 || m_mainMethod != method)
-        return false;
-    for (int i = 0; i < m_mainModuleSize; i++)
-        if (m_mainModuleName[i] != moduleName[i]) return false;
-    return true;
 }
 
 HRESULT Instrumenter::importIL()
@@ -350,39 +327,17 @@ HRESULT Instrumenter::exportIL(char *bytecode, unsigned codeLength, unsigned max
     return S_OK;
 }
 
-HRESULT Instrumenter::startReJitInstrumented() {
-    LOG(tout << "ReJIT of instrumented methods is started" << std::endl);
-    m_reJitInstrumentedStarted = true;
-    ULONG count = instrumentedFunctions.size();
-    auto *modules = new ModuleID[count];
-    auto *methods = new mdMethodDef[count];
-    int i = 0;
-    for (const auto &it : instrumentedFunctions) {
-        modules[i] = it.first.first;
-        methods[i] = it.first.second;
-        i++;
-    }
-    HRESULT hr = m_profilerInfo.RequestReJIT(count, modules, methods);
+// TODO: if method was already reJITed, do not reJIT #do
+void Instrumenter::startReJit(INT32 moduleToken, mdMethodDef methodToken) {
+    LOG(tout << "ReJIT of skipped method " << HEX(methodToken) << " is started" << std::endl);
+    assert(moduleIDs.find(moduleToken) != moduleIDs.end());
+    ModuleID moduleId = moduleIDs[moduleToken];
+    auto *modules = new ModuleID[1] { moduleId };
+    auto *methods = new mdMethodDef[1] { methodToken };
+    HRESULT hr = m_profilerInfo.RequestReJIT(1, modules, methods);
+    if (FAILED(hr)) FAIL_LOUD("startReJit: reJIT failed!");
     delete[] modules;
     delete[] methods;
-    return hr;
-}
-
-HRESULT Instrumenter::startReJitSkipped() {
-    LOG(tout << "ReJIT of skipped methods is started" << std::endl);
-    ULONG count = skippedBeforeMain.size();
-    auto *modules = new ModuleID[count];
-    auto *methods = new mdMethodDef[count];
-    int i = 0;
-    for (const auto &it : skippedBeforeMain) {
-        modules[i] = it.first;
-        methods[i] = it.second;
-        i++;
-    }
-    HRESULT hr = m_profilerInfo.RequestReJIT(count, modules, methods);
-    delete[] modules;
-    delete[] methods;
-    return hr;
 }
 
 CommandType Instrumenter::getAndHandleCommand() {
@@ -495,8 +450,37 @@ CommandType Instrumenter::getAndHandleCommand() {
     return command;
 }
 
-HRESULT Instrumenter::doInstrumentation(ModuleID oldModuleId, const WCHAR *assemblyName, ULONG assemblyNameLength, const WCHAR *moduleName, ULONG moduleNameLength) {
-    HRESULT hr;
+HRESULT Instrumenter::instrument(FunctionID functionId) {
+
+    if (isMainLeft()) {
+        // NOTE: main left, further instrumentation is not needed, so doing nothing
+        while (true) { }
+        return S_OK;
+    }
+
+    // TODO: analyze the IL code instead to understand that we've injected functions?
+
+    HRESULT hr = S_OK;
+    ClassID classId;
+    ModuleID oldModuleId = m_moduleId;
+    IfFailRet(m_profilerInfo.GetFunctionInfo(functionId, &classId, &m_moduleId, &m_jittedToken));
+    assert((m_jittedToken & 0xFF000000L) == mdtMethodDef);
+
+    LOG(tout << "Instrumenting token " << HEX(m_jittedToken) << "..." << std::endl);
+
+    LPCBYTE baseLoadAddress;
+    ULONG moduleNameLength;
+    AssemblyID assembly;
+    IfFailRet(m_profilerInfo.GetModuleInfo(m_moduleId, &baseLoadAddress, 0, &moduleNameLength, nullptr, &assembly));
+    WCHAR *moduleName = new WCHAR[moduleNameLength];
+    IfFailRet(m_profilerInfo.GetModuleInfo(m_moduleId, &baseLoadAddress, moduleNameLength, &moduleNameLength, moduleName, &assembly));
+    ULONG assemblyNameLength;
+    AppDomainID appDomainId;
+    ModuleID startModuleId;
+    IfFailRet(m_profilerInfo.GetAssemblyInfo(assembly, 0, &assemblyNameLength, nullptr, &appDomainId, &startModuleId));
+    WCHAR *assemblyName = new WCHAR[assemblyNameLength];
+    IfFailRet(m_profilerInfo.GetAssemblyInfo(assembly, assemblyNameLength, &assemblyNameLength, assemblyName, &appDomainId, &startModuleId));
+
     CComPtr<IMetaDataImport> metadataImport;
     CComPtr<IMetaDataEmit> metadataEmit;
     IfFailRet(m_profilerInfo.GetModuleMetaData(m_moduleId, ofRead | ofWrite, IID_IMetaDataImport, reinterpret_cast<IUnknown **>(&metadataImport)));
@@ -511,31 +495,23 @@ HRESULT Instrumenter::doInstrumentation(ModuleID oldModuleId, const WCHAR *assem
         memcpy(m_signatureTokens, (char *)&tokens[0], m_signatureTokensLength);
     }
 
-    LOG(tout << "Instrumenting token " << HEX(m_jittedToken) << "..." << std::endl);
-
     IfFailRet(importIL());
 
-    unsigned codeLength = codeSize();
-    char *bytes = new char[codeLength];
-    char *ehcs = new char[ehCount()];
-    memcpy(bytes, code(), codeLength);
-    memcpy(ehcs, ehs(), ehCount());
-    MethodInfo mi = MethodInfo{m_jittedToken, bytes, codeLength, maxStackSize(), ehcs, ehCount()};
-    instrumentedFunctions[{m_moduleId, m_jittedToken}] = mi;
-
+    BYTE isInstrumentationEnabled = instrumentationEnabled() ? 1 : 0;
     MethodBodyInfo info{
-        (unsigned)m_jittedToken,
-        (unsigned)codeSize(),
-        (unsigned)(assemblyNameLength - 1) * sizeof(WCHAR),
-        (unsigned)(moduleNameLength - 1) * sizeof(WCHAR),
-        (unsigned)maxStackSize(),
-        (unsigned)ehCount(),
-        m_signatureTokensLength,
-        m_signatureTokens,
-        assemblyName,
-        moduleName,
-        code(),
-        (char*)ehs()
+            isInstrumentationEnabled,
+            (unsigned)m_jittedToken,
+            (unsigned)codeSize(),
+            (unsigned)(assemblyNameLength - 1) * sizeof(WCHAR),
+            (unsigned)(moduleNameLength - 1) * sizeof(WCHAR),
+            (unsigned)maxStackSize(),
+            (unsigned)ehCount(),
+            m_signatureTokensLength,
+            m_signatureTokens,
+            assemblyName,
+            moduleName,
+            code(),
+            (char*)ehs()
     };
     if (!m_protocol.sendSerializable(InstrumentCommand, info)) FAIL_LOUD("Instrumenting: serialization of method failed!");
     LOG(tout << "Successfully sent method body!");
@@ -547,100 +523,11 @@ HRESULT Instrumenter::doInstrumentation(ModuleID oldModuleId, const WCHAR *assem
     } while (command != ReadMethodBody);
 #endif
     LOG(tout << "Reading method body back...");
-    if (!m_protocol.acceptMethodBody(bytecode, length, maxStackSize, ehs, ehsLength))
-        FAIL_LOUD("Instrumenting: accepting method body failed!");
+    INT32 moduleToken;
+    if (!m_protocol.acceptMethodBody(bytecode, moduleToken, length, maxStackSize, ehs, ehsLength)) FAIL_LOUD("Instrumenting: accepting method body failed!");
+    moduleIDs[moduleToken] = m_moduleId;
     LOG(tout << "Exporting " << length << " IL bytes!");
     IfFailRet(exportIL(bytecode, length, maxStackSize, ehs, ehsLength));
 
-    return S_OK;
-}
-
-HRESULT Instrumenter::instrument(FunctionID functionId) {
-    HRESULT hr = S_OK;
-    ModuleID newModuleId;
-    ClassID classId;
-    IfFailRet(m_profilerInfo.GetFunctionInfo(functionId, &classId, &newModuleId, &m_jittedToken));
-    assert((m_jittedToken & 0xFF000000L) == mdtMethodDef);
-
-    if (!instrumentingEnabled()) {
-        // TODO: unify mainReached and instrumentingEnabled #do
-//        skippedBeforeMain.insert({m_moduleId, m_jittedToken});
-        LOG(tout << "Instrumentation of token " << HEX(m_jittedToken) << " is skipped" << std::endl);
-        return S_OK;
-    } else {
-        // TODO: move this to probes #do
-//        if (!skippedBeforeMain.empty()) IfFailRet(startReJitSkipped());
-    }
-
-    LPCBYTE baseLoadAddress;
-    ULONG moduleNameLength;
-    AssemblyID assembly;
-    IfFailRet(m_profilerInfo.GetModuleInfo(newModuleId, &baseLoadAddress, 0, &moduleNameLength, nullptr, &assembly));
-    WCHAR *moduleName = new WCHAR[moduleNameLength];
-    IfFailRet(m_profilerInfo.GetModuleInfo(newModuleId, &baseLoadAddress, moduleNameLength, &moduleNameLength, moduleName, &assembly));
-    ULONG assemblyNameLength;
-    AppDomainID appDomainId;
-    ModuleID startModuleId;
-    IfFailRet(m_profilerInfo.GetAssemblyInfo(assembly, 0, &assemblyNameLength, nullptr, &appDomainId, &startModuleId));
-    WCHAR *assemblyName = new WCHAR[assemblyNameLength];
-    IfFailRet(m_profilerInfo.GetAssemblyInfo(assembly, assemblyNameLength, &assemblyNameLength, assemblyName, &appDomainId, &startModuleId));
-
-    if (!m_mainReached) {
-        if (currentMethodIsMain(moduleName, (int) moduleNameLength, m_jittedToken)) {
-            LOG(tout << "Main function reached!" << std::endl);
-            m_mainReached = true;
-            IfFailRet(startReJitSkipped());
-        }
-    }
-
-    if (m_mainReached) {
-        // TODO: analyze the IL code instead to understand that we've injected functions?
-        if (instrumentedFunctions.find({newModuleId, m_jittedToken}) != instrumentedFunctions.end()) {
-            LOG(tout << "Duplicate jitting of " << HEX(m_jittedToken) << std::endl);
-            return S_OK;
-        }
-        if (isMainLeft()) {
-            // NOTE: main left, further instrumentation is not needed, so doing nothing
-            while (true) { }
-//            if (!m_reJitInstrumentedStarted)
-//                IfFailRet(startReJitInstrumented());
-//            LOG(tout << "Main left! Skipping instrumentation of " << HEX(m_jittedToken) << std::endl);
-            return S_OK;
-        }
-        ModuleID oldModuleId = m_moduleId;
-        m_moduleId = newModuleId;
-        hr = doInstrumentation(oldModuleId, assemblyName, assemblyNameLength, moduleName, moduleNameLength);
-    } else {
-        LOG(tout << "Instrumentation of token " << HEX(m_jittedToken) << " is skipped" << std::endl);
-        skippedBeforeMain.insert({newModuleId, m_jittedToken});
-    }
-
-    delete[] moduleName;
-    delete[] assemblyName;
-
     return hr;
-}
-
-HRESULT Instrumenter::undoInstrumentation(FunctionID functionId) {
-    HRESULT hr;
-    ClassID classId;
-    IfFailRet(m_profilerInfo.GetFunctionInfo(functionId, &classId, &m_moduleId, &m_jittedToken));
-    assert((m_jittedToken & 0xFF000000L) == mdtMethodDef);
-    const auto instrumented = instrumentedFunctions.find({m_moduleId, m_jittedToken});
-    if (instrumented != instrumentedFunctions.end()) {
-        MethodInfo mi = instrumented->second;
-        LOG(tout << "Undo instrumentation token " << HEX(m_jittedToken) << "..." << std::endl);
-        IfFailRet(exportIL(mi.bytecode, mi.codeLength, mi.maxStackSize, mi.ehs, mi.ehsLength));
-        instrumentedFunctions.erase(instrumented);
-    }
-    return S_OK;
-}
-
-HRESULT Instrumenter::reInstrument(FunctionID functionId) {
-    // NOTE: if main is left, rejit needs to delete probes
-    // NOTE: otherwise, rejit needs to place probes
-    if (isMainLeft())
-        return undoInstrumentation(functionId);
-    else
-        return instrument(functionId);
 }

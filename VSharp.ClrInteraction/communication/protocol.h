@@ -70,7 +70,7 @@ public:
     bool sendBytes(char *bytes, int size);
     bool sendStringsPoolIndex(unsigned index);
     bool sendTypeInfoFromMethod(const std::vector<mdToken>& types);
-    bool acceptMethodBody(char *&bytecode, int &codeLength, unsigned &maxStackSize, char *&ehs, unsigned &ehsLength);
+    bool acceptMethodBody(char *&bytecode, INT32 &moduleToken, int &codeLength, unsigned &maxStackSize, char *&ehs, unsigned &ehsLength);
     template<typename T>
     bool sendSerializable(char commandByte, const T &object) {
         if (!writeBuffer(new char[1] {commandByte}, 1)) return false;

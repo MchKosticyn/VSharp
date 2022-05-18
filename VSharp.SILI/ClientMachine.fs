@@ -140,7 +140,6 @@ type ClientMachine(entryPoint : MethodBase, requestMakeStep : cilState -> unit, 
         cilState.state.concreteMemory <- ConcolicMemory(x.communicator)
         if x.communicator.Connect() then
             x.probes <- x.communicator.ReadProbes()
-            x.communicator.SendEntryPoint entryPoint
             x.instrumenter <- Instrumenter(x.communicator, entryPoint, x.probes)
             true
         else false
@@ -261,7 +260,7 @@ type ClientMachine(entryPoint : MethodBase, requestMakeStep : cilState -> unit, 
                 if int methodBody.properties.token = entryPoint.MetadataToken && methodBody.moduleName = entryPoint.Module.FullyQualifiedName then
                     mainReached <- true
                 let methodBody =
-                    if mainReached then
+                    if mainReached && methodBody.properties.instrumentationEnabled = 1uy then
                         Logger.trace "Got instrument command! bytes count = %d, max stack size = %d, eh count = %d" methodBody.il.Length methodBody.properties.maxStackSize methodBody.ehs.Length
                         x.instrumenter.Instrument methodBody
                     else x.instrumenter.Skip methodBody

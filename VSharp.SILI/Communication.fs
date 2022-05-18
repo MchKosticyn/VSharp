@@ -157,6 +157,7 @@ type probes = {
     mutable execCall : uint64
     mutable execThisCall : uint64
     mutable execInternalCall : uint64
+    mutable reJITMethod : uint64
     mutable call : uint64
     mutable pushFrame : uint64
     mutable pushTemporaryAllocatedStruct : uint64
@@ -227,6 +228,7 @@ type signatureTokens = {
     mutable void_i_r8_sig : uint32
     mutable void_i_i_sig : uint32
     mutable void_i1_size_sig : uint32
+    mutable void_i4_token_sig : uint32
     mutable bool_i_i4_sig : uint32
     mutable bool_i_i_sig : uint32
     mutable bool_i_i_i4_sig : uint32
@@ -312,6 +314,7 @@ with
 
 [<type: StructLayout(LayoutKind.Sequential, Pack=1, CharSet=CharSet.Ansi)>]
 type rawMethodProperties = {
+    mutable instrumentationEnabled : byte
     mutable token : uint32
     mutable ilCodeSize : uint32
     mutable assemblyNameLength : uint32
@@ -324,6 +327,7 @@ type rawMethodProperties = {
 type instrumentedMethodProperties = {
     mutable ilCodeSize : uint32
     mutable maxStackSize : uint32
+    mutable moduleToken : int32
 }
 
 [<type: StructLayout(LayoutKind.Sequential, Pack=1, CharSet=CharSet.Ansi)>]
@@ -634,14 +638,6 @@ type Communicator(pipeFile) =
         | None -> unexpectedlyTerminated()
 
     member x.ReadProbes() = x.ReadStructure<probes>()
-
-    member x.SendEntryPoint (m : Reflection.MethodBase) =
-        let moduleName = m.Module.FullyQualifiedName
-        let moduleNameBytes = Encoding.Unicode.GetBytes moduleName
-        let moduleSize = BitConverter.GetBytes moduleName.Length
-//        let moduleID = BitConverter.GetBytes m.Module.MetadataToken
-        let methodDef = BitConverter.GetBytes m.MetadataToken
-        Array.concat [moduleSize; methodDef; moduleNameBytes] |> writeBuffer
 
     member x.SendCommand (command : commandForConcolic) =
         let bytes = x.SerializeCommand command

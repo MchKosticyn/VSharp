@@ -51,8 +51,8 @@ HRESULT STDMETHODCALLTYPE CorProfiler::Initialize(IUnknown *pICorProfilerInfoUnk
         COR_PRF_MONITOR_OBJECT_ALLOCATED |
         COR_PRF_ENABLE_REJIT;
 
-    // TODO: place IfFailRet here, log fails!
-    auto hr = this->corProfilerInfo->SetEventMask(eventMask);
+    HRESULT hr;
+    IfFailRet(this->corProfilerInfo->SetEventMask(eventMask));
 
 #ifdef _LOGGING
     open_log();
@@ -72,7 +72,6 @@ HRESULT STDMETHODCALLTYPE CorProfiler::Initialize(IUnknown *pICorProfilerInfoUnk
     if (!protocol->startSession()) return E_FAIL;
 
     instrumenter = new Instrumenter(*corProfilerInfo, *protocol);
-    instrumenter->configureEntryPoint();
 
     return S_OK;
 }
@@ -864,7 +863,7 @@ HRESULT STDMETHODCALLTYPE CorProfiler::ReJITCompilationStarted(FunctionID functi
     UNUSED(functionId);
     UNUSED(rejitId);
     UNUSED(fIsSafeToBlock);
-    return instrumenter->reInstrument(functionId);
+    return instrumenter->instrument(functionId);
 }
 
 HRESULT STDMETHODCALLTYPE CorProfiler::GetReJITParameters(ModuleID moduleId, mdMethodDef methodId, ICorProfilerFunctionControl *pFunctionControl)

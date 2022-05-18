@@ -291,7 +291,7 @@ bool Protocol::sendTypeInfoFromMethod(const std::vector<mdToken>& types) {
     return result;
 }
 
-bool Protocol::acceptMethodBody(char *&bytecode, int &codeLength, unsigned &maxStackSize, char *&ehs, unsigned &ehsLength) {
+bool Protocol::acceptMethodBody(char *&bytecode, INT32 &moduleToken, int &codeLength, unsigned &maxStackSize, char *&ehs, unsigned &ehsLength) {
     char *message;
     int messageLength;
     if (!readBuffer(message, messageLength)) {
@@ -304,9 +304,11 @@ bool Protocol::acceptMethodBody(char *&bytecode, int &codeLength, unsigned &maxS
     message += sizeof(int);
     maxStackSize = *(unsigned*)message;
     message += sizeof(unsigned);
+    moduleToken = *(INT32*)message;
+    message += sizeof(INT32);
     bytecode = new char[codeLength];
     memcpy(bytecode, message, codeLength);
-    ehsLength = messageLength - sizeof(int) - sizeof(unsigned) - codeLength;
+    ehsLength = messageLength - sizeof(int) - sizeof(unsigned) - sizeof(INT32) - codeLength;
     ehs = new char[ehsLength];
     memcpy(ehs, message + codeLength, ehsLength);
     delete[] origMessage;

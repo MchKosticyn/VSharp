@@ -4,6 +4,7 @@
 #include "cor.h"
 #include "memory/memory.h"
 #include "communication/protocol.h"
+#include "instrumenter.h"
 #include <vector>
 
 #define COND INT_PTR
@@ -17,6 +18,7 @@ Protocol *protocol = nullptr;
 void setProtocol(Protocol *p) {
     protocol = p;
 }
+Instrumenter *instrumenter = nullptr;
 
 enum EvalStackArgType {
     OpSymbolic = 1,
@@ -1064,6 +1066,10 @@ PROBE(void, Exec_ThisCall, (INT32 argsCount, OFFSET offset)) {
 PROBE(void, Exec_InternalCall, (INT32 argsCount, OFFSET offset)) {
     auto ops = createOps(argsCount, offset);
     sendCommand(offset, argsCount, ops);
+}
+
+PROBE(void, ReJITMethod, (INT32 moduleToken, mdMethodDef methodToken)) {
+    instrumenter->startReJit(moduleToken, methodToken);
 }
 
 // TODO: cache all structs before pop and use them in PushFrame

@@ -22,6 +22,7 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
             kvp.Key
     let hasComplexSize (t : System.Type) =
         (t.IsValueType && not t.IsPrimitive) || t.IsGenericParameter
+    let skippedMethods = List<MethodBase>()
 
     static member private instrumentedFunctions = HashSet<MethodBase>()
     [<DefaultValue>] val mutable tokens : signatureTokens
@@ -1391,6 +1392,10 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                                 | None -> __unreachable__()
 
                         if isExecutableMethod then
+                            if skippedMethods.Contains(callee) then
+                                let moduleToken = Coverage.moduleToken callee.Module
+                                let methodToken = callee.MetadataToken
+                                x.PrependProbe(probes.reJITMethod, [(OpCodes.Ldc_I4, Arg32 moduleToken); (OpCodes.Ldc_I4, Arg32 methodToken)], x.tokens.void_i4_token_sig, &prependTarget) |> ignore
                             let br_push = x.PrependBranch(OpCodes.Brtrue_S, &prependTarget)
                             let br_call =
                                 if isModeledInternalCall then
@@ -1416,9 +1421,9 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                                     let sizeInstr = x.TypeSizeInstr allocatedType (fun () -> x.AcceptDeclaringTypeToken callee token)
                                     x.PrependProbeWithOffset(probes.pushTemporaryAllocatedStruct, [sizeInstr], x.tokens.void_size_offset_sig, &prependTarget) |> ignore
 
-                                let expectedToken = if opcodeValue = OpCodeValues.Callvirt then 0 else callee.MetadataToken
+                                let resolvedToken = if opcodeValue = OpCodeValues.Callvirt then 0 else callee.MetadataToken
                                 let pushFrameArgs = [(OpCodes.Ldc_I4, Arg32 token)
-                                                     (OpCodes.Ldc_I4, Arg32 expectedToken)
+                                                     (OpCodes.Ldc_I4, Arg32 resolvedToken)
                                                      (OpCodes.Ldc_I4, Arg32 (if isNewObj then 1 else 0))
                                                      (OpCodes.Ldc_I4, Arg32 argsCount)]
                                 x.PrependProbeWithOffset(probes.pushFrame, pushFrameArgs, x.tokens.void_token_token_bool_u2_offset_sig, &prependTarget) |> ignore
@@ -1478,7 +1483,13 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
         assert atLeastOneReturnFound
 
     member x.Skip (body : rawMethodBody) =
-        { properties = {ilCodeSize = body.properties.ilCodeSize; maxStackSize = body.properties.maxStackSize}; il = body.il; ehs = body.ehs}
+        let method = Reflection.resolveMethodBase body.assembly body.moduleName (int body.properties.token)
+        skippedMethods.Add(method)
+        let ilCodeSize = body.properties.ilCodeSize
+        let maxStackSize = body.properties.maxStackSize
+        let moduleToken = Coverage.moduleToken method.Module
+        let properties = {ilCodeSize = ilCodeSize; maxStackSize = maxStackSize; moduleToken = moduleToken}
+        { properties = properties; il = body.il; ehs = body.ehs}
 
     member private x.NeedToSkip = Array.empty
 
@@ -1494,6 +1505,7 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
         let result =
             if shouldInstrument && Instrumenter.instrumentedFunctions.Add x.m then
                 Logger.trace "Instrumenting %s (token = %X)" (Reflection.methodToString x.m) body.properties.token
+                if skippedMethods.Contains x.m then skippedMethods.Remove x.m |> ignore
                 x.rewriter.Import()
                 x.rewriter.PrintInstructions "before instrumentation" probes
                 x.PlaceProbes()

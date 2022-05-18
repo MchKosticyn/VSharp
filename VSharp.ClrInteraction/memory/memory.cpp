@@ -75,20 +75,20 @@ bool vsharp::isMainLeft() {
     return _mainLeft;
 }
 
-bool instrumentationEnabled = true;
+bool _instrumentationEnabled = true;
 
-bool vsharp::instrumentingEnabled() {
-    return instrumentationEnabled;
+bool vsharp::instrumentationEnabled() {
+    return _instrumentationEnabled;
 }
 
 void vsharp::enabledInstrumentation() {
-    assert(!instrumentationEnabled);
-    instrumentationEnabled = true;
+    assert(!_instrumentationEnabled);
+    _instrumentationEnabled = true;
 }
 
 void vsharp::disableInstrumentation() {
-    assert(instrumentationEnabled);
-    instrumentationEnabled = false;
+    assert(_instrumentationEnabled);
+    _instrumentationEnabled = false;
 }
 
 void vsharp::resolve(INT_PTR p, VirtualAddress &address) {

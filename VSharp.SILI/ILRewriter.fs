@@ -999,7 +999,8 @@ type ILRewriter(body : rawMethodBody) =
                             | _ -> __unreachable__()
                         | _ -> ())
 
-        let methodProps = {ilCodeSize = uint32 il.offset; maxStackSize = maxStackSize}
+        let moduleToken = Coverage.moduleToken x.Method.Module
+        let methodProps = {ilCodeSize = uint32 il.offset; maxStackSize = maxStackSize; moduleToken = moduleToken}
         let encodeEH (eh : ehClause) = {
             flags = eh.flags
             tryOffset = eh.tryBegin.offset

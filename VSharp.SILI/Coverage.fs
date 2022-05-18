@@ -6,7 +6,6 @@ module Coverage =
 
     let modules = System.Collections.Generic.List<Module>()
 
-
     // Lightweight types for representing coverage information
     [<Struct>]
     type location = {moduleToken : int; methodToken : int; offset : int; threadId : int}

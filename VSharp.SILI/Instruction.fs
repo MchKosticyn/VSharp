@@ -141,7 +141,13 @@ module internal Instruction =
             let assemblyName = methodModule.Assembly.FullName
             let ehcs = System.Collections.Generic.Dictionary<int, System.Reflection.ExceptionHandlingClause>()
             let props : VSharp.Concolic.rawMethodProperties =
-                {token = uint m.MetadataToken; ilCodeSize = uint ilBytes.Length; assemblyNameLength = 0u; moduleNameLength = 0u; maxStackSize = uint methodBody.MaxStackSize; signatureTokensLength = 0u}
+                { instrumentationEnabled = 0uy
+                  token = uint m.MetadataToken
+                  ilCodeSize = uint ilBytes.Length
+                  assemblyNameLength = 0u
+                  moduleNameLength = 0u
+                  maxStackSize = uint methodBody.MaxStackSize
+                  signatureTokensLength = 0u }
             let tokens = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof<VSharp.Concolic.signatureTokens>) :?> VSharp.Concolic.signatureTokens
             let createEH (eh : System.Reflection.ExceptionHandlingClause) : VSharp.Concolic.rawExceptionHandler =
                 let matcher = if eh.Flags = ExceptionHandlingClauseOptions.Filter then eh.FilterOffset else eh.HandlerOffset // TODO: need catch type token?

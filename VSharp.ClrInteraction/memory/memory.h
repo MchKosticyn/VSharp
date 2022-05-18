@@ -26,7 +26,7 @@ StackFrame &topFrame();
 void mainLeft();
 bool isMainLeft();
 
-bool instrumentingEnabled();
+bool instrumentationEnabled();
 void enabledInstrumentation();
 void disableInstrumentation();
 
