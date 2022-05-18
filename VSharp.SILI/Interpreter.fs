@@ -1926,6 +1926,9 @@ type internal ILInterpreter(isConcolicMode : bool) as this =
         let exit m =
             x.DecrementMethodLevel cilState m
             Logger.printLogLazy Logger.Info "Done with method %s" (lazy Reflection.getFullMethodName m)
+            if Reflection.hasNonVoidResult m then
+                let result = lazy (EvaluationStack.Pop cilState.state.evaluationStack |> fst)
+                Logger.printLogLazy Logger.Trace "Result of method = %O" result
             match cilState.ipStack with
             // NOTE: the whole method is executed
 //            | [ Exit _ ] when startsFromMethodBeginning cilState ->
