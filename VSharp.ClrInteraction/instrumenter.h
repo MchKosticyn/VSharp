@@ -47,6 +47,7 @@ private:
     unsigned    m_codeSize;
 
     std::map<INT32, ModuleID> moduleIDs;
+    std::vector<std::pair<ModuleID, mdMethodDef>> reJITedMethods;
 
     unsigned codeSize() const;
     char *code() const;

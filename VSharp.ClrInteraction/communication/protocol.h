@@ -57,7 +57,6 @@ public:
     bool connect();
     bool sendProbes();
     bool startSession();
-    void acceptEntryPoint(char *&entryPointBytes, int &length);
     bool acceptCommand(CommandType &command);
     bool acceptString(char *&string);
     bool acceptWString(WCHAR *&string);
@@ -83,6 +82,7 @@ public:
     }
     void acceptExecResult(char *&bytes, int &messageLength);
     bool shutdown();
+    void kek(void* ptr);
 };
 
 }

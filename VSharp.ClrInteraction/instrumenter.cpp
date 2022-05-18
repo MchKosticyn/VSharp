@@ -176,6 +176,7 @@ Instrumenter::Instrumenter(ICorProfilerInfo8 &profilerInfo, Protocol &protocol)
     , m_pEH(nullptr)
 {
     moduleIDs = std::map<INT32, ModuleID>();
+    protocol.kek(this);
 }
 
 Instrumenter::~Instrumenter()
@@ -329,13 +330,19 @@ HRESULT Instrumenter::exportIL(char *bytecode, unsigned codeLength, unsigned max
 
 // TODO: if method was already reJITed, do not reJIT #do
 void Instrumenter::startReJit(INT32 moduleToken, mdMethodDef methodToken) {
-    LOG(tout << "ReJIT of skipped method " << HEX(methodToken) << " is started" << std::endl);
     assert(moduleIDs.find(moduleToken) != moduleIDs.end());
     ModuleID moduleId = moduleIDs[moduleToken];
+    if (std::find(reJITedMethods.begin(), reJITedMethods.end(), std::make_pair(moduleId, methodToken)) != reJITedMethods.end())
+        return;
     auto *modules = new ModuleID[1] { moduleId };
     auto *methods = new mdMethodDef[1] { methodToken };
+    LOG(tout << "ReJIT of skipped method " << HEX(methodToken) << " is started" << std::endl);
     HRESULT hr = m_profilerInfo.RequestReJIT(1, modules, methods);
-    if (FAILED(hr)) FAIL_LOUD("startReJit: reJIT failed!");
+    reJITedMethods.emplace_back(moduleId, methodToken);
+    if (FAILED(hr)) {
+        LOG(tout << "reJIT error code = " << HEX(hr) << std::endl);
+        FAIL_LOUD("startReJit: reJIT failed!");
+    }
     delete[] modules;
     delete[] methods;
 }

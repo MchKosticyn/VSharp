@@ -225,6 +225,9 @@ HRESULT STDMETHODCALLTYPE CorProfiler::JITCompilationStarted(FunctionID function
 //    mdToken pToken;
 //    this->corProfilerInfo->GetFunctionInfo(functionId, &pClassId, &pModuleId, &pToken);
 //    std::cout << __FUNCTION__ << " " << std::hex << pToken << std::dec << std::endl;
+    ThreadID threadId;
+    corProfilerInfo->GetCurrentThreadID(&threadId);
+    tout << "JITCompilationStarted: threadId = " << threadId << std::endl;
     UNUSED(fIsSafeToBlock);
     if (jitInProcess) FAIL_LOUD("Handling JIT event, when previous was not finished!");
     jitInProcess = true;

@@ -14,11 +14,15 @@ namespace vsharp {
 /// ------------------------------ Commands ---------------------------
 
 // TODO: sometimes ReJit may not be lazy, so need to start it in probes, so here must be ref to Instrumenter
+Instrumenter *instrumenter = nullptr;
+void setInstrumenter(Instrumenter *i) {
+    instrumenter = i;
+}
+
 Protocol *protocol = nullptr;
 void setProtocol(Protocol *p) {
     protocol = p;
 }
-Instrumenter *instrumenter = nullptr;
 
 enum EvalStackArgType {
     OpSymbolic = 1,
@@ -1069,6 +1073,7 @@ PROBE(void, Exec_InternalCall, (INT32 argsCount, OFFSET offset)) {
 }
 
 PROBE(void, ReJITMethod, (INT32 moduleToken, mdMethodDef methodToken)) {
+    tout << "instrumenter = " << (UINT_PTR) instrumenter << std::endl;
     instrumenter->startReJit(moduleToken, methodToken);
 }
 
