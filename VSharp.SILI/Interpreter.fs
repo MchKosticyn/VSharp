@@ -1976,9 +1976,12 @@ type internal ILInterpreter(isConcolicMode : bool) as this =
 
     member x.MakeStep (cilState : cilState) =
         cilState.stepsNumber <- cilState.stepsNumber + 1u
-        let exit m =
+        let exit (m : Method) =
             x.DecrementMethodLevel cilState m
             Logger.info $"Done with method {m}"
+            if m.HasNonVoidResult then
+                let result = lazy (EvaluationStack.Pop cilState.state.evaluationStack |> fst)
+                Logger.printLogLazy Logger.Trace "Result of method = %O" result
             match cilState.ipStack with
             // NOTE: the whole method is executed
 //            | [ Exit _ ] when startsFromMethodBeginning cilState ->

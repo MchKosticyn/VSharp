@@ -27,20 +27,22 @@ module public Reflection =
         let dynamicOption = dynamicAssemblies |> Array.tryFind (fun a -> a.FullName.Contains(assemblyName))
         match dynamicOption with
         | Some a -> a
-        | None -> Assembly.Load(assemblyName)
+        | None ->
+            match assemblies |> Array.tryFindBack (fun assembly -> assembly.FullName = assemblyName) with
+            | Some assembly -> assembly
+            | None ->
+                Assembly.Load(assemblyName)
 
     // --------------------------- Metadata Resolving ---------------------------
 
     let resolveModule (assemblyName : string) (moduleName : string) =
         let assembly =
-            match AppDomain.CurrentDomain.GetAssemblies() |> Array.tryFindBack (fun assembly -> assembly.FullName = assemblyName) with
-            | Some assembly -> assembly
-            | None ->
-                try
-                    Assembly.Load(assemblyName)
-                with _ ->
-                    Assembly.LoadFile(moduleName)
-        assembly.Modules |> Seq.find (fun m -> m.FullyQualifiedName = moduleName)
+            try
+                loadAssembly assemblyName
+            with _ ->
+                Assembly.LoadFile(moduleName)
+        if assembly.IsDynamic then assembly.Modules |> Seq.find (fun m -> m.ScopeName = moduleName)
+        else assembly.Modules |> Seq.find (fun m -> m.FullyQualifiedName = moduleName)
 
     let resolveMethodBase (assemblyName : string) (moduleName : string) (token : int32) =
         let m = resolveModule assemblyName moduleName

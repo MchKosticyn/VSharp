@@ -1417,9 +1417,9 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                                     let sizeInstr = x.TypeSizeInstr allocatedType (fun () -> x.AcceptDeclaringTypeToken callee token)
                                     x.PrependProbeWithOffset(probes.pushTemporaryAllocatedStruct, [sizeInstr], x.tokens.void_size_offset_sig, &prependTarget) |> ignore
 
-                                let expectedToken = if opcodeValue = OpCodeValues.Callvirt then 0 else callee.MetadataToken
+                                let resolvedToken = if opcodeValue = OpCodeValues.Callvirt then 0 else callee.MetadataToken
                                 let pushFrameArgs = [(OpCodes.Ldc_I4, Arg32 token)
-                                                     (OpCodes.Ldc_I4, Arg32 expectedToken)
+                                                     (OpCodes.Ldc_I4, Arg32 resolvedToken)
                                                      (OpCodes.Ldc_I4, Arg32 (if isNewObj then 1 else 0))
                                                      (OpCodes.Ldc_I4, Arg32 argsCount)]
                                 x.PrependProbeWithOffset(probes.pushFrame, pushFrameArgs, x.tokens.void_token_token_bool_u2_offset_sig, &prependTarget) |> ignore
