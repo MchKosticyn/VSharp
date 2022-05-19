@@ -108,6 +108,7 @@ type execCommand = {
     newAddresses : UIntPtr array
     newAddressesTypes : Type array
     // TODO: add deleted addresses
+    newCoveragePath : coverageLocation list
 }
 
 [<type: StructLayout(LayoutKind.Sequential, Pack=1, CharSet=CharSet.Ansi)>]
@@ -318,6 +319,19 @@ type Communicator(pipeFile) =
         let moduleSize = BitConverter.GetBytes moduleName.Length
         let methodDef = BitConverter.GetBytes metadataToken
         Array.concat [moduleSize; methodDef; moduleNameBytes] |> writeBuffer
+
+    member x.SendCoverageInformation (cov : coverageLocation list) =
+        let sizeOfLocation = Marshal.SizeOf(typeof<coverageLocation>)
+        let entriesCount = List.length cov
+        let bytes : byte[] = Array.zeroCreate (sizeof<int32> + entriesCount * sizeOfLocation)
+        x.Serialize<int>(entriesCount, bytes, 0)
+        List.iteri (fun i loc ->
+            let idx = sizeof<int32> + (entriesCount - i - 1) * sizeOfLocation
+            x.Serialize<int>(loc.moduleToken, bytes, idx)
+            x.Serialize<int>(loc.methodToken, bytes, idx + sizeof<int32>)
+            x.Serialize<int>(loc.offset, bytes, idx + 2 * sizeof<int32>)
+            x.Serialize<int>(loc.threadToken, bytes, idx + 3 * sizeof<int32>)) cov
+        writeBuffer bytes
 
     member x.SendCommand (command : commandForConcolic) =
         let bytes = x.SerializeCommand command
@@ -600,6 +614,20 @@ type Communicator(pipeFile) =
                 // TODO: delete sizes
 //                let size = int newAddressesTypesLengths.[i]
                 x.ParseType(dynamicBytes, &offset))
+            let newCoverageNodesCount = BitConverter.ToInt32(dynamicBytes, offset)
+            offset <- offset + sizeof<int32>
+            let mutable newCoveragePath = []
+            for i in 1 .. newCoverageNodesCount do
+                let moduleToken = BitConverter.ToInt32(dynamicBytes, offset)
+                offset <- offset + sizeof<int32>
+                let methodToken = BitConverter.ToInt32(dynamicBytes, offset)
+                offset <- offset + sizeof<int32>
+                let ilOffset = BitConverter.ToInt32(dynamicBytes, offset)
+                offset <- offset + sizeof<int32>
+                let threadToken = BitConverter.ToInt32(dynamicBytes, offset)
+                offset <- offset + sizeof<int32>
+                let node : coverageLocation = {moduleToken = moduleToken; methodToken = methodToken; offset = ilOffset; threadToken = threadToken}
+                newCoveragePath <- node::newCoveragePath
             { isBranch = staticPart.isBranch
               callStackFramesPops = staticPart.callStackFramesPops
               evaluationStackPops = staticPart.evaluationStackPops
@@ -610,7 +638,8 @@ type Communicator(pipeFile) =
               ipStack = ipStack
               evaluationStackPushes = evaluationStackPushes
               newAddresses = newAddresses
-              newAddressesTypes = newAddressesTypes }
+              newAddressesTypes = newAddressesTypes
+              newCoveragePath = newCoveragePath }
         | None -> unexpectedlyTerminated()
 
     member private x.SizeOfConcrete (typ : Type) =

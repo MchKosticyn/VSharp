@@ -7,8 +7,8 @@
 
     <ItemGroup>
       <Compile Include="OpCodes.fs" />
-      <Compile Include="Coverage.fs" />
       <Compile Include="ILRewriter.fs" />
+      <Compile Include="Coverage.fs" />
       <Compile Include="MethodBody.fs" />
       <Compile Include="CFG.fs" />
       <Compile Include="CallGraph.fs" />

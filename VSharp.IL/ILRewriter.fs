@@ -349,6 +349,15 @@ type instrumentedMethodBody = {
     ehs : rawExceptionHandler array
 }
 
+// Lightweight types for representing coverage information
+[<Struct>]
+[<StructLayout(LayoutKind.Sequential)>]
+type coverageLocation = {
+    moduleToken : int
+    methodToken : int
+    offset : int
+    threadToken : int
+}
 
 type evaluationStackCellType =
     | I1 = 0

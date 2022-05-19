@@ -433,7 +433,7 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
             internalfail "AppendMemForType: struct case is not implemented yet"
         | _ -> __unreachable__()
 
-    member private x.AppendMemForSource instructions (t, src) i opmemOffset =
+    member private x.AppendMemForSource (instructions : ilInstr[]) (t, src : ilInstr list) i opmemOffset =
         src |> List.iter (fun srcInstr ->
             let srcInstr = instructions |> Array.find (fun i -> i.offset = srcInstr.offset)
             x.AppendMemForType(t, i, opmemOffset, srcInstr)

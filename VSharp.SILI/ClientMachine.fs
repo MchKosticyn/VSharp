@@ -142,6 +142,7 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
         if x.communicator.Connect() then
             x.probes <- x.communicator.ReadProbes()
             x.communicator.SendEntryPoint entryPoint.Module.FullyQualifiedName entryPoint.MetadataToken
+            x.communicator.SendCoverageInformation cilState.path
             x.instrumenter <- Instrumenter(x.communicator, (entryPoint :> IMethod).MethodBase, x.probes)
             true
         else false
@@ -298,6 +299,7 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
         let evalStack = Array.fold (fun stack x -> EvaluationStack.Push x stack) evalStack newEntries
         cilState.state.evaluationStack <- evalStack
         cilState.lastPushInfo <- None
+        cilState.path <- c.newCoveragePath @ cilState.path
 
     member x.State with get() = cilState
 
