@@ -37,6 +37,7 @@ private:
     unsigned m_moduleToken;
     bool m_enteredMarker;
     bool m_spontaneous;
+    bool m_createdViaNewObj;
 
     unsigned m_ip;
 
@@ -45,7 +46,7 @@ private:
     std::vector<std::pair<unsigned, unsigned>> m_lastPoppedSymbolics;
 
 public:
-    StackFrame(unsigned resolvedToken, unsigned unresolvedToken, const bool *args, unsigned argsCount, Storage &heap);
+    StackFrame(unsigned resolvedToken, unsigned unresolvedToken, const bool *args, unsigned argsCount, bool isNewObj, Storage &heap);
     ~StackFrame();
 
     void configure(unsigned maxStackSize, unsigned localsCount);
@@ -87,6 +88,7 @@ public:
     void setEnteredMarker(bool entered);
     bool isSpontaneous() const;
     void setSpontaneous(bool isUnmanaged);
+    bool isCreatedViaNewObj() const;
 
     unsigned moduleToken() const;
     void setModuleToken(unsigned token);
@@ -169,7 +171,7 @@ private:
 public:
     explicit Stack(Storage &heap);
 
-    void pushFrame(unsigned resolvedToken, unsigned unresolvedToken, const bool *args, unsigned argsCount);
+    void pushFrame(unsigned resolvedToken, unsigned unresolvedToken, const bool *args, unsigned argsCount, bool isNewObj);
     void popFrame();
     void popFrameUntracked();
     StackFrame &topFrame();

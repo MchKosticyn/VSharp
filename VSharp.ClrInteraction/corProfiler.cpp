@@ -219,18 +219,20 @@ HRESULT STDMETHODCALLTYPE CorProfiler::FunctionUnloadStarted(FunctionID function
 
 bool jitInProcess = false;
 
+std::mutex mutex;
+
 HRESULT STDMETHODCALLTYPE CorProfiler::JITCompilationStarted(FunctionID functionId, BOOL fIsSafeToBlock)
 {
-//    ClassID pClassId;
-//    ModuleID pModuleId;
-//    mdToken pToken;
-//    this->corProfilerInfo->GetFunctionInfo(functionId, &pClassId, &pModuleId, &pToken);
-//    std::cout << __FUNCTION__ << " " << std::hex << pToken << std::dec << std::endl;
+    mutex.lock();
     UNUSED(fIsSafeToBlock);
+    ThreadID threadId;
+    corProfilerInfo->GetCurrentThreadID(&threadId);
+
     if (jitInProcess) FAIL_LOUD("Handling JIT event, when previous was not finished!");
     jitInProcess = true;
     HRESULT hr = instrumenter->instrument(functionId);
     jitInProcess = false;
+    mutex.unlock();
     return hr;
 //    return S_OK;
 }

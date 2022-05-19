@@ -91,9 +91,9 @@ namespace vsharp {
         return (size + sizeofCell - 1) / sizeofCell;
     }
 
-    Object::Object(ADDR address, SIZE size, ObjectLocation location)
+    Object::Object(ADDR address, SIZE size, const ObjectLocation &location)
         : Interval(address, size)
-        , m_location(location)
+        , m_location(ObjectLocation(location))
     {
         assert(size > 0);
         SIZE squashedSize = squashSize(size);

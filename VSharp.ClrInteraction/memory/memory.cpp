@@ -92,6 +92,17 @@ void vsharp::disableInstrumentation() {
     instrumentationEnabled = false;
 }
 
+bool mainEntered = false;
+
+void vsharp::enterMain() {
+    assert(!mainEntered);
+    mainEntered = true;
+}
+
+bool vsharp::isMainEntered() {
+    return mainEntered;
+}
+
 void vsharp::resolve(INT_PTR p, VirtualAddress &address) {
     heap.physToVirtAddress(p, address);
 }
