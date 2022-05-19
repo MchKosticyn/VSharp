@@ -30,6 +30,9 @@ bool instrumentingEnabled();
 void enabledInstrumentation();
 void disableInstrumentation();
 
+void enterMain();
+bool isMainEntered();
+
 unsigned allocateString(const char *s);
 
 void validateStackEmptyness();

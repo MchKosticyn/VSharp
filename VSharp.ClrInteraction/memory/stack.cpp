@@ -7,7 +7,7 @@ using namespace vsharp;
 
 #define CONCRETE UINT32_MAX
 
-StackFrame::StackFrame(unsigned resolvedToken, unsigned unresolvedToken, const bool *args, unsigned argsCount, Storage &heap)
+StackFrame::StackFrame(unsigned resolvedToken, unsigned unresolvedToken, const bool *args, unsigned argsCount, bool isNewObj, Storage &heap)
     : m_concreteness(nullptr)
     , m_capacity(0)
     , m_concretenessTop(0)
@@ -20,6 +20,7 @@ StackFrame::StackFrame(unsigned resolvedToken, unsigned unresolvedToken, const b
     , m_unresolvedToken(unresolvedToken)
     , m_enteredMarker(false)
     , m_spontaneous(false)
+    , m_createdViaNewObj(isNewObj)
     , m_heap(heap)
     , m_ip(0)
 {
@@ -64,7 +65,9 @@ bool stackCellConcreteness(const StackCell &cell) {
 
 bool StackFrame::peekConcreteness(unsigned idx) const
 {
-    StackCell cell = m_concreteness[m_concretenessTop - idx - 1];
+    long memoryIndex = m_concretenessTop - idx - 1;
+    assert(memoryIndex >= 0);
+    StackCell cell = m_concreteness[memoryIndex];
     return stackCellConcreteness(cell);
 }
 
@@ -85,12 +88,16 @@ bool StackFrame::peek2() const
 
 LocalObject &StackFrame::peekObject(unsigned idx)
 {
-    return m_concreteness[m_concretenessTop - idx - 1].cell;
+    long memoryIndex = m_concretenessTop - idx - 1;
+    assert(memoryIndex >= 0);
+    return m_concreteness[memoryIndex].cell;
 }
 
 const LocalObject &StackFrame::peekObject(unsigned idx) const
 {
-    return m_concreteness[m_concretenessTop - idx - 1].cell;
+    long memoryIndex = m_concretenessTop - idx - 1;
+    assert(memoryIndex >= 0);
+    return m_concreteness[memoryIndex].cell;
 }
 
 void StackFrame::pop0()
@@ -245,6 +252,10 @@ void StackFrame::setSpontaneous(bool isUnmanaged)
     this->m_spontaneous = isUnmanaged;
 }
 
+bool StackFrame::isCreatedViaNewObj() const {
+    return m_createdViaNewObj;
+}
+
 unsigned StackFrame::moduleToken() const
 {
     return m_moduleToken;
@@ -282,9 +293,9 @@ Stack::Stack(Storage &heap)
 {
 }
 
-void Stack::pushFrame(unsigned resolvedToken, unsigned unresolvedToken, const bool *args, unsigned argsCount)
+void Stack::pushFrame(unsigned resolvedToken, unsigned unresolvedToken, const bool *args, unsigned argsCount, bool isNewObj)
 {
-    m_frames.emplace_back(resolvedToken, unresolvedToken, args, argsCount, m_heap);
+    m_frames.emplace_back(resolvedToken, unresolvedToken, args, argsCount, isNewObj, m_heap);
 }
 
 

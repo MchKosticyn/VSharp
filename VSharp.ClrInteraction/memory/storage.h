@@ -91,7 +91,7 @@ protected:
     bool fullConcreteness = true;
     ObjectLocation m_location;
 public:
-    Object(ADDR address, SIZE size, ObjectLocation location);
+    Object(ADDR address, SIZE size, const ObjectLocation &location);
     ~Object() override;
     std::string toString() const override;
     bool readConcreteness(SIZE offset, SIZE size) const;

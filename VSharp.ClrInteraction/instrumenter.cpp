@@ -585,15 +585,17 @@ HRESULT Instrumenter::instrument(FunctionID functionId) {
     WCHAR *assemblyName = new WCHAR[assemblyNameLength];
     IfFailRet(m_profilerInfo.GetAssemblyInfo(assembly, assemblyNameLength, &assemblyNameLength, assemblyName, &appDomainId, &startModuleId));
 
+    bool shouldInstrument = isMainEntered();
     if (!m_mainReached) {
         if (currentMethodIsMain(moduleName, (int) moduleNameLength, m_jittedToken)) {
             LOG(tout << "Main function reached!" << std::endl);
             m_mainReached = true;
+            shouldInstrument = true;
             IfFailRet(startReJitSkipped());
         }
     }
 
-    if (m_mainReached) {
+    if (m_mainReached && shouldInstrument) {
         // TODO: analyze the IL code instead to understand that we've injected functions?
         if (instrumentedFunctions.find({newModuleId, m_jittedToken}) != instrumentedFunctions.end()) {
             LOG(tout << "Duplicate jitting of " << HEX(m_jittedToken) << std::endl);

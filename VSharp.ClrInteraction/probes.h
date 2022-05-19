@@ -319,7 +319,9 @@ CommandType getAndHandleCommand() {
     return command;
 }
 
+std::mutex mutex;
 void sendCommand(OFFSET offset, unsigned opsCount, EvalStackOperand *ops, bool mightFork = true) {
+    mutex.lock();
     if (mightFork)
         addCoverageStep(offset);
     if (stillExpectsCoverage())
@@ -356,6 +358,7 @@ void sendCommand(OFFSET offset, unsigned opsCount, EvalStackOperand *ops, bool m
 
     vsharp::stack().resetPopsTracking(framesCount);
     freeCommand(command);
+    mutex.unlock();
 }
 
 void sendCommand0(OFFSET offset, bool mightFork = true) { sendCommand(offset, 0, nullptr, mightFork); }
@@ -940,7 +943,7 @@ PROBE(void, Track_Enter, (mdMethodDef token, unsigned moduleToken, unsigned maxS
                  << HEX(expected) << ", but entered " << HEX(token) << std::endl);
         auto args = new bool[argsCount];
         memset(args, true, argsCount);
-        stack.pushFrame(token, token, args, argsCount);
+        stack.pushFrame(token, token, args, argsCount, false);
         top = &stack.topFrame();
         top->setSpontaneous(true);
         delete[] args;
@@ -953,7 +956,8 @@ PROBE(void, Track_Enter, (mdMethodDef token, unsigned moduleToken, unsigned maxS
 PROBE(void, Track_StructCtor, (ADDR address)) {
     Stack &stack = vsharp::stack();
     unsigned frames = stack.framesCount();
-    if (frames > 1 && !stack.topFrame().isSpontaneous()) {
+    const StackFrame &top = stack.topFrame();
+    if (frames > 1 && !top.isSpontaneous() && top.isCreatedViaNewObj()) {
         StackFrame &prevFrame = stack.frameAt(frames - 2);
         LocalObject &cell = prevFrame.peekObject(0);
         cell.changeAddress(address);
@@ -967,9 +971,10 @@ PROBE(void, Track_EnterMain, (mdMethodDef token, unsigned moduleToken, UINT16 ar
     assert(stack.isEmpty());
     auto args = new bool[argsCount];
     memset(args, argsConcreteness, argsCount);
-    stack.pushFrame(token, token, args, argsCount);
+    stack.pushFrame(token, token, args, argsCount, false);
     Track_Enter(token, moduleToken, maxStackSize, argsCount, localsCount, 0);
     stack.resetPopsTracking(1);
+    enterMain();
 }
 
 PROBE(void, Track_Leave, (UINT8 returnValues, OFFSET offset)) {
@@ -1094,7 +1099,7 @@ PROBE(void, PushFrame, (mdToken unresolvedToken, mdMethodDef resolvedToken, bool
 
     top.setIp(offset);
     // TODO: push into new frame structs, popped in Track_Call
-    stack.pushFrame(resolvedToken, unresolvedToken, argsConcreteness, argsCount);
+    stack.pushFrame(resolvedToken, unresolvedToken, argsConcreteness, argsCount, newobj);
     if (callHasSymbolicArgs) stack.resetMinTop();
     delete[] argsConcreteness;
 }
