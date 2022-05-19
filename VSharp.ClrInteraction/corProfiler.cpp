@@ -227,6 +227,7 @@ HRESULT STDMETHODCALLTYPE CorProfiler::JITCompilationStarted(FunctionID function
     UNUSED(fIsSafeToBlock);
     ThreadID threadId;
     corProfilerInfo->GetCurrentThreadID(&threadId);
+    LOG(tout << "JITCompilationStarted, threadID = " << threadId << std::endl);
 
     if (jitInProcess) FAIL_LOUD("Handling JIT event, when previous was not finished!");
     jitInProcess = true;
@@ -866,7 +867,10 @@ HRESULT STDMETHODCALLTYPE CorProfiler::ReJITCompilationStarted(FunctionID functi
     UNUSED(functionId);
     UNUSED(rejitId);
     UNUSED(fIsSafeToBlock);
-    return instrumenter->reInstrument(functionId);
+    mutex.lock();
+    HRESULT hr = instrumenter->reInstrument(functionId);
+    mutex.unlock();
+    return hr;
 }
 
 HRESULT STDMETHODCALLTYPE CorProfiler::GetReJITParameters(ModuleID moduleId, mdMethodDef methodId, ICorProfilerFunctionControl *pFunctionControl)

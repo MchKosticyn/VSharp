@@ -740,7 +740,9 @@ PROBE(void, Track_Unbox_Any, (INT_PTR ptr, mdToken typeToken, OFFSET offset)) { 
 inline bool ldfld(INT_PTR fieldPtr, INT32 fieldSize) {
     StackFrame &top = vsharp::topFrame();
     bool ptrIsConcrete = top.pop1();
-    bool fieldIsConcrete = ptrIsConcrete && heap.readConcreteness(fieldPtr, fieldSize);
+    bool fieldIsConcrete = false;
+    if (ptrIsConcrete)
+        fieldIsConcrete = heap.readConcreteness(fieldPtr, fieldSize);
     return fieldIsConcrete;
 }
 
