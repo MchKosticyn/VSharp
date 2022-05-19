@@ -214,7 +214,7 @@ namespace vsharp {
     }
 
     void LocalObject::changeAddress(ADDR address) {
-        assert(left == UNKNOWN_ADDRESS || left == address || address == UNKNOWN_ADDRESS);
+//        assert(left == UNKNOWN_ADDRESS || left == address || address == UNKNOWN_ADDRESS);
         int size = sizeOf();
         left = address;
         right = address + size - 1;
@@ -333,6 +333,17 @@ namespace vsharp {
 
         auto *obj = (Object *) vAddress.obj;
         obj->writeConcreteness(vAddress.offset, sizeOfPtr, vConcreteness);
+    }
+
+    void Storage::writeConcretenessWholeObject(ADDR address, bool vConcreteness) const {
+        VirtualAddress vAddress{};
+        if (!resolve(address, vAddress)) {
+            LOG(tout << "Unresolved address = " << address << std::endl);
+            FAIL_LOUD("Writing concreteness to heap: unable to resolve address");
+        }
+
+        auto *obj = (Object *) vAddress.obj;
+        obj->writeConcreteness(vAddress.offset, obj->sizeOf(), vConcreteness);
     }
 
     char *Storage::readBytes(const VirtualAddress &address, SIZE sizeOfPtr, BYTE isRef) const {

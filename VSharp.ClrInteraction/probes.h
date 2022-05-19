@@ -676,9 +676,10 @@ PROBE(void, Track_Stobj, (INT_PTR ptr)) {
 }
 
 PROBE(void, Track_Initobj, (INT_PTR ptr)) {
-    // TODO!
-    // Will ptr be always concrete?
-    topFrame().pop1();
+    bool ptrIsConcrete = topFrame().pop1();
+    if (ptrIsConcrete)
+        heap.writeConcretenessWholeObject(ptr, true);
+    // TODO: send command if (ptrIsConcrete = false) #do
 }
 
 PROBE(void, Track_Ldlen, (INT_PTR ptr, OFFSET offset)) {

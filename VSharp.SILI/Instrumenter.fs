@@ -21,7 +21,7 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
             let kvp = staticFieldIDs |> Seq.find (fun kvp -> kvp.Value = fieldInfo)
             kvp.Key
     let hasComplexSize (t : System.Type) =
-        (t.IsValueType && not t.IsPrimitive) || t.IsGenericParameter
+        (t.IsValueType && not t.IsPrimitive) || t.ContainsGenericParameters
 
     static member private instrumentedFunctions = HashSet<MethodBase>()
     [<DefaultValue>] val mutable tokens : signatureTokens
@@ -1114,8 +1114,11 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                         match opcodeValue with
                         | OpCodeValues.Ldelem_I
                         | OpCodeValues.Ldelem_Ref -> OpCodes.Ldc_I4, Arg32 sizeof<System.IntPtr>
+                        | OpCodeValues.Ldelem_U1 -> OpCodes.Ldc_I4, Arg32 sizeof<int8>
                         | OpCodeValues.Ldelem_I1 -> OpCodes.Ldc_I4, Arg32 sizeof<int8>
+                        | OpCodeValues.Ldelem_U2
                         | OpCodeValues.Ldelem_I2 -> OpCodes.Ldc_I4, Arg32 sizeof<int16>
+                        | OpCodeValues.Ldelem_U4
                         | OpCodeValues.Ldelem_I4 -> OpCodes.Ldc_I4, Arg32 sizeof<int32>
                         | OpCodeValues.Ldelem_I8 -> OpCodes.Ldc_I4, Arg32 sizeof<int64>
                         | OpCodeValues.Ldelem_R4 -> OpCodes.Ldc_I4, Arg32 sizeof<float>
@@ -1490,7 +1493,7 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
         x.rewriter <- ILRewriter(body)
         x.m <- x.rewriter.Method
         let t = x.m.DeclaringType
-        if t = typeof<System.InvalidProgramException> || t = typeof<System.TypeLoadException> then
+        if t = typeof<System.InvalidProgramException> || t = typeof<System.TypeLoadException> || t = typeof<System.BadImageFormatException> then
             internalfailf "Incorrect instrumentation: exception %O is thrown!" t
         let shouldInstrument = Array.contains (Reflection.methodToString x.m) x.NeedToSkip |> not
         let result =
