@@ -162,6 +162,7 @@ public:
 
     bool readConcreteness(ADDR address, SIZE sizeOfPtr) const;
     void writeConcreteness(ADDR address, SIZE sizeOfPtr, bool vConcreteness) const;
+    void writeConcretenessWholeObject(ADDR address, bool vConcreteness) const;
     char *readBytes(const VirtualAddress &address, SIZE sizeOfPtr, BYTE isRef) const;
     void readWholeObject(OBJID objID, char *&buffer, SIZE &size, bool isArray, int refOffsetsLength, int *refOffsets) const;
     void unmarshall(OBJID objID, char *&buffer, SIZE &size, bool isArray, int refOffsetsLength, int *refOffsets) const;

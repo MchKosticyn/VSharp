@@ -380,6 +380,7 @@ HRESULT Instrumenter::startReJitSkipped() {
         i++;
     }
     HRESULT hr = m_profilerInfo.RequestReJIT(count, modules, methods);
+    skippedBeforeMain.clear();
     delete[] modules;
     delete[] methods;
     return hr;
@@ -601,6 +602,8 @@ HRESULT Instrumenter::instrument(FunctionID functionId) {
             LOG(tout << "Duplicate jitting of " << HEX(m_jittedToken) << std::endl);
             return S_OK;
         }
+        if (!skippedBeforeMain.empty())
+            IfFailRet(startReJitSkipped());
         if (isMainLeft()) {
             // NOTE: main left, further instrumentation is not needed, so doing nothing
             while (true) { }
