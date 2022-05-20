@@ -319,9 +319,8 @@ CommandType getAndHandleCommand() {
     return command;
 }
 
-std::mutex mutex;
 void sendCommand(OFFSET offset, unsigned opsCount, EvalStackOperand *ops, bool mightFork = true) {
-    mutex.lock();
+    getLock();
     if (mightFork)
         addCoverageStep(offset);
     if (stillExpectsCoverage())
@@ -358,7 +357,7 @@ void sendCommand(OFFSET offset, unsigned opsCount, EvalStackOperand *ops, bool m
 
     vsharp::stack().resetPopsTracking(framesCount);
     freeCommand(command);
-    mutex.unlock();
+    freeLock();
 }
 
 void sendCommand0(OFFSET offset, bool mightFork = true) { sendCommand(offset, 0, nullptr, mightFork); }

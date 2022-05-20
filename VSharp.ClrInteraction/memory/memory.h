@@ -33,6 +33,9 @@ void disableInstrumentation();
 void enterMain();
 bool isMainEntered();
 
+void getLock();
+void freeLock();
+
 unsigned allocateString(const char *s);
 
 void validateStackEmptyness();
