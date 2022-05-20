@@ -372,9 +372,10 @@ public:
     mdToken fieldType() {
         assert(m_typeParsed);
         long typeSize = typeEnd - typeStart;
-        assert(typeSize <= sizeof(mdToken));
+        assert(typeSize > 0);
         mdToken type;
-        metadataEmit->GetTokenFromTypeSpec(typeStart, typeSize, &type);
+        HRESULT hr = metadataEmit->GetTokenFromTypeSpec(typeStart, typeSize, &type);
+        if (FAILED(hr)) FAIL_LOUD("GetTokenFromTypeSpec failed");
         return type;
     }
 };
@@ -384,8 +385,8 @@ class MethodParamTypeParser : public SigParser
 private:
     sig_byte *typeStart;
     sig_byte *typeEnd;
+    bool m_parsingParameter = false;
     bool m_typeParseStarted = false;
-    bool m_paramParsed = false;
     bool m_typeParsed = false;
     bool m_hasThis = false;
     IMetaDataEmit *metadataEmit;
@@ -401,30 +402,33 @@ protected:
             currentParam++;
             if (parameterIndex == 0) {
                 m_typeParseStarted = true;
-                m_paramParsed = true;
+                m_typeParsed = true;
             }
         }
     }
 
     void NotifyBeginParam() {
         if (currentParam == parameterIndex) {
-            m_typeParseStarted = true;
+            m_parsingParameter = true;
         }
         currentParam++;
 
     }
     void NotifyEndParam() {
-        if (m_typeParseStarted)
-            m_paramParsed = true;
+        if (m_parsingParameter)
+            m_parsingParameter = false;
     }
 
     void NotifyBeginType() {
-        if (m_typeParseStarted && !m_paramParsed)
+        if (m_parsingParameter && !m_typeParseStarted && !m_typeParsed) {
             typeStart = this->pbCur;
+            m_typeParseStarted = true;
+        }
     };
 
     void NotifyEndType() {
-        if (m_typeParseStarted && !m_paramParsed) {
+        if (m_parsingParameter) {
+            assert(m_typeParseStarted);
             typeEnd = this->pbCur;
             m_typeParsed = true;
         }
@@ -444,9 +448,10 @@ public:
         if (m_hasThis && parameterIndex == 0)
             return declaringType;
         long typeSize = typeEnd - typeStart;
-        assert(typeSize <= sizeof(mdToken));
+        assert(typeSize > 0);
         mdToken type;
-        metadataEmit->GetTokenFromTypeSpec(typeStart, typeSize, &type);
+        HRESULT hr = metadataEmit->GetTokenFromTypeSpec(typeStart, typeSize, &type);
+        if (FAILED(hr)) FAIL_LOUD("GetTokenFromTypeSpec failed");
         return type;
     }
 };
@@ -458,27 +463,30 @@ private:
     sig_byte *typeEnd;
     bool m_typeParseStarted = false;
     bool m_typeParsed = false;
-    bool m_retTypeParsed = false;
+    bool m_parsingRetType = false;
     IMetaDataEmit *metadataEmit;
 
 protected:
 
     void NotifyBeginRetType() {
-        m_typeParseStarted = true;
+        m_parsingRetType = true;
     };
 
     void NotifyEndRetType() {
-        assert(m_typeParseStarted);
-        m_retTypeParsed = true;
+        assert(m_parsingRetType);
+        m_parsingRetType = false;
     };
 
     void NotifyBeginType() {
-        if (m_typeParseStarted && !m_retTypeParsed)
+        if (m_parsingRetType && !m_typeParseStarted && !m_typeParsed) {
             typeStart = this->pbCur;
+            m_typeParseStarted = true;
+        }
     };
 
     void NotifyEndType() {
-        if (m_typeParseStarted && !m_retTypeParsed) {
+        if (m_parsingRetType) {
+            assert(m_typeParseStarted);
             typeEnd = this->pbCur;
             m_typeParsed = true;
         }
@@ -494,9 +502,10 @@ public:
     mdToken retType() {
         assert(m_typeParseStarted && m_typeParsed);
         long typeSize = typeEnd - typeStart;
-        assert(typeSize <= sizeof(mdToken));
+        assert(typeSize > 0);
         mdToken type;
-        metadataEmit->GetTokenFromTypeSpec(typeStart, typeSize, &type);
+        HRESULT hr = metadataEmit->GetTokenFromTypeSpec(typeStart, typeSize, &type);
+        if (FAILED(hr)) FAIL_LOUD("GetTokenFromTypeSpec failed");
         return type;
     }
 };
@@ -507,7 +516,7 @@ private:
     sig_byte *typeStart;
     sig_byte *typeEnd;
     bool m_typeParseStarted = false;
-    bool m_localParsed = false;
+    bool m_parsingLocal = false;
     bool m_typeParsed = false;
     IMetaDataEmit *metadataEmit;
     int localIndex;
@@ -517,23 +526,26 @@ protected:
 
     void NotifyBeginLocal() {
         if (currentLocal == localIndex) {
-            m_typeParseStarted = true;
+            m_parsingLocal = true;
         }
         currentLocal++;
     }
 
     void NotifyEndLocal() {
-        if (m_typeParseStarted)
-            m_localParsed = true;
+        if (m_parsingLocal)
+            m_parsingLocal = false;
     }
 
     void NotifyBeginType() {
-        if (m_typeParseStarted && !m_localParsed)
+        if (m_parsingLocal && !m_typeParseStarted && !m_typeParsed) {
             typeStart = this->pbCur;
+            m_typeParseStarted = true;
+        }
     };
 
     void NotifyEndType() {
-        if (m_typeParseStarted && !m_localParsed) {
+        if (m_parsingLocal) {
+            assert(m_typeParseStarted);
             typeEnd = this->pbCur;
             m_typeParsed = true;
         }
@@ -550,7 +562,7 @@ public:
     mdToken localType() {
         assert(m_typeParseStarted && m_typeParsed);
         long typeSize = typeEnd - typeStart;
-        assert(typeSize <= sizeof(mdToken));
+        assert(typeSize > 0);
         mdToken type;
         HRESULT hr = metadataEmit->GetTokenFromTypeSpec(typeStart, typeSize, &type);
         if (FAILED(hr)) FAIL_LOUD("getting local type: GetTokenFromTypeSpec failed!");
