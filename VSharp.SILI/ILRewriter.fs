@@ -576,7 +576,8 @@ module private EvaluationStackTyper =
 
     let createEHStackState (m : Reflection.MethodBase) (flags : int) (startInstr : ilInstr) =
         let catchFlags = LanguagePrimitives.EnumToValue System.Reflection.ExceptionHandlingClauseOptions.Clause
-        if flags = catchFlags then // NOTE: is catch
+        let filterFlags = LanguagePrimitives.EnumToValue System.Reflection.ExceptionHandlingClauseOptions.Filter
+        if flags = catchFlags || flags = filterFlags then // NOTE: has exception ref on evaluation stack
             startInstr.stackState <- Some [evaluationStackCellType.Ref, []]
         else startInstr.stackState <- Some Stack.empty
         createStackState m startInstr

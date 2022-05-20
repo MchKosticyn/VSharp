@@ -102,6 +102,16 @@ bool vsharp::isMainEntered() {
     return mainEntered;
 }
 
+std::mutex mutex;
+
+void vsharp::getLock() {
+    mutex.lock();
+}
+
+void vsharp::freeLock() {
+    mutex.unlock();
+}
+
 void vsharp::resolve(INT_PTR p, VirtualAddress &address) {
     heap.physToVirtAddress(p, address);
 }

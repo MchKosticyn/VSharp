@@ -368,7 +368,7 @@ module internal Memory =
         match obj with
         | :? concreteData as FieldsData fields ->
             let makeField (fieldInfo : Reflection.FieldInfo) _ _ =
-               let objValue = Array.find (fun (info, _) -> info = fieldInfo) fields
+               let objValue = Array.find (fun (info, _) -> info = fieldInfo) fields |> snd
                objToTerm state fieldInfo.FieldType objValue
             makeStruct false makeField (fromDotNetType t)
         | _ -> internalfailf "structToTerm: unexpected struct object %O" obj

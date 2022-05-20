@@ -219,11 +219,9 @@ HRESULT STDMETHODCALLTYPE CorProfiler::FunctionUnloadStarted(FunctionID function
 
 bool jitInProcess = false;
 
-std::mutex mutex;
-
 HRESULT STDMETHODCALLTYPE CorProfiler::JITCompilationStarted(FunctionID functionId, BOOL fIsSafeToBlock)
 {
-    mutex.lock();
+    getLock();
     UNUSED(fIsSafeToBlock);
     ThreadID threadId;
     corProfilerInfo->GetCurrentThreadID(&threadId);
@@ -233,7 +231,7 @@ HRESULT STDMETHODCALLTYPE CorProfiler::JITCompilationStarted(FunctionID function
     jitInProcess = true;
     HRESULT hr = instrumenter->instrument(functionId);
     jitInProcess = false;
-    mutex.unlock();
+    freeLock();
     return hr;
 //    return S_OK;
 }
@@ -867,9 +865,9 @@ HRESULT STDMETHODCALLTYPE CorProfiler::ReJITCompilationStarted(FunctionID functi
     UNUSED(functionId);
     UNUSED(rejitId);
     UNUSED(fIsSafeToBlock);
-    mutex.lock();
+    getLock();
     HRESULT hr = instrumenter->reInstrument(functionId);
-    mutex.unlock();
+    freeLock();
     return hr;
 }
 
