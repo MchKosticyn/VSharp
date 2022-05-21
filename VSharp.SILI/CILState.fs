@@ -6,11 +6,13 @@ open System.Collections.Generic
 open VSharp.Core
 open ipOperations
 
-type status =
-    | Suspended
-    | PurelySymbolic
-    | RunningConcolic
-    | WaitingConcolic
+type concolicStatus =
+    | PurelySymbolic = 0    // State is controlled only by symbolic interpreter
+    | Detached = 1          // State should be controlled by concolic machine, but still waiting to be picked by searcher
+    | Queued = 2            // State was picked by searcher, but delayed until another concolic machines terminate
+    | Running = 3           // State is attached to concolic machine, which is currently running
+    | Waiting = 4           // State is attached to concolic machine, but it sent command to symbolic engine and waiting for responce
+    | Done = 5              // State was attached to concolic machine and successfully computed
 
 [<ReferenceEquality>]
 type cilState =
@@ -27,7 +29,8 @@ type cilState =
       mutable initialEvaluationStackSize : uint32
       mutable stepsNumber : uint
       mutable targets : Set<codeLocation> option
-      mutable status : status
+      mutable concolicStatus : concolicStatus
+      mutable suspended : bool
       mutable lastPushInfo : term option
       mutable path : Coverage.path
     }
@@ -68,7 +71,8 @@ module internal CilStateOperations =
           initialEvaluationStackSize = initialEvaluationStackSize
           stepsNumber = 0u
           targets = None
-          status = PurelySymbolic
+          concolicStatus = concolicStatus.PurelySymbolic
+          suspended = false
           lastPushInfo = None
           path = []
         }
@@ -111,24 +115,10 @@ module internal CilStateOperations =
         | SearchingForHandler([], []) -> true
         | _ -> false
 
-    let isSuspended (s : cilState) =
-        match s.status with
-        | Suspended
-        | RunningConcolic -> true
-        | _ -> false
-
     let controlledByConcolic (s : cilState) =
-        match s.status with
-        | WaitingConcolic
-        | RunningConcolic -> true
-        | _ -> false
-
-    let moveControlToConcolic (s : cilState) =
-        s.status <- RunningConcolic
-
-    let moveControlFromConcolic (s : cilState) =
-        assert(s.status = RunningConcolic)
-        s.status <- WaitingConcolic
+        match s.concolicStatus with
+        | concolicStatus.PurelySymbolic -> false
+        | _ -> true
 
     let isStopped s = isIIEState s || stoppedByException s || not(isExecutable(s))
 

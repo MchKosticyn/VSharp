@@ -66,10 +66,13 @@ type SimpleForwardSearcher(maxBound) =
         override x.Init states =
             forPropagation.AddRange(states)
         override x.Pick() =
-            let concolicStates = forPropagation |> Seq.filter controlledByConcolic
+            let detachedConcolicStates = forPropagation |> Seq.filter (fun s -> s.concolicStatus = concolicStatus.Detached)
             let availableStates =
-                if Seq.isEmpty concolicStates then forPropagation |> Seq.filter (isSuspended >> not)
-                else concolicStates |> Seq.filter (isSuspended >> not)
+                if not <| Seq.isEmpty detachedConcolicStates then detachedConcolicStates
+                else
+                    let pendingConcolicStates = forPropagation |> Seq.filter (fun s -> s.concolicStatus = concolicStatus.Waiting)
+                    if Seq.isEmpty pendingConcolicStates then forPropagation |> Seq.filter (fun s -> s.concolicStatus = concolicStatus.PurelySymbolic)
+                    else pendingConcolicStates
             x.Choose availableStates
         override x.Update (parent, newStates) =
             x.Insert forPropagation (parent, newStates)
@@ -113,7 +116,7 @@ type WeightedSearcher(maxBound, weighter : IWeighter, storage : IPriorityCollect
     let isStopped s = isStopped s || violatesLevel s maxBound
     let optionWeight s =
         option {
-            if not <| isSuspended s && not <| isStopped s then
+            if not s.suspended && not <| isStopped s then
                 return! weighter.Weight s
         }
     let add (s : cilState) =

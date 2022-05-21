@@ -11,7 +11,7 @@ open VSharp.Core
 open VSharp.Interpreter.IL
 
 [<AllowNullLiteral>]
-type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilState : cilState) =
+type ClientMachine(entryPoint : Method, cmdArgs : string[] option, requestMakeStep : cilState -> unit, cilState : cilState) =
     let extension =
         if RuntimeInformation.IsOSPlatform(OSPlatform.Windows) then ".dll"
         elif RuntimeInformation.IsOSPlatform(OSPlatform.Linux) then ".so"
@@ -23,9 +23,7 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
     [<DefaultValue>] val mutable probes : probes
     [<DefaultValue>] val mutable instrumenter : Instrumenter
 
-    let cilState : cilState =
-        cilState.status <- RunningConcolic
-        cilState
+    let cilState : cilState = cilState
 
     let initSymbolicFrame (method : Method) = // TODO: unify with InitFunctionFrame
         let parameters = method.Parameters |> Seq.map (fun param ->
@@ -94,29 +92,14 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
         concolicStackKeys[stackKey]
 
     member private x.CreateTest() =
-        let methodBase = (entryPoint :> IMethod).MethodBase
-        assert(methodBase <> null)
-        let test = UnitTest(methodBase)
-        let state = cilState.state
-        let model =
-            match TryGetModel state with
-            | Some model -> model
-            | None -> internalfail "Creating test for concolic: unable to get model"
-        match TypeSolver.solveTypes model state with
-        | Some(classParams, methodParams) ->
-            let concreteClassParams = Array.zeroCreate classParams.Length
-            let mockedClassParams = Array.zeroCreate classParams.Length
-            let concreteMethodParams = Array.zeroCreate methodParams.Length
-            let mockedMethodParams = Array.zeroCreate methodParams.Length
-            let processSymbolicType (concreteArr : Type array) _ i = function
-                | ConcreteType t -> concreteArr.[i] <- t
-                | MockType _ -> ()
-            classParams |> Seq.iteri (processSymbolicType concreteClassParams mockedClassParams)
-            methodParams |> Seq.iteri (processSymbolicType concreteMethodParams mockedMethodParams)
-            test.SetTypeGenericParameters concreteClassParams mockedClassParams
-            test.SetMethodGenericParameters concreteMethodParams mockedMethodParams
-        | None -> raise (InsufficientInformationException "Could not detect appropriate substitution of generic parameters")
-        test.Serialize(tempTest clientId)
+        assert(entryPoint.HasBody)
+        try
+            match TestGenerator.state2test false entryPoint cmdArgs cilState false with
+            | Some test -> test.Serialize(tempTest clientId)
+            | None -> raise <| Exception "Could not generate start-up test"
+        with :? InsufficientInformationException as e ->
+            cilState.iie <- Some e
+            reraise()
 
     member x.Spawn() =
         x.CreateTest()
@@ -144,8 +127,11 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
             x.communicator.SendEntryPoint entryPoint.Module.FullyQualifiedName entryPoint.MetadataToken
             x.communicator.SendCoverageInformation cilState.path
             x.instrumenter <- Instrumenter(x.communicator, (entryPoint :> IMethod).MethodBase, x.probes)
+            cilState.concolicStatus <- concolicStatus.Running
             true
-        else false
+        else
+            cilState.concolicStatus <- concolicStatus.Done
+            false
 
     member x.Terminate() =
         Logger.trace "ClientMachine.Terminate()"
@@ -318,9 +304,9 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
                 x.communicator.SendMethodBody methodBody
                 true
             | ExecuteInstruction c ->
-                Logger.trace "Got execute instruction command!"
+                Logger.trace "Got execute instruction command! Offset = %x" c.ipStack.Head
                 x.SynchronizeStates c
-                cilState.status <- WaitingConcolic
+                cilState.concolicStatus <- concolicStatus.Waiting
                 requestMakeStep cilState
                 true
             | Terminate ->
@@ -387,34 +373,102 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
         if methodEnded && notEndOfEntryPoint then
             let method = CilStateOperations.currentMethod cilState
             if method.IsInternalCall then callIsSkipped <- true
-            cilState
         else
             let concretizedOps =
                 if callIsSkipped then Some List.empty
                 else steppedStates |> List.tryPick x.EvalOperands
             let concolicMemory = cilState.state.concreteMemory
             let disconnectConcolic cilState =
-                cilState.status <- PurelySymbolic
+                cilState.concolicStatus <- concolicStatus.Detached
                 cilState.state.concreteMemory <- Memory.EmptyConcreteMemory()
             steppedStates |> List.iter disconnectConcolic
             let connectConcolic cilState =
-                cilState.status <- RunningConcolic
+                cilState.concolicStatus <- concolicStatus.Running
                 cilState.state.concreteMemory <- concolicMemory
             // TODO: unify stopping execution with searcher
             if notEndOfEntryPoint && not isIIEState && not stoppedByException then connectConcolic cilState
-            let lastPushInfo =
+            let lastPushInfo cilState =
                 match cilState.lastPushInfo with
                 | Some x when IsConcrete x && notEndOfEntryPoint ->
                     CilStateOperations.pop cilState |> ignore
                     Some true
                 | Some _ -> Some false
                 | None -> None
+            steppedStates |> List.iter (fun cilState ->
+                let lastPush =
+                    match lastPushInfo cilState with
+                    | Some isConcrete when isConcrete -> 2
+                    | Some _ -> 1
+                    | None -> 0
+                match cilState.path with
+                | head::tail ->
+                    cilState.path <- {head with stackPush = lastPush}::tail
+                | [] -> __unreachable__())
             let internalCallResult =
                 match cilState.lastPushInfo with
                 | Some res when callIsSkipped ->
                     x.ConcreteToObj res
                 | _ -> None
             let framesCount = Memory.CallStackSize cilState.state
-            x.communicator.SendExecResponse concretizedOps internalCallResult lastPushInfo framesCount
+            assert(not cilState.path.IsEmpty)
+            x.communicator.SendExecResponse concretizedOps internalCallResult (lastPushInfo cilState) framesCount
             callIsSkipped <- false
-            cilState
+
+[<AllowNullLiteral>]
+type ConcolicPool(entryPoint, cmdArgs, requestMakeStep : cilState -> unit, reportIncomplete : cilState -> unit, width : int (* How many machines we can run synchronously *)) =
+    let queue = Queue<cilState>()
+    let activeMachines = Dictionary<cilState, ClientMachine>()
+
+    let activate() =
+        let delta = width - activeMachines.Count
+        if delta > 0 then // If there is space to start new machines
+            while queue.Count > 0 && activeMachines.Count < width do
+                let cilState = queue.Dequeue()
+                let machine = ClientMachine(entryPoint, cmdArgs, requestMakeStep(*, onMachineTerminated*), cilState)
+                try
+                    if machine.Spawn() then
+                        activeMachines.Add(cilState, machine)
+                    else
+                        internalfail "Unable to spawn concolic machine!"
+                with :? InsufficientInformationException ->
+                    reportIncomplete cilState
+            true
+        else false
+
+    let onMachineTerminated (machine : ClientMachine) =
+        let removed = activeMachines.Remove machine.State
+        assert removed
+        machine.State.concolicStatus <- concolicStatus.Done
+        activate()
+
+    member x.Schedule state =
+        queue.Enqueue state
+        assert(state.concolicStatus = concolicStatus.Detached)
+        state.concolicStatus <- concolicStatus.Queued
+        Logger.trace "Scheduling new state with path (%s)" (Coverage.dump state.path)
+        activate() |> ignore
+
+    member x.StepDone (fromState : cilState, toStates : cilState list) =
+        let concolicMachine : ClientMachine ref = ref null
+        if activeMachines.TryGetValue(fromState, concolicMachine) then
+            let machine = concolicMachine.Value
+            machine.StepDone toStates
+
+    member x.ExecCommand() =
+        assert(width = 1)
+        activeMachines.Count = 1 &&
+            let onlyMachine = Seq.head activeMachines.Values
+            onlyMachine.State.concolicStatus = concolicStatus.Running &&
+            onlyMachine.ExecCommand() ||
+            onMachineTerminated onlyMachine
+
+    member x.IsRunning() =
+        assert(width = 1)
+        activeMachines.Count = 1 &&
+            let onlyMachine = Seq.head activeMachines.Values
+            onlyMachine.State.concolicStatus = concolicStatus.Running
+
+    member x.Terminate() =
+        queue.Clear()
+        for machine in activeMachines.Values do
+            machine.Terminate ()

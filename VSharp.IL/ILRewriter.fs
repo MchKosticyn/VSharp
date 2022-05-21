@@ -357,7 +357,12 @@ type coverageLocation = {
     methodToken : int
     offset : int
     threadToken : int
+    stackPush : int // 0 = no push, 1 = symbolic push, 2 = concrete push
 }
+with
+    override x.ToString() =
+        sprintf "%x::%d[%d]" x.methodToken x.offset x.stackPush
+
 
 type evaluationStackCellType =
     | I1 = 0

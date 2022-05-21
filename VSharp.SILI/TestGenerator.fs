@@ -2,6 +2,7 @@ namespace VSharp.Interpreter.IL
 
 open System
 open System.Collections.Generic
+open System.Reflection
 open FSharpx.Collections
 open VSharp
 open VSharp.Core
@@ -97,8 +98,7 @@ module TestGenerator =
                 freshMock.AddMethod(m.BaseMethod, clauses))
             freshMock)
 
-
-    let model2test (test : UnitTest) isError hasException indices mockCache (m : Method) model cmdArgs (cilState : cilState) =
+    let model2test (test : UnitTest) isError hasException indices mockCache (m : Method) model cmdArgs (cilState : cilState) resultChecking =
         match SolveTypes model cilState.state with
         | None -> None
         | Some(classParams, methodParams) ->
@@ -131,12 +131,12 @@ module TestGenerator =
                 let concreteValue : obj = term2obj model cilState.state indices mockCache test value
                 test.ThisArg <- concreteValue
 
-            if not isError && not hasException then
+            if not isError && not hasException && resultChecking then
                 let retVal = model.Eval cilState.Result
                 test.Expected <- term2obj model cilState.state indices mockCache test retVal
             Some test
 
-    let state2test isError (m : Method) cmdArgs (cilState : cilState) =
+    let state2test isError (m : Method) cmdArgs (cilState : cilState) resultChecking =
         let indices = Dictionary<concreteHeapAddress, int>()
         let mockCache = Dictionary<ITypeMock, Mocking.Type>()
         let test = UnitTest (m :> IMethod).MethodBase
@@ -151,5 +151,5 @@ module TestGenerator =
 
         match TryGetModel cilState.state with
         | Some model ->
-            model2test test isError hasException indices mockCache m model cmdArgs cilState
+            model2test test isError hasException indices mockCache m model cmdArgs cilState resultChecking
         | None -> None
