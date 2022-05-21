@@ -2349,8 +2349,16 @@ type internal ILInterpreter() as this =
             | OpCodeValues.Throw -> this.Throw cilState
             | _ -> __unreachable__()
 
-        let renewInstructionsInfo cilState =
-            if not <| isUnhandledError cilState then
-                x.IncrementLevelIfNeeded m offset cilState
-        newSts |> List.iter renewInstructionsInfo
-        newSts
+        let originLevel = levelToUnsignedInt cilState.level
+        assert(List.forall (fun s -> levelToUnsignedInt s.level = originLevel) newSts)
+        let mutable origStateIdx = 0
+        let renewInstructionsInfo i cilState' =
+            if Object.ReferenceEquals(cilState, cilState') then
+                origStateIdx <- i
+            if not <| isUnhandledError cilState' then
+                x.IncrementLevelIfNeeded m offset cilState'
+        newSts |> List.iteri renewInstructionsInfo
+        if origStateIdx = 0 then
+            newSts
+        else
+            cilState::List.removeAt origStateIdx newSts

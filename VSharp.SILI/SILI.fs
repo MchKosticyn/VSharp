@@ -134,7 +134,7 @@ type public SILI(options : SiliOptions) =
             let pool : ConcolicPool ref = ref null
             match s.startingIP with
             | Instruction(_, entryMethod) when concolicPools.TryGetValue(entryMethod, pool) ->
-                (!pool).Schedule s
+                pool.Value.Schedule s
             | _ -> __unreachable__()
         else
             // TODO: update pobs when visiting new methods; use coverageZone
@@ -159,7 +159,7 @@ type public SILI(options : SiliOptions) =
             let pool : ConcolicPool ref = ref null
             match s.startingIP with
             | Instruction(_, entryMethod) when concolicPools.TryGetValue(entryMethod, pool) ->
-                (!pool).StepDone(s, s::newStates)
+                pool.Value.StepDone(s, s::newStates)
             | _ -> ()
             Application.moveState s.currentLoc s (Seq.cast<_> newStates)
             searcher.UpdateStates s newStates

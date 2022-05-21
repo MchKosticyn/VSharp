@@ -99,8 +99,8 @@ module Branching =
                     conditionState.pc <- PC.add pc notCondition
                     elseBranch conditionState (List.singleton >> k)
                 | SolverInteraction.SmtSat model ->
-                    let thenState = conditionState
-                    let elseState = Memory.copy conditionState (PC.add pc notCondition)
+                    let elseState = conditionState
+                    let thenState = Memory.copy conditionState (PC.add pc condition)
                     thenState.model <- Some model.mdl
                     elseState.pc <- PC.add pc notCondition
                     execution thenState elseState condition k
