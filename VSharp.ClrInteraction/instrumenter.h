@@ -69,7 +69,6 @@ private:
     HRESULT importEH(const COR_ILMETHOD_SECT_EH* pILEH, unsigned nEH);
     HRESULT exportIL(char *bytecode, unsigned codeLength, unsigned maxStackSize, char *ehs, unsigned ehsLength);
 
-    HRESULT startReJitInstrumented();
     HRESULT startReJitSkipped();
     HRESULT undoInstrumentation(FunctionID functionId);
     HRESULT doInstrumentation(ModuleID oldModuleId, const WCHAR *assemblyName, ULONG assemblyNameLength, const WCHAR *moduleName, ULONG moduleNameLength);

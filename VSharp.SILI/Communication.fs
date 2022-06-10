@@ -410,6 +410,7 @@ type ConcolicAddressKey =
     | LocalVariable of byte * byte // frame number * idx
     | Parameter of byte * byte // frame number * idx
     | Statics of int16 // static field id
+    | TemporaryAllocatedStruct of byte * byte // frame number * offset
 
 type evalStackOperand =
     | EmptyOp
@@ -820,6 +821,7 @@ type Communicator(pipeFile) =
                         | 2uy -> LocalVariable(parseFrameAndIdx())
                         | 3uy -> Parameter(parseFrameAndIdx())
                         | 4uy -> Statics(parseStaticFieldId())
+                        | 5uy -> TemporaryAllocatedStruct(parseFrameAndIdx())
                         | _ -> internalfailf "ReadExecuteCommand: unexpected object location type: %O" locationType
                     PointerOp(baseAddr, shift, key)
                 | evalStackArgType.OpSymbolic

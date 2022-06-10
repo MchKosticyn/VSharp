@@ -350,24 +350,6 @@ HRESULT Instrumenter::exportIL(char *bytecode, unsigned codeLength, unsigned max
     return S_OK;
 }
 
-HRESULT Instrumenter::startReJitInstrumented() {
-    LOG(tout << "ReJIT of instrumented methods is started" << std::endl);
-    m_reJitInstrumentedStarted = true;
-    ULONG count = instrumentedFunctions.size();
-    auto *modules = new ModuleID[count];
-    auto *methods = new mdMethodDef[count];
-    int i = 0;
-    for (const auto &it : instrumentedFunctions) {
-        modules[i] = it.first.first;
-        methods[i] = it.first.second;
-        i++;
-    }
-    HRESULT hr = m_profilerInfo.RequestReJIT(count, modules, methods);
-    delete[] modules;
-    delete[] methods;
-    return hr;
-}
-
 HRESULT Instrumenter::startReJitSkipped() {
     LOG(tout << "ReJIT of skipped methods is started" << std::endl);
     ULONG count = skippedBeforeMain.size();
@@ -541,12 +523,10 @@ HRESULT Instrumenter::doInstrumentation(ModuleID oldModuleId, const WCHAR *assem
     if (!m_protocol.sendSerializable(InstrumentCommand, info)) FAIL_LOUD("Instrumenting: serialization of method failed!");
     LOG(tout << "Successfully sent method body!");
     char *bytecode; int length; unsigned maxStackSize; char *ehs; unsigned ehsLength;
-#ifdef _DEBUG
     CommandType command;
     do {
         command = getAndHandleCommand();
     } while (command != ReadMethodBody);
-#endif
     LOG(tout << "Reading method body back...");
     if (!m_protocol.acceptMethodBody(bytecode, length, maxStackSize, ehs, ehsLength))
         FAIL_LOUD("Instrumenting: accepting method body failed!");

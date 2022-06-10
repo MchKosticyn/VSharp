@@ -247,8 +247,7 @@ HRESULT STDMETHODCALLTYPE CorProfiler::JITCompilationFinished(FunctionID functio
 
 HRESULT STDMETHODCALLTYPE CorProfiler::JITCachedFunctionSearchStarted(FunctionID functionId, BOOL *pbUseCachedFunction)
 {
-//    std::cout << __FUNCTION__ << " (method name "<< instrumenter->temp_fid_toString(functionId) << ")" << std::endl;
-    tout << __FUNCTION__ << std::endl;
+    LOG(tout << __FUNCTION__ << std::endl);
     UNUSED(functionId);
     UNUSED(pbUseCachedFunction);
     return S_OK;
@@ -256,7 +255,7 @@ HRESULT STDMETHODCALLTYPE CorProfiler::JITCachedFunctionSearchStarted(FunctionID
 
 HRESULT STDMETHODCALLTYPE CorProfiler::JITCachedFunctionSearchFinished(FunctionID functionId, COR_PRF_JIT_CACHE result)
 {
-    tout << __FUNCTION__ << std::endl;
+    LOG(tout << __FUNCTION__ << std::endl);
     UNUSED(functionId);
     UNUSED(result);
     return S_OK;
@@ -264,14 +263,14 @@ HRESULT STDMETHODCALLTYPE CorProfiler::JITCachedFunctionSearchFinished(FunctionI
 
 HRESULT STDMETHODCALLTYPE CorProfiler::JITFunctionPitched(FunctionID functionId)
 {
-    tout << __FUNCTION__ << std::endl;
+    LOG(tout << __FUNCTION__ << std::endl);
     UNUSED(functionId);
     return S_OK;
 }
 
 HRESULT STDMETHODCALLTYPE CorProfiler::JITInlining(FunctionID callerId, FunctionID calleeId, BOOL *pfShouldInline)
 {
-    tout << __FUNCTION__ << std::endl;
+    LOG(tout << __FUNCTION__ << std::endl);
     UNUSED(callerId);
     UNUSED(calleeId);
     UNUSED(pfShouldInline);

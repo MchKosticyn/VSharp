@@ -62,6 +62,7 @@ struct EvalStackOperand {
                 ObjectType type = location.type;
                 *(BYTE *)buffer = type; buffer += sizeof(BYTE);
                 switch (type) {
+                    case TemporaryAllocatedStruct:
                     case LocalVariable:
                     case Parameter: {
                         StackKey key = location.key.stackKey;
@@ -668,16 +669,20 @@ PROBE(void, Track_Ldobj, (INT_PTR ptr, OFFSET offset)) { /* TODO! will ptr be al
 PROBE(void, Track_Ldstr, (INT_PTR ptr)) { topFrame().push1Concrete(); } // TODO: do we need allocated address?
 PROBE(void, Track_Ldtoken, ()) { topFrame().push1Concrete(); }
 
-PROBE(void, Track_Stobj, (INT_PTR ptr)) {
+PROBE(void, Track_Stobj, (INT_PTR src, INT_PTR dest, OFFSET offset)) {
     // TODO!
     // Will ptr be always concrete?
     topFrame().pop(2);
 }
 
+// If typeTok is a value type, the initobj instruction initializes each field of dest to null or a zero of the appropriate built-in type.
+// If typeTok is a reference type, the initobj instruction has the same effect as ldnull followed by stind.ref.
+// TODO: add two cases (ref and valueType)
 PROBE(void, Track_Initobj, (INT_PTR ptr)) {
     bool ptrIsConcrete = topFrame().pop1();
-    if (ptrIsConcrete)
+    if (ptrIsConcrete) {
         heap.writeConcretenessWholeObject(ptr, true);
+    }
     // TODO: send command if (ptrIsConcrete = false) #do
 }
 
@@ -837,16 +842,13 @@ PROBE(COND, Track_Ldelem, (INT_PTR ptr, INT_PTR index, INT32 elemSize)) {
     StackFrame &top = vsharp::topFrame();
     bool iConcrete = top.peek0();
     bool ptrConcrete = top.peek1();
+    top.pop(2);
     int metadataSize = sizeof(INT_PTR) + sizeof(INT64);
     INT_PTR elemPtr = ptr + index * elemSize + metadataSize;
     bool memory = false;
-    if (ptrConcrete) memory = heap.readConcreteness(elemPtr, elemSize);
-    top.pop(2);
-    bool concreteness = iConcrete && ptrConcrete && memory;
-    if (concreteness) top.push1Concrete();
-    return concreteness;
-
-    return top.pop1() && top.peek0();
+    if (ptrConcrete && iConcrete) memory = heap.readConcreteness(elemPtr, elemSize);
+    if (memory) top.push1Concrete();
+    return memory;
 }
 PROBE(void, Exec_Ldelema, (INT_PTR ptr, INT_PTR index, OFFSET offset)) { /*send command*/ }
 PROBE(void, Exec_Ldelem, (INT_PTR ptr, INT_PTR index, OFFSET offset)) {
@@ -984,8 +986,11 @@ PROBE(void, Track_Leave, (UINT8 returnValues, OFFSET offset)) {
     StackFrame &top = stack.topFrame();
 #ifdef _DEBUG
     assert(returnValues == 0 || returnValues == 1);
-    if (top.count() != returnValues) {
+    if (top.count() > returnValues) {
         FAIL_LOUD("Corrupted stack: stack is not empty when popping frame!");
+    }
+    if (top.count() < returnValues) {
+        FAIL_LOUD("Corrupted stack: function should return value, but it's not!");
     }
 #endif
     if (returnValues) {

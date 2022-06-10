@@ -1313,7 +1313,7 @@ type internal ILInterpreter(isConcolicMode : bool) as this =
         let checkedLdElem (cilState : cilState) k =
             let dims = List.init (Types.RankOf arrayType) MakeNumber
             let lengths = List.map (Memory.ArrayLengthByDimension cilState.state arrayRef) dims
-            x.AccessMultidimensionalArray uncheckedLdElem cilState lengths indices k // TODO: if ptr, do net use check #do
+            x.AccessMultidimensionalArray uncheckedLdElem cilState lengths indices k // TODO: if ptr, do not use check #do
         x.NpeOrInvokeStatementCIL cilState arrayRef checkedLdElem id
     member private x.LdElemWithCast typ (cilState : cilState) : cilState list =
         let index, arrayRef = pop2 cilState
