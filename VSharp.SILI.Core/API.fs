@@ -111,6 +111,7 @@ module API =
             match term.term with
             | Concrete _ -> true
             | HeapRef(address, _) when isConcreteHeapAddress address -> true
+            | Ref (PrimitiveStackLocation _) -> true
             | _ -> false
         let IsNullReference term = Pointers.isNull term
 

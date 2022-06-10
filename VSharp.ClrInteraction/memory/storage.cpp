@@ -105,6 +105,7 @@ namespace vsharp {
 
     Object::~Object() {
         delete[] concreteness;
+        concreteness = nullptr;
     }
 
     std::string Object::toString() const {
@@ -343,7 +344,8 @@ namespace vsharp {
         }
 
         auto *obj = (Object *) vAddress.obj;
-        obj->writeConcreteness(vAddress.offset, obj->sizeOf(), vConcreteness);
+        assert(vAddress.offset == 0);
+        obj->writeConcretenessWholeObject(vConcreteness);
     }
 
     char *Storage::readBytes(const VirtualAddress &address, SIZE sizeOfPtr, BYTE isRef) const {

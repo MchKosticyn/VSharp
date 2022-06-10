@@ -894,6 +894,8 @@ module EvaluationStackTyper =
                 let s = if Reflection.hasNonVoidResult m then Stack.drop 1 s else s
                 if not (Stack.isEmpty s) then fail()
                 s
+            | OpCodeValues.Endfilter -> Stack.drop 1 s
+            | OpCodeValues.Endfinally -> Stack.empty
             | _ -> s
         | SwitchArg -> s
 //       Logger.trace "typer after: %O" res.Length
@@ -912,7 +914,9 @@ module EvaluationStackTyper =
                     match opcodeValue with
                     | OpCodeValues.Ret
                     | OpCodeValues.Throw
-                    | OpCodeValues.Rethrow -> []
+                    | OpCodeValues.Rethrow
+                    | OpCodeValues.Endfilter
+                    | OpCodeValues.Endfinally -> []
                     | OpCodeValues.Br_S
                     | OpCodeValues.Br
                     | OpCodeValues.Leave
@@ -1193,33 +1197,6 @@ type ILRewriter(body : rawMethodBody) =
                     | _ -> invalidProgram "Wrong operand of branching instruction!")
 
         EvaluationStackTyper.createBodyStackState m il.next
-        x.TraverseProgram (fun instr ->
-            match instr.opcode with
-            | OpCode op ->
-                // Replace binary branch instructions with binop + branch
-                match LanguagePrimitives.EnumOfValue op.Value with
-                | OpCodeValues.Beq_S -> x.ReplaceBranchAlias instr OpCodes.Ceq OpCodes.Brtrue_S
-                | OpCodeValues.Bge_S -> x.ReplaceBranchAlias instr (if x.IsFloatBinOp instr then OpCodes.Clt_Un else OpCodes.Clt) OpCodes.Brfalse_S
-                | OpCodeValues.Bgt_S -> x.ReplaceBranchAlias instr OpCodes.Cgt OpCodes.Brtrue_S
-                | OpCodeValues.Ble_S -> x.ReplaceBranchAlias instr (if x.IsFloatBinOp instr then OpCodes.Cgt_Un else OpCodes.Cgt)  OpCodes.Brfalse_S
-                | OpCodeValues.Blt_S -> x.ReplaceBranchAlias instr OpCodes.Clt OpCodes.Brtrue_S
-                | OpCodeValues.Bne_Un_S -> x.ReplaceBranchAlias instr OpCodes.Ceq OpCodes.Brfalse_S
-                | OpCodeValues.Bge_Un_S -> x.ReplaceBranchAlias instr (if x.IsFloatBinOp instr then OpCodes.Clt else OpCodes.Clt_Un) OpCodes.Brfalse_S
-                | OpCodeValues.Bgt_Un_S -> x.ReplaceBranchAlias instr OpCodes.Cgt_Un OpCodes.Brtrue_S
-                | OpCodeValues.Ble_Un_S -> x.ReplaceBranchAlias instr (if x.IsFloatBinOp instr then OpCodes.Cgt else OpCodes.Cgt_Un)  OpCodes.Brfalse_S
-                | OpCodeValues.Blt_Un_S -> x.ReplaceBranchAlias instr OpCodes.Clt_Un OpCodes.Brtrue_S
-                | OpCodeValues.Beq -> x.ReplaceBranchAlias instr OpCodes.Ceq OpCodes.Brtrue
-                | OpCodeValues.Bge -> x.ReplaceBranchAlias instr (if x.IsFloatBinOp instr then OpCodes.Clt_Un else OpCodes.Clt) OpCodes.Brfalse
-                | OpCodeValues.Bgt -> x.ReplaceBranchAlias instr OpCodes.Cgt OpCodes.Brtrue
-                | OpCodeValues.Ble -> x.ReplaceBranchAlias instr (if x.IsFloatBinOp instr then OpCodes.Cgt_Un else OpCodes.Cgt)  OpCodes.Brfalse
-                | OpCodeValues.Blt -> x.ReplaceBranchAlias instr OpCodes.Clt OpCodes.Brtrue
-                | OpCodeValues.Bne_Un -> x.ReplaceBranchAlias instr OpCodes.Ceq OpCodes.Brfalse
-                | OpCodeValues.Bge_Un -> x.ReplaceBranchAlias instr (if x.IsFloatBinOp instr then OpCodes.Clt else OpCodes.Clt_Un) OpCodes.Brfalse
-                | OpCodeValues.Bgt_Un -> x.ReplaceBranchAlias instr OpCodes.Cgt_Un OpCodes.Brtrue
-                | OpCodeValues.Ble_Un -> x.ReplaceBranchAlias instr (if x.IsFloatBinOp instr then OpCodes.Cgt else OpCodes.Cgt_Un)  OpCodes.Brfalse
-                | OpCodeValues.Blt_Un -> x.ReplaceBranchAlias instr OpCodes.Clt_Un OpCodes.Brtrue
-                | _ -> ()
-            | _ -> ())
 
     member private x.RecalculateOffsets() =
         let mutable branch = false
@@ -1266,6 +1243,35 @@ type ILRewriter(body : rawMethodBody) =
                     | _ -> ())
         uint32 offset
 
+    member private x.ReplaceBranches() =
+        x.TraverseProgram (fun instr ->
+        match instr.opcode with
+        | OpCode op ->
+            // Replace binary branch instructions with binop + branch
+            match LanguagePrimitives.EnumOfValue op.Value with
+            | OpCodeValues.Beq_S -> x.ReplaceBranchAlias instr OpCodes.Ceq OpCodes.Brtrue_S
+            | OpCodeValues.Bge_S -> x.ReplaceBranchAlias instr (if x.IsFloatBinOp instr then OpCodes.Clt_Un else OpCodes.Clt) OpCodes.Brfalse_S
+            | OpCodeValues.Bgt_S -> x.ReplaceBranchAlias instr OpCodes.Cgt OpCodes.Brtrue_S
+            | OpCodeValues.Ble_S -> x.ReplaceBranchAlias instr (if x.IsFloatBinOp instr then OpCodes.Cgt_Un else OpCodes.Cgt)  OpCodes.Brfalse_S
+            | OpCodeValues.Blt_S -> x.ReplaceBranchAlias instr OpCodes.Clt OpCodes.Brtrue_S
+            | OpCodeValues.Bne_Un_S -> x.ReplaceBranchAlias instr OpCodes.Ceq OpCodes.Brfalse_S
+            | OpCodeValues.Bge_Un_S -> x.ReplaceBranchAlias instr (if x.IsFloatBinOp instr then OpCodes.Clt else OpCodes.Clt_Un) OpCodes.Brfalse_S
+            | OpCodeValues.Bgt_Un_S -> x.ReplaceBranchAlias instr OpCodes.Cgt_Un OpCodes.Brtrue_S
+            | OpCodeValues.Ble_Un_S -> x.ReplaceBranchAlias instr (if x.IsFloatBinOp instr then OpCodes.Cgt else OpCodes.Cgt_Un)  OpCodes.Brfalse_S
+            | OpCodeValues.Blt_Un_S -> x.ReplaceBranchAlias instr OpCodes.Clt_Un OpCodes.Brtrue_S
+            | OpCodeValues.Beq -> x.ReplaceBranchAlias instr OpCodes.Ceq OpCodes.Brtrue
+            | OpCodeValues.Bge -> x.ReplaceBranchAlias instr (if x.IsFloatBinOp instr then OpCodes.Clt_Un else OpCodes.Clt) OpCodes.Brfalse
+            | OpCodeValues.Bgt -> x.ReplaceBranchAlias instr OpCodes.Cgt OpCodes.Brtrue
+            | OpCodeValues.Ble -> x.ReplaceBranchAlias instr (if x.IsFloatBinOp instr then OpCodes.Cgt_Un else OpCodes.Cgt)  OpCodes.Brfalse
+            | OpCodeValues.Blt -> x.ReplaceBranchAlias instr OpCodes.Clt OpCodes.Brtrue
+            | OpCodeValues.Bne_Un -> x.ReplaceBranchAlias instr OpCodes.Ceq OpCodes.Brfalse
+            | OpCodeValues.Bge_Un -> x.ReplaceBranchAlias instr (if x.IsFloatBinOp instr then OpCodes.Clt else OpCodes.Clt_Un) OpCodes.Brfalse
+            | OpCodeValues.Bgt_Un -> x.ReplaceBranchAlias instr OpCodes.Cgt_Un OpCodes.Brtrue
+            | OpCodeValues.Ble_Un -> x.ReplaceBranchAlias instr (if x.IsFloatBinOp instr then OpCodes.Cgt else OpCodes.Cgt_Un)  OpCodes.Brfalse
+            | OpCodeValues.Blt_Un -> x.ReplaceBranchAlias instr OpCodes.Clt_Un OpCodes.Brtrue
+            | _ -> ()
+        | _ -> ())
+
     member private x.ImportEH() =
         let parseEH (raw : rawExceptionHandler) = {
             flags = raw.flags
@@ -1276,13 +1282,19 @@ type ILRewriter(body : rawMethodBody) =
                 EvaluationStackTyper.createEHStackState m raw.flags start
                 start
             handlerEnd = (x.InstrFromOffset <| int (raw.handlerOffset + raw.handlerLength)).prev
-            matcher = if raw.flags &&& 0x0001 = 0 then ClassToken raw.matcher else Filter (x.InstrFromOffset <| int raw.matcher)
+            matcher =
+                if raw.flags &&& 0x0001 = 0 then ClassToken raw.matcher
+                else
+                    let filterStart = x.InstrFromOffset <| int raw.matcher
+                    EvaluationStackTyper.createEHStackState m raw.flags filterStart
+                    Filter filterStart
         }
         ehs <- Array.map parseEH body.ehs
 
     member x.Import() =
         x.ImportIL()
         x.ImportEH() // TODO: replaceBranchAlias in eh! #do
+        x.ReplaceBranches()
         x.RecalculateOffsets() |> ignore
         maxStackSize <- body.properties.maxStackSize
 

@@ -397,7 +397,7 @@ private:
 protected:
 
     void NotifyBeginMethod(sig_elem_type elem_type) {
-        if (elem_type == SIG_HASTHIS) {
+        if (elem_type & SIG_HASTHIS) {
             m_hasThis = true;
             currentParam++;
             if (parameterIndex == 0) {

@@ -1072,8 +1072,25 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                     x.PrependInstr(OpCodes.Ldc_I4, instr.arg, &prependTarget) |> ignore
                     x.PrependProbeWithOffset(probes.stsfld, [], x.tokens.void_token_offset_sig, &prependTarget) |> ignore
                 | OpCodeValues.Stobj ->
-                    // TODO: implement via append dup to sources of operands
-                    __notImplemented__() // ?????????????????
+                    // TODO: create function to dup and mem operands #refactoring
+                    match instr.stackState with
+                    | Some list when List.length list >= 2 ->
+                        let srcType, srcSource = List.head list
+                        let destType, destSource = List.item 1 list
+                        let opmemOffset = int prependTarget.offset
+                        srcSource |> List.iter (fun srcInstr ->
+                            let srcInstr = instructions |> Array.find (fun i -> i.offset = srcInstr.offset)
+                            x.AppendMemForType(srcType, 1, opmemOffset, srcInstr)
+                            x.AppendInstr OpCodes.Dup NoArg srcInstr)
+                        destSource |> List.iter (fun srcInstr ->
+                            let srcInstr = instructions |> Array.find (fun i -> i.offset = srcInstr.offset)
+                            x.AppendMemForType(destType, 0, opmemOffset, srcInstr)
+                            x.AppendInstr OpCodes.Dup NoArg srcInstr)
+                    | s -> internalfailf "Stobj: unexpected stack state %O" s
+                    x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 0)], x.tokens.i_i1_sig, &prependTarget) |> ignore
+                    x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 1)], x.tokens.i_i1_sig, &prependTarget) |> ignore
+                    x.PrependProbeWithOffset(probes.stobj, [], x.tokens.void_i_i_offset_sig, &prependTarget) |> ignore
+                    x.PrependPopOpmem(&prependTarget) |> ignore
                 | OpCodeValues.Box ->
                     x.AppendProbeWithOffset(probes.box, [], prependTarget.offset, x.tokens.void_i_offset_sig, instr) |> ignore
                     x.AppendInstr OpCodes.Conv_I NoArg instr

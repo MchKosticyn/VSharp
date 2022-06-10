@@ -57,7 +57,7 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
         let t = TypeOfAddress state address
         CSharpUtils.LayoutUtils.MetadataSize t
 
-    static let mutable id = 0
+    static let mutable clientId = 0
 
     let mutable callIsSkipped = false
     let mutable mainReached = false
@@ -78,7 +78,7 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
             result.Arguments <- method.Module.Assembly.Location
         else
             let runnerPath = "VSharp.TestRunner.dll"
-            result.Arguments <- sprintf "%s %s %O" runnerPath (tempTest id) false
+            result.Arguments <- sprintf "%s %s %O" runnerPath (tempTest clientId) false
         result
 
     [<DefaultValue>] val mutable private communicator : Communicator
@@ -116,23 +116,23 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
             test.SetTypeGenericParameters concreteClassParams mockedClassParams
             test.SetMethodGenericParameters concreteMethodParams mockedMethodParams
         | None -> raise (InsufficientInformationException "Could not detect appropriate substitution of generic parameters")
-        test.Serialize(tempTest id)
+        test.Serialize(tempTest clientId)
 
     member x.Spawn() =
         x.CreateTest()
         let pipe, pipePath =
             if RuntimeInformation.IsOSPlatform(OSPlatform.Windows) then
-                let pipe = sprintf "concolic_fifo_%d.pipe" id
+                let pipe = sprintf "concolic_fifo_%d.pipe" clientId
                 let pipePath = sprintf "\\\\.\\pipe\\%s" pipe
                 pipe, pipePath
             else
-                let pipeFile = sprintf "%sconcolic_fifo_%d.pipe" pathToTmp id
+                let pipeFile = sprintf "%sconcolic_fifo_%d.pipe" pathToTmp clientId
                 pipeFile, pipeFile
         let env = environment entryPoint pipePath
         x.communicator <- new Communicator(pipe)
         concolicProcess <- Process.Start env
         isRunning <- true
-        id <- id + 1
+        clientId <- clientId + 1
         concolicProcess.OutputDataReceived.Add <| fun args -> Logger.trace "CONCOLIC OUTPUT: %s" args.Data
         concolicProcess.ErrorDataReceived.Add <| fun args -> Logger.trace "CONCOLIC ERROR: %s" args.Data
         concolicProcess.BeginOutputReadLine()
@@ -181,6 +181,16 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
             let fieldOffset = CSharpUtils.LayoutUtils.GetFieldOffset fieldInfo
             let offset = MakeNumber (fieldOffset + int offset)
             Ptr (StaticLocation fieldInfo.DeclaringType) typeof<Void> offset
+        | TemporaryAllocatedStruct(frameNumber, frameOffset) ->
+            let frameOffset = int frameOffset
+            let frame = List.item (List.length cilState.ipStack - int frameNumber) cilState.ipStack
+            let method = CilStateOperations.methodOf frame
+            let frameOffset = Offset.from frameOffset
+            let opCode, callee = method.ParseCallSite frameOffset
+            assert(opCode = OpCodes.Newobj)
+            let stackKey = TemporaryLocalVariableKey callee.DeclaringType
+            let offset = int offset |> MakeNumber
+            Ptr (StackLocation stackKey) typeof<Void> offset
 
     member private x.CalleeArgTypesIfPossible() =
         let m = Memory.GetCurrentExploringFunction cilState.state :?> Method
@@ -189,8 +199,11 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
         | Some offset ->
             let opCode, callee = m.ParseCallSite offset
             assert(opCode = OpCodes.Call || opCode = OpCodes.Callvirt || opCode = OpCodes.Newobj)
+            let isNewObj = opCode = OpCodes.Newobj
             let argTypes = callee.GetParameters() |> Array.map (fun p -> p.ParameterType)
-            if Reflection.hasThis callee then Array.append [|callee.DeclaringType|] argTypes else argTypes
+            if Reflection.hasThis callee && not isNewObj then
+                Array.append [|callee.DeclaringType|] argTypes
+            else argTypes
         | None -> internalfail "CalleeParamsIfPossible: could not get offset"
 
     member x.SynchronizeStates (c : execCommand) =
@@ -347,6 +360,7 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
                 match cilState.lastPushInfo with
                 | Some x when IsConcrete x && notEndOfEntryPoint && topIsEmpty ->
                     // NOTE: Newobj case
+                    // TODO: make better #refactoring
                     let evaluationStack = EvaluationStack.PopFromAnyFrame cilState.state.evaluationStack |> snd
                     cilState.state.evaluationStack <- evaluationStack
                     None

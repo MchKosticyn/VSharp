@@ -83,7 +83,7 @@ namespace IntegrationTests
     public class Blockchain
     {
         [TestSvm(100)]
-        public static long test(long time)
+        public static long OrderByBlocks(long time)
         {
             var miner = new BlockMiner();
             miner.Mine(time, 1);
@@ -92,7 +92,7 @@ namespace IntegrationTests
 
 
         [TestSvm(100)]
-        public static int test2(long time)
+        public static int SymbolicTime(long time)
         {
             var a = new BlockMiner();
             a.Mine(time, 1);
@@ -101,7 +101,7 @@ namespace IntegrationTests
         }
 
         [TestSvm(100)]
-        public static int test6(long time, bool f)
+        public static int conditional(long time, bool f)
         {
             var a = new BlockMiner();
             if (f)
@@ -123,8 +123,8 @@ namespace IntegrationTests
             return 0;
         }
 
-        [TestSvm(126)]
-        public static long test4(long time)
+        [TestSvm(100, 126)]
+        public static long MineAndGetFirstHash(long time)
         {
             var a = new BlockMiner();
             a.Mine(time, 1);
