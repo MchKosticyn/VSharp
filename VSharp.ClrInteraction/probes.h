@@ -478,7 +478,7 @@ PROBE(void, Track_Coverage, (OFFSET offset)) {
     addCoverageStep(offset);
 }
 
-PROBE(void, EnableInstrumentation, ()) { enabledInstrumentation(); }
+PROBE(void, EnableInstrumentation, ()) { enableInstrumentation(); }
 PROBE(void, DisableInstrumentation, ()) { disableInstrumentation(); }
 
 inline bool ldarg(INT16 idx) {
@@ -1052,6 +1052,8 @@ void leaveMain(OFFSET offset, UINT8 opsCount, EvalStackOperand *ops) {
         // NOTE: popping return value from IL execution
         bool returnValue = top.pop1();
         LOG(tout << "Return value is " << (returnValue ? "concrete" : "symbolic") << std::endl);
+    } else {
+        top.pop0();
     }
     sendCommand(offset, opsCount, ops);
     // NOTE: popping return value from SILI

@@ -429,6 +429,12 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
             // TODO: support struct
         | _ -> __unreachable__()
 
+    member private x.AppendMemForSource instructions (t, src) i opmemOffset =
+        src |> List.iter (fun srcInstr ->
+            let srcInstr = instructions |> Array.find (fun i -> i.offset = srcInstr.offset)
+            x.AppendMemForType(t, i, opmemOffset, srcInstr)
+            x.AppendInstr OpCodes.Dup NoArg srcInstr)
+
     member private x.AcceptTypeToken (t : System.Type) accept =
         if t.Module = x.m.Module && t.IsTypeDefinition && not (t.IsGenericType || t.IsGenericTypeDefinition) then
             t.MetadataToken
@@ -1387,28 +1393,20 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                         let isExecutableMethod = Loader.isExecutable callee
                         x.PrependProbe(probes.call, [(OpCodes.Ldc_I4, Arg32 argsCount)], x.tokens.bool_u2_sig, &prependTarget) |> ignore
 
+                        let opmemOffset = int prependTarget.offset
                         if isModeledInternalCall || not isExecutableMethod then
                             match instr.stackState with
                             | Some list ->
                                 let types = List.take argsCount list |> Array.ofList
-                                let opmemOffset = int prependTarget.offset
                                 for i = 0 to argsCount - 1 do
-                                    let t, src = types.[i]
-                                    src |> List.iter (fun srcInstr ->
-                                        let srcInstr = instructions |> Array.find (fun i -> i.offset = srcInstr.offset)
-                                        x.AppendMemForType(t, argsCount - i - 1, opmemOffset, srcInstr)
-                                        x.AppendInstr OpCodes.Dup NoArg srcInstr)
+                                    x.AppendMemForSource instructions types.[i] (argsCount - i - 1) opmemOffset
                             | None -> __unreachable__()
-                            elif hasThis then
-                                match instr.stackState with
-                                | Some list ->
-                                    let opmemOffset = int prependTarget.offset
-                                    let t, src = List.item (argsCount - 1) list
-                                    src |> List.iter (fun srcInstr ->
-                                        let srcInstr = instructions |> Array.find (fun i -> i.offset = srcInstr.offset)
-                                        x.AppendMemForType(t, 0, opmemOffset, srcInstr)
-                                        x.AppendInstr OpCodes.Dup NoArg srcInstr)
-                                | None -> __unreachable__()
+                        elif hasThis then
+                            match instr.stackState with
+                            | Some list ->
+                                let src = List.item (argsCount - 1) list
+                                x.AppendMemForSource instructions src 0 opmemOffset
+                            | None -> __unreachable__()
 
                         if isExecutableMethod then
                             let br_push = x.PrependBranch(OpCodes.Brtrue_S, &prependTarget)

@@ -81,13 +81,15 @@ bool vsharp::instrumentingEnabled() {
     return instrumentationEnabled;
 }
 
-void vsharp::enabledInstrumentation() {
-    assert(!instrumentationEnabled);
+void vsharp::enableInstrumentation() {
+    if (instrumentationEnabled)
+        LOG(tout << "WARNING: enableInstrumentation, instrumentation already enabled" << std::endl);
     instrumentationEnabled = true;
 }
 
 void vsharp::disableInstrumentation() {
-    assert(instrumentationEnabled);
+    if (!instrumentationEnabled)
+        LOG(tout << "WARNING: disableInstrumentation, instrumentation already disabled" << std::endl);
     instrumentationEnabled = false;
 }
 

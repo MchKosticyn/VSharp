@@ -27,7 +27,7 @@ void mainLeft();
 bool isMainLeft();
 
 bool instrumentingEnabled();
-void enabledInstrumentation();
+void enableInstrumentation();
 void disableInstrumentation();
 
 void enterMain();
