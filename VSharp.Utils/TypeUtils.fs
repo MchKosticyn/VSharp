@@ -36,6 +36,7 @@ module TypeUtils =
     let isReal = realTypes.Contains
     let isUnsigned = unsignedTypes.Contains
     let isPrimitive = primitiveTypes.Contains
+    let isStruct (t : Type) = t.IsValueType && not t.IsPrimitive && not t.IsEnum
 
     // returns true, if at least one constraint on type parameter "t" implies that "t" is reference type (for example, "t : class" case)
     // returns false, if "t" is value type or if we have no information about "t" type from constraints

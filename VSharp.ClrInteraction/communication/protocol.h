@@ -29,13 +29,15 @@ enum CommandType {
     ReadHeapBytes = 0x63,
     ReadExecResponse = 0x64,
     Unmarshall = 0x65,
-    ReadWholeObject = 0x66,
-    ParseFieldRefTypeToken = 0x67,
-    ParseFieldDefTypeToken = 0x69,
-    ParseArgTypeToken = 0x70,
-    ParseLocalTypeToken = 0x71,
-    ParseReturnTypeToken = 0x72,
-    ParseDeclaringTypeToken = 0x73
+    UnmarshallArray = 0x66,
+    ReadWholeObject = 0x67,
+    ReadArray = 0x68,
+    ParseFieldRefTypeToken = 0x69,
+    ParseFieldDefTypeToken = 0x70,
+    ParseArgTypeToken = 0x71,
+    ParseLocalTypeToken = 0x72,
+    ParseReturnTypeToken = 0x73,
+    ParseDeclaringTypeToken = 0x74
 };
 
 class Protocol {
@@ -64,8 +66,9 @@ public:
     bool acceptToken(mdToken &token);
     bool acceptInt32(INT32 &value);
     bool acceptTokenAndInt32(mdToken &token, INT32 &value);
-    bool acceptReadObjectParameters(OBJID &objID, bool &isArray, int &refOffsetsLength, int *&refOffsets);
-    bool acceptHeapReadingParameters(VirtualAddress &address, INT32 &size, BYTE &isRef);
+    bool acceptReadObjectParameters(OBJID &objID, int &refOffsetsLength, int *&refOffsets);
+    bool acceptReadArrayParameters(OBJID &objID, INT32 &elemSize, int &refOffsetsLength, int *&refOffsets);
+    bool acceptHeapReadingParameters(VirtualAddress &address, INT32 &size, int &refOffsetsLength, int *&refOffsets);
     bool sendToken(mdToken token);
     bool sendBytes(char *bytes, int size);
     bool sendStringsPoolIndex(unsigned index);

@@ -7,15 +7,17 @@ open VSharp
 open VSharp.Core
 open VSharp.CSharpUtils
 
+type private FieldWithOffset =
+    | Struct of FieldInfo * int * FieldWithOffset array
+    | Primitive of FieldInfo * int
+    | Ref of FieldInfo * int
+
 type ConcolicMemory(communicator : Communicator) =
     let physicalAddresses = Dictionary<UIntPtr, concreteHeapAddress Lazy>()
     let virtualAddresses = Dictionary<concreteHeapAddress, UIntPtr>()
     let unmarshalledAddresses = HashSet()
 
     let zeroHeapAddress = VectorTime.zero
-
-    let arrayRefOffsets (elemType : Type) =
-        if not elemType.IsValueType then [| LayoutUtils.ArrayElementsOffset |] else Array.empty
 
     // ------------------------- Parsing objects from concolic memory -------------------------
 
@@ -41,12 +43,73 @@ type ConcolicMemory(communicator : Communicator) =
             obj :?> char
         Array.init length parseOneChar
 
-    let parseFields (bytes : byte array) fieldOffsets typ =
-        let parseOneField (info : FieldInfo, offset) =
-            let fieldSize = TypeUtils.internalSizeOf info.FieldType |> int
-            let value = Reflection.bytesToObj bytes[offset .. offset + fieldSize - 1] info.FieldType
-            info, value
+    let rec parseFields (bytes : byte array) (fieldOffsets : FieldWithOffset array) =
+        let parseOneField (field : FieldWithOffset) =
+            match field with
+            | Primitive(fieldInfo, offset)
+            | Ref(fieldInfo, offset) ->
+                let fieldType = fieldInfo.FieldType
+                let fieldSize = TypeUtils.internalSizeOf fieldType |> int
+                fieldInfo, Reflection.bytesToObj bytes[offset .. offset + fieldSize - 1] fieldType
+            | Struct(fieldInfo, offset, fields) ->
+                let fieldType = fieldInfo.FieldType
+                let fieldSize = TypeUtils.internalSizeOf fieldType |> int
+                let bytes = bytes[offset .. offset + fieldSize - 1]
+                let data = parseFields bytes fields |> FieldsData |> box
+                fieldInfo, data
         Array.map parseOneField fieldOffsets
+
+    // ------------------------- Basic helper functions -------------------------
+
+    let rec fieldsWithOffsets (t : Type) : FieldWithOffset array =
+        assert(not t.IsPrimitive && not t.IsArray)
+        let fields = Reflection.fieldsOf false t
+        let getFieldOffset (_, info : FieldInfo) =
+            let fieldType = info.FieldType
+            match fieldType with
+            | _ when fieldType.IsPrimitive || fieldType.IsEnum ->
+                Primitive(info, Reflection.memoryFieldOffset info)
+            | _ when TypeUtils.isStruct fieldType ->
+                let fields = fieldsWithOffsets fieldType
+                Struct(info, Reflection.memoryFieldOffset info, fields)
+            | _ ->
+                assert(not fieldType.IsValueType)
+                Ref(info, Reflection.memoryFieldOffset info)
+        Array.map getFieldOffset fields
+
+    let chooseRefOffsets (fieldsWithOffsets : FieldWithOffset array) =
+        let rec handleOffset (position, offsets) field =
+            match field with
+            | Ref(_, offset) -> position, position + offset :: offsets
+            | Struct(_, offset, fields) ->
+                let fieldsOffsets = Array.fold handleOffset (position + offset, offsets) fields |> snd
+                position, fieldsOffsets
+            | Primitive _ -> position, offsets
+        Array.fold handleOffset (0, List.empty) fieldsWithOffsets |> snd |> List.toArray
+
+    let arrayRefOffsets (elemType : Type) =
+        System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode
+        match elemType with
+        | _ when elemType.IsPrimitive || elemType.IsEnum -> Array.empty
+        | _ when elemType.IsValueType -> fieldsWithOffsets elemType |> chooseRefOffsets
+        | _ ->
+            assert(not elemType.IsValueType)
+            Array.singleton 0
+
+    let readHeapBytes address offset size (t : Type) =
+        match t with
+        | _ when t.IsPrimitive || t.IsEnum ->
+            let bytes = communicator.ReadHeapBytes address offset size Array.empty
+            Reflection.bytesToObj bytes t
+        | _ when TypeUtils.isStruct t ->
+            let fieldOffsets = fieldsWithOffsets t
+            let refOffsets = chooseRefOffsets fieldOffsets
+            let bytes = communicator.ReadHeapBytes address offset size refOffsets
+            parseFields bytes fieldOffsets |> FieldsData |> box
+        | _ ->
+            assert(not t.IsValueType)
+            let bytes = communicator.ReadHeapBytes address offset size (Array.singleton 0)
+            Reflection.bytesToObj bytes t
 
     interface IConcreteMemory with
         // TODO: support non-vector arrays
@@ -62,13 +125,11 @@ type ConcolicMemory(communicator : Communicator) =
             let elemType, dims, isVector = arrayType
             let readElement linearIndex =
                 let t = Types.ToDotNetType elemType
-                let isRef = Types.IsValueType elemType |> not
                 let size = TypeUtils.internalSizeOf t |> int
                 let metadata = if isSting then LayoutUtils.StringElementsOffset else LayoutUtils.ArrayElementsOffset
                 let offset = linearIndex * size + metadata
                 let address = cm.GetPhysicalAddress address
-                let bytes = communicator.ReadHeapBytes address offset size isRef
-                Reflection.bytesToObj bytes t
+                readHeapBytes address offset size t
             if isVector then
                 assert(List.length indices = 1)
                 readElement (List.head indices)
@@ -82,9 +143,7 @@ type ConcolicMemory(communicator : Communicator) =
             let _, _, isVector = arrayType
             let address = (x :> IConcreteMemory).GetPhysicalAddress address
             let offset = LayoutUtils.ArrayLengthOffset(isVector, dim)
-            if isVector then
-                let bytes = communicator.ReadHeapBytes address offset sizeof<int> false
-                Reflection.bytesToObj bytes typeof<int>
+            if isVector then readHeapBytes address offset sizeof<int> typeof<int>
             else internalfail "Length reading for non-vector array is not implemented!"
 
         member x.ReadArrayLowerBound _ _ arrayType =
@@ -98,33 +157,31 @@ type ConcolicMemory(communicator : Communicator) =
             let t = fieldInfo.FieldType
             let offset = Reflection.memoryFieldOffset fieldInfo
             let size = TypeUtils.internalSizeOf t |> int
-            let bytes = communicator.ReadHeapBytes address offset size (not t.IsValueType)
-            Reflection.bytesToObj bytes t
+            readHeapBytes address offset size t
 
         member x.ReadBoxedLocation address actualType =
             let address = (x :> IConcreteMemory).GetPhysicalAddress address
             match actualType with
-            | _ when actualType.IsPrimitive ->
+            | _ when actualType.IsPrimitive || actualType.IsEnum ->
                 let size = TypeUtils.internalSizeOf actualType |> int
                 let metadataSize = LayoutUtils.MetadataSize typeof<Object>
-                let bytes = communicator.ReadHeapBytes address metadataSize size false
+                let bytes = communicator.ReadHeapBytes address metadataSize size Array.empty
                 Reflection.bytesToObj bytes actualType
             | _ ->
-                let fields = Reflection.fieldsOf false actualType
-                let fieldOffsets = Array.map (fun (_, info) -> info, Reflection.memoryFieldOffset info) fields
-                let getRefOffset (f : FieldInfo, offset) = if not f.FieldType.IsValueType then Some offset else None
-                let refOffsets = Array.choose getRefOffset fieldOffsets
-                let bytes = communicator.ReadWholeObject address false refOffsets
-                let data = parseFields bytes fieldOffsets actualType |> FieldsData
-                data :> obj
+                assert(actualType.IsValueType)
+                let fieldOffsets = fieldsWithOffsets actualType
+                let refOffsets = chooseRefOffsets fieldOffsets
+                let bytes = communicator.ReadWholeObject address refOffsets
+                parseFields bytes fieldOffsets |> FieldsData |> box
 
         member x.GetAllArrayData address arrayType =
             let cm = x :> IConcreteMemory
             let elemType, dims, isVector = arrayType
             let elemType = Types.ToDotNetType elemType
+            let elemSize = TypeUtils.internalSizeOf elemType |> int
             let physAddress = cm.GetPhysicalAddress address
             let refOffsets = arrayRefOffsets elemType
-            let bytes = communicator.ReadWholeObject physAddress true refOffsets
+            let bytes = communicator.ReadArray physAddress elemSize refOffsets
             if isVector then
                 let array = parseVectorArray bytes elemType
                 Array.mapi (fun i value -> List.singleton i, value) array
@@ -140,22 +197,21 @@ type ConcolicMemory(communicator : Communicator) =
             | _ when typ.IsSZArray ->
                 let elemType = typ.GetElementType()
                 let refOffsets = arrayRefOffsets elemType
-                let bytes = communicator.Unmarshall address true refOffsets
+                let elemSize = TypeUtils.internalSizeOf elemType |> int
+                let bytes = communicator.UnmarshallArray address elemSize refOffsets
                 parseVectorArray bytes elemType |> VectorData
             | _ when typ.IsArray ->
                 let rank = typ.GetArrayRank()
                 internalfailf "Unmarshalling non-vector array (rank = %O) is not implemented!" rank
             | _ when typ = typeof<String> ->
-                let bytes = communicator.Unmarshall address false Array.empty
+                let bytes = communicator.Unmarshall address Array.empty
                 parseString bytes |> StringData
             | _ ->
                 assert(not typ.IsValueType)
-                let fields = Reflection.fieldsOf false typ
-                let fieldOffsets = Array.map (fun (_, info) -> info, Reflection.memoryFieldOffset info) fields
-                let getRefOffset (f : FieldInfo, offset) = if not f.FieldType.IsValueType then Some offset else None
-                let refOffsets = fieldOffsets |> Array.choose getRefOffset
-                let bytes = communicator.Unmarshall address false refOffsets
-                parseFields bytes fieldOffsets typ |> FieldsData
+                let fieldOffsets = fieldsWithOffsets typ
+                let refOffsets = chooseRefOffsets fieldOffsets
+                let bytes = communicator.Unmarshall address refOffsets
+                parseFields bytes fieldOffsets |> FieldsData
 
         member x.Allocate physAddress virtAddress =
             physicalAddresses.Add(physAddress, virtAddress)

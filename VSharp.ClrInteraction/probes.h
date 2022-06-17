@@ -285,10 +285,10 @@ CommandType getAndHandleCommand() {
         case ReadHeapBytes: {
             VirtualAddress address{};
             INT32 size;
-            BYTE isRef;
-            if (!protocol->acceptHeapReadingParameters(address, size, isRef)) FAIL_LOUD("Accepting heap reading parameters failed!");
+            int refOffsetsLength, *refOffsets;
+            if (!protocol->acceptHeapReadingParameters(address, size, refOffsetsLength, refOffsets)) FAIL_LOUD("Accepting heap reading parameters failed!");
 
-            char *buffer = heap.readBytes(address, size, isRef);
+            char *buffer = heap.readBytes(address, size, refOffsetsLength, refOffsets);
             if (!protocol->sendBytes(buffer, size)) FAIL_LOUD("Sending bytes from heap reading failed!");
             break;
         }
@@ -296,10 +296,21 @@ CommandType getAndHandleCommand() {
             OBJID objID;
             bool isArray;
             int refOffsetsLength, *refOffsets;
-            if (!protocol->acceptReadObjectParameters(objID, isArray, refOffsetsLength, refOffsets)) FAIL_LOUD("Accepting object ID failed!");
+            if (!protocol->acceptReadObjectParameters(objID, refOffsetsLength, refOffsets)) FAIL_LOUD("Accepting object ID failed!");
             char *buffer;
             SIZE size;
-            heap.unmarshall(objID, buffer, size, isArray, refOffsetsLength, refOffsets);
+            heap.unmarshall(objID, buffer, size, refOffsetsLength, refOffsets);
+            if (!protocol->sendBytes(buffer, (int) size)) FAIL_LOUD("Sending bytes from heap reading failed!");
+            break;
+        }
+        case UnmarshallArray: {
+            OBJID objID;
+            bool isArray;
+            int elemSize, refOffsetsLength, *refOffsets;
+            if (!protocol->acceptReadArrayParameters(objID, elemSize, refOffsetsLength, refOffsets)) FAIL_LOUD("Accepting object ID failed!");
+            char *buffer;
+            SIZE size;
+            heap.unmarshallArray(objID, buffer, size, elemSize, refOffsetsLength, refOffsets);
             if (!protocol->sendBytes(buffer, (int) size)) FAIL_LOUD("Sending bytes from heap reading failed!");
             break;
         }
@@ -307,10 +318,21 @@ CommandType getAndHandleCommand() {
             OBJID objID;
             bool isArray;
             int refOffsetsLength, *refOffsets;
-            if (!protocol->acceptReadObjectParameters(objID, isArray, refOffsetsLength, refOffsets)) FAIL_LOUD("Accepting object ID failed!");
+            if (!protocol->acceptReadObjectParameters(objID, refOffsetsLength, refOffsets)) FAIL_LOUD("Accepting object ID failed!");
             char *buffer;
             SIZE size;
-            heap.readWholeObject(objID, buffer, size, isArray, refOffsetsLength, refOffsets);
+            heap.readWholeObject(objID, buffer, size, refOffsetsLength, refOffsets);
+            if (!protocol->sendBytes(buffer, (int) size)) FAIL_LOUD("Sending bytes from heap reading failed!");
+            break;
+        }
+        case ReadArray: {
+            OBJID objID;
+            bool isArray;
+            int elemSize, refOffsetsLength, *refOffsets;
+            if (!protocol->acceptReadArrayParameters(objID, elemSize, refOffsetsLength, refOffsets)) FAIL_LOUD("Accepting object ID failed!");
+            char *buffer;
+            SIZE size;
+            heap.readArray(objID, buffer, size, elemSize, refOffsetsLength, refOffsets);
             if (!protocol->sendBytes(buffer, (int) size)) FAIL_LOUD("Sending bytes from heap reading failed!");
             break;
         }

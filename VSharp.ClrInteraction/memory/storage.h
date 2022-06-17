@@ -139,6 +139,7 @@ private:
 
     bool resolve(ADDR address, VirtualAddress &vAddress) const;
     void resolveRefInHeapBytes(char *bytes) const;
+    static char *readBytes(const VirtualAddress &address, SIZE sizeOfPtr);
 
 public:
     Storage();
@@ -163,9 +164,11 @@ public:
     bool readConcreteness(ADDR address, SIZE sizeOfPtr) const;
     void writeConcreteness(ADDR address, SIZE sizeOfPtr, bool vConcreteness) const;
     void writeConcretenessWholeObject(ADDR address, bool vConcreteness) const;
-    char *readBytes(const VirtualAddress &address, SIZE sizeOfPtr, BYTE isRef) const;
-    void readWholeObject(OBJID objID, char *&buffer, SIZE &size, bool isArray, int refOffsetsLength, int *refOffsets) const;
-    void unmarshall(OBJID objID, char *&buffer, SIZE &size, bool isArray, int refOffsetsLength, int *refOffsets) const;
+    char *readBytes(const VirtualAddress &address, SIZE sizeOfPtr, int refOffsetsLength, int *refOffsets);
+    void readWholeObject(OBJID objID, char *&buffer, SIZE &size, int refOffsetsLength, int *refOffsets) const;
+    void readArray(OBJID objID, char *&buffer, SIZE &size, INT32 elemSize, int refOffsetsLength, int *refOffsets) const;
+    void unmarshall(OBJID objID, char *&buffer, SIZE &size, int refOffsetsLength, int *refOffsets) const;
+    void unmarshallArray(OBJID objID, char *&buffer, SIZE &size, INT32 elemSize, int refOffsetsLength, int *refOffsets) const;
 
     void dump() const;
 };

@@ -221,24 +221,26 @@ bool Protocol::acceptTokenAndInt32(mdToken &token, INT32 &value) {
     return true;
 }
 
-bool Protocol::acceptHeapReadingParameters(VirtualAddress &address, INT32 &size, BYTE &isRef) {
+bool Protocol::acceptHeapReadingParameters(VirtualAddress &address, INT32 &size, INT32 &refOffsetsLength, INT32 *&refOffsets) {
     char *message;
     int messageLength;
     if (!readBuffer(message, messageLength)) {
         LOG_ERROR(tout << "Reading instrumented method body failed!");
         return false;
     }
-    assert(messageLength == sizeof(UINT_PTR) + sizeof(INT32) * 2 + 1);
     char *start = message;
     address.obj = (OBJID) *(UINT_PTR *)message; message += sizeof(UINT_PTR);
     address.offset = (SIZE) *(INT32 *)message; message += sizeof(INT32);
     size = *(INT32 *) message; message += sizeof(INT32);
-    isRef = *(BYTE *) message; message += sizeof(BYTE);
+    refOffsetsLength = *(INT32 *)message; message += sizeof(INT32);
+    refOffsets = new int[refOffsetsLength];
+    memcpy(refOffsets, message, refOffsetsLength * sizeof(INT32));
+    assert(messageLength == sizeof(UINT_PTR) + sizeof(INT32) + sizeof(INT32) + sizeof(INT32) + sizeof(INT32) * refOffsetsLength);
     delete[] start;
     return true;
 }
 
-bool Protocol::acceptReadObjectParameters(OBJID &objID, bool &isArray, int &refOffsetsLength, int *&refOffsets) {
+bool Protocol::acceptReadArrayParameters(OBJID &objID, INT32 &elemSize, int &refOffsetsLength, int *&refOffsets) {
     char *message;
     int messageLength;
     if (!readBuffer(message, messageLength)) {
@@ -247,13 +249,28 @@ bool Protocol::acceptReadObjectParameters(OBJID &objID, bool &isArray, int &refO
     }
     char *start = message;
     objID = (OBJID) *(UINT_PTR *)message; message += sizeof(UINT_PTR);
-    char isArrayByte = *(char *)message; message += sizeof(char);
-    if (isArrayByte == 1) isArray = true;
-    else isArray = false;
+    elemSize = *(INT32 *)message; message += sizeof(INT32);
     refOffsetsLength = *(INT32 *)message; message += sizeof(INT32);
     refOffsets = new int[refOffsetsLength];
     memcpy(refOffsets, message, refOffsetsLength * sizeof(INT32));
-    assert(messageLength == sizeof(UINT_PTR) + sizeof(char) + sizeof(INT32) + sizeof(INT32) * refOffsetsLength);
+    assert(messageLength == sizeof(UINT_PTR) + sizeof(INT32) + sizeof(INT32) + sizeof(INT32) * refOffsetsLength);
+    delete[] start;
+    return true;
+}
+
+bool Protocol::acceptReadObjectParameters(OBJID &objID, int &refOffsetsLength, int *&refOffsets) {
+    char *message;
+    int messageLength;
+    if (!readBuffer(message, messageLength)) {
+        LOG_ERROR(tout << "Reading instrumented method body failed!");
+        return false;
+    }
+    char *start = message;
+    objID = (OBJID) *(UINT_PTR *)message; message += sizeof(UINT_PTR);
+    refOffsetsLength = *(INT32 *)message; message += sizeof(INT32);
+    refOffsets = new int[refOffsetsLength];
+    memcpy(refOffsets, message, refOffsetsLength * sizeof(INT32));
+    assert(messageLength == sizeof(UINT_PTR) + sizeof(INT32) + sizeof(INT32) * refOffsetsLength);
     delete[] start;
     return true;
 }
