@@ -5,6 +5,8 @@
 
 #define min(a,b) (((a) < (b)) ? (a) : (b))
 #define max(a,b) (((a) > (b)) ? (a) : (b))
+#define ArrayLengthOffset sizeof(UINT_PTR)
+#define ArrayLengthSize sizeof(INT64)
 
 namespace vsharp {
 
@@ -348,13 +350,9 @@ namespace vsharp {
         obj->writeConcretenessWholeObject(vConcreteness);
     }
 
-    char *Storage::readBytes(const VirtualAddress &address, SIZE sizeOfPtr, BYTE isRef) const {
+    char *Storage::readBytes(const VirtualAddress &address, SIZE sizeOfPtr) {
         Object *obj = (Object *) address.obj;
         char *bytes = obj->readBytes(address.offset, sizeOfPtr);
-        if (isRef) {
-            assert(sizeOfPtr == sizeof(UINT_PTR));
-            resolveRefInHeapBytes(bytes);
-        }
         return bytes;
     }
 
@@ -367,32 +365,55 @@ namespace vsharp {
         memcpy(bytes, &vAddress.obj, sizeof(UINT_PTR));
     }
 
-    void Storage::readWholeObject(OBJID objID, char *&buffer, SIZE &size, bool isArray, int refOffsetsLength, int *refOffsets) const {
+    char *Storage::readBytes(const VirtualAddress &address, SIZE sizeOfPtr, int refOffsetsLength, int *refOffsets) {
+        Object *obj = (Object *) address.obj;
+        char *bytes = obj->readBytes(address.offset, sizeOfPtr);
+        char *object = bytes;
+        for (int i = 0; i < refOffsetsLength; i++) {
+            char *refAddress = object + refOffsets[i];
+            resolveRefInHeapBytes(refAddress);
+        }
+        return bytes;
+    }
+
+    void Storage::readArray(OBJID objID, char *&buffer, SIZE &size, INT32 elemSize, int refOffsetsLength, int *refOffsets) const {
         Object *obj = (Object *) objID;
         size = obj->sizeOf();
         VirtualAddress vAddress{objID, 0};
-        buffer = readBytes(vAddress, size, false);
-        if (isArray && refOffsetsLength > 0) { // TODO: implement for non-vector array
-            char *array = buffer + sizeof(UINT_PTR);
-            INT64 length;
-            memcpy(&length, array, sizeof(INT64)); array += sizeof(INT64);
-            for (int j = 0; j < length; j++) {
-                resolveRefInHeapBytes(array);
-                array += sizeof(UINT_PTR);
-            }
-        } else {
-            char *type = buffer + sizeof(UINT_PTR);
+        buffer = readBytes(vAddress, size);
+        char *array = buffer + ArrayLengthOffset;
+        INT64 length;
+        memcpy(&length, array, ArrayLengthSize); array += ArrayLengthSize;
+        for (int j = 0; j < length; j++) {
             for (int i = 0; i < refOffsetsLength; i++) {
-                char *refAddress = type + refOffsets[i];
+                char *refAddress = array + refOffsets[i];
                 resolveRefInHeapBytes(refAddress);
             }
+            array += elemSize;
         }
-
     }
 
-    void Storage::unmarshall(OBJID objID, char *&buffer, SIZE &size, bool isArray, int refOffsetsLength, int *refOffsets) const {
+    void Storage::readWholeObject(OBJID objID, char *&buffer, SIZE &size, int refOffsetsLength, int *refOffsets) const {
         Object *obj = (Object *) objID;
-        readWholeObject(objID, buffer, size, isArray, refOffsetsLength, refOffsets);
+        size = obj->sizeOf();
+        VirtualAddress vAddress{objID, 0};
+        buffer = readBytes(vAddress, size);
+        char *type = buffer + sizeof(UINT_PTR);
+        for (int i = 0; i < refOffsetsLength; i++) {
+            char *refAddress = type + refOffsets[i];
+            resolveRefInHeapBytes(refAddress);
+        }
+    }
+
+    void Storage::unmarshall(OBJID objID, char *&buffer, SIZE &size, int refOffsetsLength, int *refOffsets) const {
+        Object *obj = (Object *) objID;
+        readWholeObject(objID, buffer, size, refOffsetsLength, refOffsets);
+        obj->writeConcreteness(0, size, false);
+    }
+
+    void Storage::unmarshallArray(OBJID objID, char *&buffer, SIZE &size, INT32 elemSize, int refOffsetsLength, int *refOffsets) const {
+        Object *obj = (Object *) objID;
+        readArray(objID, buffer, size, elemSize, refOffsetsLength, refOffsets);
         obj->writeConcreteness(0, size, false);
     }
 

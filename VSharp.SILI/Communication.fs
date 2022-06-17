@@ -118,7 +118,9 @@ type commandForConcolic =
     | ReadHeapBytes
     | ReadExecResponse
     | Unmarshall
+    | UnmarshallArray
     | ReadWholeObject
+    | ReadArray
     | ParseFieldRefTypeToken
     | ParseFieldDefTypeToken
     | ParseArgTypeToken
@@ -139,13 +141,15 @@ type Communicator(pipeFile) =
     let readHeapBytesByte = byte(0x63)
     let readExecResponseByte = byte(0x64)
     let unmarshallByte = byte(0x65)
-    let readWholeObjectByte = byte(0x66)
-    let parseFieldRefTypeTokenByte = byte(0x67)
-    let parseFieldDefTypeTokenByte = byte(0x69)
-    let parseArgTypeTokenByte = byte(0x70)
-    let parseLocalTypeTokenByte = byte(0x71)
-    let parseReturnTypeTokenByte = byte(0x72)
-    let parseDeclaringTypeTokenByte = byte(0x73)
+    let unmarshallArrayByte = byte(0x66)
+    let readWholeObjectByte = byte(0x67)
+    let readArrayByte = byte(0x68)
+    let parseFieldRefTypeTokenByte = byte(0x69)
+    let parseFieldDefTypeTokenByte = byte(0x70)
+    let parseArgTypeTokenByte = byte(0x71)
+    let parseLocalTypeTokenByte = byte(0x72)
+    let parseReturnTypeTokenByte = byte(0x73)
+    let parseDeclaringTypeTokenByte = byte(0x74)
 
     let confirmation = Array.singleton confirmationByte
 
@@ -269,7 +273,9 @@ type Communicator(pipeFile) =
             | ReadHeapBytes -> readHeapBytesByte
             | ReadExecResponse -> readExecResponseByte
             | Unmarshall -> unmarshallByte
+            | UnmarshallArray -> unmarshallArrayByte
             | ReadWholeObject -> readWholeObjectByte
+            | ReadArray -> readArrayByte
             | ParseFieldRefTypeToken -> parseFieldRefTypeTokenByte
             | ParseFieldDefTypeToken -> parseFieldDefTypeTokenByte
             | ParseArgTypeToken -> parseArgTypeTokenByte
@@ -296,7 +302,6 @@ type Communicator(pipeFile) =
     member x.SendEntryPoint (moduleName : string) (metadataToken : int) =
         let moduleNameBytes = Encoding.Unicode.GetBytes moduleName
         let moduleSize = BitConverter.GetBytes moduleName.Length
-//        let moduleID = BitConverter.GetBytes m.Module.MetadataToken
         let methodDef = BitConverter.GetBytes metadataToken
         Array.concat [moduleSize; methodDef; moduleNameBytes] |> writeBuffer
 
@@ -339,32 +344,56 @@ type Communicator(pipeFile) =
         x.SendCommand ParseTypeSpec
         x.SendStringAndParseTypeToken string
 
-    member x.ReadHeapBytes (address : UIntPtr) offset size isRef : byte[] =
+    member x.ReadHeapBytes (address : UIntPtr) offset size refOffsets : byte[] =
         x.SendCommand ReadHeapBytes
-        let isRef = [| if isRef then 1uy else 0uy |]
-        Array.concat [x.Serialize<UIntPtr> address; x.Serialize<int> offset; x.Serialize<int> size; isRef] |> writeBuffer
-        match readBuffer() with
-        | Some bytes -> bytes
-        | None -> internalfail "Reading bytes from concolic: got nothing"
-
-    member private x.SendParametersAndReadObject (address : UIntPtr) isArray refOffsets : byte[] =
-        let isArray = [| if isArray then 1uy else 0uy |]
         let refOffsetBytes = Array.collect x.Serialize<int> refOffsets
         let offsetsLength = Array.length refOffsets |> x.Serialize<int>
-        Array.concat [x.Serialize<UIntPtr> address; isArray; offsetsLength; refOffsetBytes] |> writeBuffer
+        Array.concat [
+            x.Serialize<UIntPtr> address; x.Serialize<int> offset
+            x.Serialize<int> size; offsetsLength; refOffsetBytes
+        ] |> writeBuffer
         match readBuffer() with
         | Some bytes -> bytes
         | None -> internalfail "Reading bytes from concolic: got nothing"
 
-    // NOTE: 'Unmarshall' and 'ReadWholeObject' functions take 'isArray' argument to
-    // justify resolving references inside elements in conoclic
-    member x.Unmarshall (address : UIntPtr) isArray refOffsets : byte[] =
-        x.SendCommand Unmarshall
-        x.SendParametersAndReadObject address isArray refOffsets
+    member private x.SendParametersAndReadObject (address : UIntPtr) refOffsets : byte[] =
+        let refOffsetBytes = Array.collect x.Serialize<int> refOffsets
+        let offsetsLength = Array.length refOffsets |> x.Serialize<int>
+        Array.concat [x.Serialize<UIntPtr> address; offsetsLength; refOffsetBytes] |> writeBuffer
+        match readBuffer() with
+        | Some bytes -> bytes
+        | None -> internalfail "Reading bytes from concolic: got nothing"
 
-    member x.ReadWholeObject (address : UIntPtr) isArray refOffsets : byte[] =
+    member private x.SendParametersAndReadArray (address : UIntPtr) elemSize refOffsets : byte[] =
+        let refOffsetBytes = Array.collect x.Serialize<int> refOffsets
+        let offsetsLength = Array.length refOffsets |> x.Serialize<int>
+        Array.concat [x.Serialize<UIntPtr> address; x.Serialize<int32> elemSize; offsetsLength; refOffsetBytes] |> writeBuffer
+        match readBuffer() with
+        | Some bytes -> bytes
+        | None -> internalfail "Reading bytes from concolic: got nothing"
+
+    // NOTE: 'Unmarshall' and 'UnmarshallArray' cases are divided to
+    //       justify resolving references inside elements in Conoclic
+
+    // NOTE: function 'Unmarshall' is used only for non-array objects
+    member x.Unmarshall (address : UIntPtr) refOffsets : byte[] =
+        x.SendCommand Unmarshall
+        x.SendParametersAndReadObject address refOffsets
+
+    // NOTE: function 'UnmarshallArray' is used only for arrays
+    member x.UnmarshallArray (address : UIntPtr) elemSize refOffsets : byte[] =
+        x.SendCommand UnmarshallArray
+        x.SendParametersAndReadArray address elemSize refOffsets
+
+    // NOTE: is used for all objects except arrays
+    member x.ReadWholeObject (address : UIntPtr) refOffsets : byte[] =
         x.SendCommand ReadWholeObject
-        x.SendParametersAndReadObject address isArray refOffsets
+        x.SendParametersAndReadObject address refOffsets
+
+    // NOTE: function 'ReadArray' is used only for arrays
+    member x.ReadArray (address : UIntPtr) elemSize refOffsets : byte[] =
+        x.SendCommand ReadArray
+        x.SendParametersAndReadArray address elemSize refOffsets
 
     member x.ParseFieldRefTypeToken (fieldRef : int) : uint32 =
         x.SendCommand ParseFieldRefTypeToken

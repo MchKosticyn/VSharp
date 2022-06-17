@@ -73,6 +73,7 @@ type concreteData =
     | ComplexArrayData of Array // TODO: support non-vector arrays
     | FieldsData of (FieldInfo * obj)[]
 
+// TODO: use custom type as result of concrete memory operations?
 type IConcreteMemory =
     abstract Allocate : UIntPtr -> Lazy<concreteHeapAddress> -> unit // physical address * virtual address
     abstract Contains : concreteHeapAddress -> bool
