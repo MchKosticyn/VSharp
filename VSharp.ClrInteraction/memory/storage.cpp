@@ -320,7 +320,8 @@ namespace vsharp {
     bool Storage::readConcreteness(ADDR address, SIZE sizeOfPtr) const {
         VirtualAddress vAddress{};
         if (!resolve(address, vAddress)) {
-            FAIL_LOUD("Unbound pointer!");
+            LOG(tout << "WARNING: readConcreteness, unbound pointer = " << HEX(address) << std::endl);
+            return true;
         }
 
         auto *obj = (Object *) vAddress.obj;
@@ -330,8 +331,8 @@ namespace vsharp {
     void Storage::writeConcreteness(ADDR address, SIZE sizeOfPtr, bool vConcreteness) const {
         VirtualAddress vAddress{};
         if (!resolve(address, vAddress)) {
-            LOG(tout << "Unresolved address = " << address << std::endl);
-            FAIL_LOUD("Writing concreteness to heap: unable to resolve address");
+            LOG(tout << "WARNING: writeConcreteness, unbound pointer = " << HEX(address) << std::endl);
+            return;
         }
 
         auto *obj = (Object *) vAddress.obj;
@@ -346,7 +347,8 @@ namespace vsharp {
         }
 
         auto *obj = (Object *) vAddress.obj;
-        assert(vAddress.offset == 0);
+        if (vAddress.offset != 0)
+            LOG(tout << "WARNING: writeConcretenessWholeObject, offset in address != 0" << std::endl);
         obj->writeConcretenessWholeObject(vConcreteness);
     }
 
