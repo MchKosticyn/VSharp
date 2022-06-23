@@ -425,8 +425,8 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
         | evaluationStackCellType.Ref -> x.AppendMem_p(idx, offset, instr)
         | evaluationStackCellType.Struct
         | evaluationStackCellType.RefLikeStruct ->
-            __notImplemented__()
             // TODO: support struct
+            internalfail "AppendMemForType: struct case is not implemented yet"
         | _ -> __unreachable__()
 
     member private x.AppendMemForSource instructions (t, src) i opmemOffset =

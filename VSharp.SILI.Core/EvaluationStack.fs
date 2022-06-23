@@ -72,17 +72,6 @@ module internal EvaluationStack =
             args, { contents = rest :: ls }
         | [] -> __corruptedStack__()
 
-    let popFromAnyFrame evaluationStack =
-        let rec unwind frames =
-            match frames with
-            | (x :: xs) :: ls -> x, xs :: ls
-            | [] :: ls ->
-                let x, frames' = unwind ls
-                x, [] :: frames'
-            | [] -> __corruptedStack__()
-        let x, frames' = unwind evaluationStack.contents
-        x, { contents = frames' }
-
     // oldStack = [[1]; []]
     // newStack = [[2]]
     // b = [2], bs = []
