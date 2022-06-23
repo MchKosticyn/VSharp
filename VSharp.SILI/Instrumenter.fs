@@ -907,8 +907,8 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                     x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 0)], x.tokens.i_i1_sig, &prependTarget) |> ignore
                     x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 1)], x.tokens.i_i1_sig, &prependTarget) |> ignore
                     x.PrependProbeWithOffset(probes.execCpobj, [], x.tokens.void_token_i_i_offset_sig, &prependTarget) |> ignore
-                    br.arg <- Target prependTarget
-                    x.PrependPopOpmem &prependTarget |> ignore
+                    let popOpmem = x.PrependPopOpmem &prependTarget
+                    br.arg <- Target popOpmem
                 | OpCodeValues.Ldobj ->
                     x.PrependDup &prependTarget |> ignore
                     x.PrependProbeWithOffset(probes.ldobj, [], x.tokens.void_i_offset_sig, &prependTarget) |> ignore
@@ -1161,8 +1161,8 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                     x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 0)], x.tokens.i_i1_sig, &prependTarget) |> ignore
                     x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 1)], x.tokens.i_i1_sig, &prependTarget) |> ignore
                     x.PrependProbeWithOffset(exec, [], x.tokens.void_i_i_offset_sig, &prependTarget) |> ignore
-                    br.arg <- Target prependTarget
-
+                    let popOpmem = x.PrependPopOpmem &prependTarget
+                    br.arg <- Target popOpmem
                 | OpCodeValues.Stelem_I
                 | OpCodeValues.Stelem_I1
                 | OpCodeValues.Stelem_I2
@@ -1300,8 +1300,8 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                     x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 1)], x.tokens.i_i1_sig, &prependTarget) |> ignore
                     x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 2)], x.tokens.i_i1_sig, &prependTarget) |> ignore
                     x.PrependProbeWithOffset(probes.execCpblk, [], x.tokens.void_i_i_i_offset_sig, &prependTarget) |> ignore
-                    br.arg <- Target prependTarget
-                    x.PrependPopOpmem &prependTarget |> ignore
+                    let popOpmem = x.PrependPopOpmem &prependTarget
+                    br.arg <- Target popOpmem
                 | OpCodeValues.Initblk ->
                     // calli mem3
                     // calli unmem 0
@@ -1327,9 +1327,8 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                     x.PrependProbe(probes.unmem_1, [(OpCodes.Ldc_I4, Arg32 1)], x.tokens.i1_i1_sig, &prependTarget) |> ignore
                     x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 2)], x.tokens.i_i1_sig, &prependTarget) |> ignore
                     x.PrependProbeWithOffset(probes.execInitblk, [], x.tokens.void_i_i1_i_offset_sig, &prependTarget) |> ignore
-                    br.arg <- Target prependTarget
-                    x.PrependPopOpmem &prependTarget |> ignore
-
+                    let popOpmem = x.PrependPopOpmem &prependTarget
+                    br.arg <- Target popOpmem
                 | OpCodeValues.Rethrow ->
                     atLeastOneReturnFound <- true
                     x.PrependProbeWithOffset(probes.rethrow, [], x.tokens.void_offset_sig, &prependTarget) |> ignore
@@ -1377,8 +1376,9 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                         // TODO: if method is C# internal call, instr.arg <- token of C# implementation #do
                         let callee = Reflection.resolveMethod x.m token
                         let isNewObj = opcodeValue = OpCodeValues.Newobj
+                        let methodOfStruct = callee.DeclaringType.IsValueType
 
-                        if isNewObj && not callee.DeclaringType.IsValueType then
+                        if isNewObj && not methodOfStruct then
                             x.AppendProbe(probes.newobj, [], x.tokens.void_i_sig, instr) |> ignore
                             x.AppendInstr OpCodes.Conv_I NoArg instr
                             x.AppendDup instr
@@ -1423,13 +1423,13 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
 
                             let pushStart = x.PrependNop &prependTarget
                             br_push.arg <- Target pushStart
-                            if isModeledInternalCall && (returnValues > 0 || isNewObj) then
+                            if isModeledInternalCall && (returnValues > 0 || isNewObj && methodOfStruct) then
                                 x.PrependProbe(probes.pushInternalCallResult, [], x.tokens.void_sig, &prependTarget) |> ignore
 
                             let callStart = x.PrependNop &prependTarget
                             br_call |> Option.iter (fun instr -> instr.arg <- Target callStart)
                             if not isModeledInternalCall then
-                                if isNewObj && callee.DeclaringType.IsValueType then
+                                if isNewObj && methodOfStruct then
                                     let allocatedType = callee.DeclaringType
                                     let sizeInstr = x.TypeSizeInstr allocatedType (fun () -> x.AcceptDeclaringTypeToken callee token)
                                     x.PrependProbeWithOffset(probes.pushTemporaryAllocatedStruct, [sizeInstr], x.tokens.void_size_offset_sig, &prependTarget) |> ignore

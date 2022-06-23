@@ -606,10 +606,7 @@ inline void branch(OFFSET offset) {
 // TODO: make it bool, change instrumentation
 PROBE(void, BrTrue, (OFFSET offset)) { branch(offset); }
 PROBE(void, BrFalse, (OFFSET offset)) { branch(offset); }
-PROBE(void, Switch, (OFFSET offset)) {
-    // TODO:
-    topFrame().pop1();
-}
+PROBE(void, Switch, (OFFSET offset)) { branch(offset); }
 
 PROBE(void, Track_UnOp, (UINT16 op, OFFSET offset)) {
     StackFrame &top = vsharp::topFrame();
