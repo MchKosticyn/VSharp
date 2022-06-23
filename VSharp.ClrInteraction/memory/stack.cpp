@@ -446,7 +446,7 @@ Stack::OperandMem::OperandMem(const StackFrame &frame, UINT32 offset)
 }
 
 void Stack::OperandMem::mem(char *value, CorElementType t, size_t size, INT8 idx) {
-    if (idx > m_memSize) {
+    if (idx >= m_memSize) {
         m_memSize = idx + 1;
         m_dataPtrs.resize(m_memSize);
         m_data.resize(m_memSize * (sizeof(DOUBLE) + sizeof(CorElementType)));

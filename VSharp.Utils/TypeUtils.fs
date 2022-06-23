@@ -92,11 +92,6 @@ module TypeUtils =
 
     let inline isNullable (t : Type) = Nullable.GetUnderlyingType(t) <> null
 
-    let defaultOf (t : Type) =
-        if t.IsValueType && not (isNullable t) && not t.ContainsGenericParameters
-            then Activator.CreateInstance t
-            else null
-
     let internalSizeOf (typ: Type) : uint32 = // Reflection hacks, don't touch! Marshal.SizeOf lies!
         assert(isGround typ)
         if typ.IsByRef || typ.IsPointer || not typ.IsValueType then uint32 sizeof<IntPtr>

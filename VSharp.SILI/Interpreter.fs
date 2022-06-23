@@ -1103,7 +1103,14 @@ type internal ILInterpreter(isConcolicMode : bool) as this =
     member x.RetrieveCalledMethodAndArgs (opCode : OpCode) (calledMethodBase : MethodBase) (cilState : cilState) =
         let args = retrieveActualParameters calledMethodBase cilState
         let hasThis = not (calledMethodBase.IsStatic || opCode = OpCodes.Newobj)
-        let this = if hasThis then pop cilState |> Some else None
+        let castThisFromConcolic this =
+            match this.term with
+            | Ptr(address, Void, offset) ->
+                assert(offset = MakeNumber 0)
+                let typ = Types.FromDotNetType calledMethodBase.DeclaringType
+                Ptr address typ offset
+            | _ -> this
+        let this = if hasThis then pop cilState |> castThisFromConcolic |> Some else None
         this, args
 
     member x.Call (cfg : cfg) offset (cilState : cilState) =

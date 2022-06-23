@@ -494,7 +494,8 @@ module internal Z3 =
             | Some (_, v) -> x.EncodeTerm encCtx v
             | None ->
                 let encodedKey = ctx.MkConst(key.ToString(), keyType)
-                encodingCache.staticKeys.Add(encodedKey, key.typ)
+                if encodingCache.staticKeys.ContainsKey encodedKey |> not then
+                    encodingCache.staticKeys.Add(encodedKey, key.typ)
                 {expr = ctx.MkSelect(array, encodedKey); assumptions = List.empty}
 
         member private x.StructReading encCtx (structSource : IMemoryAccessConstantSource) (field : fieldId) typ structFields name =
