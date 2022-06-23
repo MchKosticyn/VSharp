@@ -97,56 +97,57 @@ namespace VSharp.TestRunner
             {
                 try
                 {
+                    UnitTest test;
                     using (FileStream stream = new FileStream(fi.FullName, FileMode.Open, FileAccess.Read))
                     {
                         testInfo ti = UnitTest.DeserializeTestInfo(stream);
                         _extraAssemblyLoadDirs = ti.extraAssemblyLoadDirs;
-                        UnitTest test = UnitTest.DeserializeFromTestInfo(ti);
+                        test = UnitTest.DeserializeFromTestInfo(ti);
                         // _extraAssemblyLoadDirs = test.ExtraAssemblyLoadDirs;
+                    }
 
-                        var method = test.Method;
+                    var method = test.Method;
 
-                        Console.Out.WriteLine("Starting test reproducing for method {0}", method);
-                        if (!checkResult)
-                            Console.Out.WriteLine("Result check is disabled");
-                        object[] parameters = test.Args ?? method.GetParameters()
-                            .Select(t => Reflection.defaultOf(t.ParameterType)).ToArray();
-                        object thisArg = test.ThisArg;
-                        if (thisArg == null && !method.IsStatic)
-                            thisArg = Reflection.createObject(method.DeclaringType);
+                    Console.Out.WriteLine("Starting test reproducing for method {0}", method);
+                    if (!checkResult)
+                        Console.Out.WriteLine("Result check is disabled");
+                    object[] parameters = test.Args ?? method.GetParameters()
+                        .Select(t => Reflection.defaultOf(t.ParameterType)).ToArray();
+                    object thisArg = test.ThisArg;
+                    if (thisArg == null && !method.IsStatic)
+                        thisArg = Reflection.createObject(method.DeclaringType);
 
-                        var ex = test.Exception;
-                        try
+                    var ex = test.Exception;
+                    try
+                    {
+                        object result = null;
+                        if (!test.IsError || shouldReproduceError)
+                            result = method.Invoke(thisArg, parameters);
+                        if (ex != null)
                         {
-                            object result = null;
-                            if (!test.IsError || shouldReproduceError)
-                                result = method.Invoke(thisArg, parameters);
-                            if (ex != null)
-                            {
-                                Console.Error.WriteLine("Test {0} failed! The expected exception {1} was not thrown",
-                                    fi.Name, ex);
-                                return false;
-                            }
-                            if (checkResult && !CompareObjects(test.Expected, result))
-                            {
-                                // TODO: use NUnit?
-                                Console.Error.WriteLine("Test {0} failed! Expected {1}, but got {2}", fi.Name,
-                                    test.Expected ?? "null",
-                                    result ?? "null");
-                                return false;
-                            }
+                            Console.Error.WriteLine("Test {0} failed! The expected exception {1} was not thrown",
+                                fi.Name, ex);
+                            return false;
                         }
-                        catch (TargetInvocationException e)
+                        if (checkResult && !CompareObjects(test.Expected, result))
                         {
-                            if (e.InnerException != null && e.InnerException.GetType() == ex)
-                                Console.WriteLine("Test {0} throws the expected exception!", fi.Name);
-                            else if (e.InnerException != null && ex != null)
-                            {
-                                Console.Error.WriteLine("Test {0} throws {1} when the expected exception was {2}!", fi.Name, e.InnerException, ex);
-                                throw e.InnerException;
-                            }
-                            else throw;
+                            // TODO: use NUnit?
+                            Console.Error.WriteLine("Test {0} failed! Expected {1}, but got {2}", fi.Name,
+                                test.Expected ?? "null",
+                                result ?? "null");
+                            return false;
                         }
+                    }
+                    catch (TargetInvocationException e)
+                    {
+                        if (e.InnerException != null && e.InnerException.GetType() == ex)
+                            Console.WriteLine("Test {0} throws the expected exception!", fi.Name);
+                        else if (e.InnerException != null && ex != null)
+                        {
+                            Console.Error.WriteLine("Test {0} throws {1} when the expected exception was {2}!", fi.Name, e.InnerException, ex);
+                            throw e.InnerException;
+                        }
+                        else throw;
                     }
                 }
                 catch (Exception e)
