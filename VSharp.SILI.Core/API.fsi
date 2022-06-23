@@ -191,7 +191,6 @@ module API =
     module public EvaluationStack =
         val Pop : evaluationStack -> term * evaluationStack
         val PopMany : int -> evaluationStack -> term list * evaluationStack
-        val PopFromAnyFrame : evaluationStack -> term * evaluationStack
         val Push : term -> evaluationStack -> evaluationStack
         val PushMany : term list -> evaluationStack -> evaluationStack
         val GetItem : int -> evaluationStack -> term
@@ -202,7 +201,6 @@ module API =
         val ToList : evaluationStack -> term list
         val ClearActiveFrame : evaluationStack -> evaluationStack
         val EmptyStack : evaluationStack
-        val TopIsEmpty : evaluationStack -> bool
 
     module public Memory =
         val EmptyState : unit -> state

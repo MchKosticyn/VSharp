@@ -383,6 +383,7 @@ unsigned Stack::offsetAt(unsigned int index) const {
 
 unsigned Stack::unsentPops() const
 {
+    assert(m_lastSentTop >= m_minTopSinceLastSent);
     return m_lastSentTop - m_minTopSinceLastSent;
 }
 
@@ -450,12 +451,12 @@ void Stack::OperandMem::mem(char *value, CorElementType t, size_t size, INT8 idx
         m_dataPtrs.resize(m_memSize);
         m_data.resize(m_memSize * (sizeof(DOUBLE) + sizeof(CorElementType)));
     }
+    unsigned typeSize = sizeof(CorElementType);
     ++m_entries_count;
     m_dataPtrs[idx] = m_data_ptr;
-    unsigned typeSize = sizeof(CorElementType);
     char *p = m_data.data() + m_data_ptr;
-    *(CorElementType*)p = t;
-    memcpy(m_data.data() + m_data_ptr + typeSize, value, size);
+    *(CorElementType *) p = t; p += typeSize;
+    memcpy(p, value, size);
     m_data_ptr += size + typeSize;
 }
 

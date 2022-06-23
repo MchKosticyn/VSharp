@@ -355,15 +355,8 @@ type ClientMachine(entryPoint : Method, requestMakeStep : cilState -> unit, cilS
                 cilState.status <- RunningConcolic
                 cilState.state.concreteMemory <- concolicMemory
             if notEndOfEntryPoint && not isIIEState then connectConcolic cilState
-            let topIsEmpty = EvaluationStack.TopIsEmpty cilState.state.evaluationStack
             let lastPushInfo =
                 match cilState.lastPushInfo with
-                | Some x when IsConcrete x && notEndOfEntryPoint && topIsEmpty ->
-                    // NOTE: Newobj case
-                    // TODO: make better #refactoring
-                    let evaluationStack = EvaluationStack.PopFromAnyFrame cilState.state.evaluationStack |> snd
-                    cilState.state.evaluationStack <- evaluationStack
-                    None
                 | Some x when IsConcrete x && notEndOfEntryPoint ->
                     CilStateOperations.pop cilState |> ignore
                     Some true

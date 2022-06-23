@@ -543,6 +543,7 @@ module internal InstructionsSet =
 
 open InstructionsSet
 
+// TODO: instead of 'isConcolicMode' check if cilState contains concolic machine
 type internal ILInterpreter(isConcolicMode : bool) as this =
 
     let cilStateImplementations : Map<string, cilState -> term option -> term list -> cilState list> =
@@ -675,15 +676,15 @@ type internal ILInterpreter(isConcolicMode : bool) as this =
         let (<<) = API.Arithmetics.(<<)
         let add = Arithmetics.Add
         let zero = TypeUtils.Int32.Zero
-        let srcLB = Memory.ArrayLowerBoundByDimension state src zero
-        let dstLB = Memory.ArrayLowerBoundByDimension state dst zero
-        let srcNumOfAllElements = Memory.CountOfArrayElements state src
-        let dstNumOfAllElements = Memory.CountOfArrayElements state dst
+        let srcLB = lazy Memory.ArrayLowerBoundByDimension state src zero
+        let dstLB = lazy Memory.ArrayLowerBoundByDimension state dst zero
+        let srcNumOfAllElements = lazy Memory.CountOfArrayElements state src
+        let dstNumOfAllElements = lazy Memory.CountOfArrayElements state dst
         let defaultCase (cilState : cilState) k =
             Memory.CopyArray cilState.state src srcIndex srcType dst dstIndex dstType length
             k [cilState]
         let lengthCheck (cilState : cilState) =
-            let check = ((add srcIndex length) >> srcNumOfAllElements) ||| ((add dstIndex length) >> dstNumOfAllElements)
+            let check = ((add srcIndex length) >> srcNumOfAllElements.Value) ||| ((add dstIndex length) >> dstNumOfAllElements.Value)
             StatedConditionalExecutionCIL cilState
                 (fun state k -> k (check, state))
                 (x.Raise x.ArgumentException)
@@ -691,8 +692,8 @@ type internal ILInterpreter(isConcolicMode : bool) as this =
         let indicesCheck (cilState : cilState) =
             // TODO: extended form needs
             let primitiveLengthCheck = (length << zero) ||| (if TypeUtils.isLong length then length >> TypeUtils.Int32.MaxValue else False)
-            let srcIndexCheck = (srcIndex << srcLB) ||| (if TypeUtils.isLong srcIndex then srcIndex >> srcNumOfAllElements else False)
-            let dstIndexCheck = (dstIndex << dstLB) ||| (if TypeUtils.isLong dstIndex then dstIndex >> dstNumOfAllElements else False)
+            let srcIndexCheck = (srcIndex << srcLB.Value) ||| (if TypeUtils.isLong srcIndex then srcIndex >> srcNumOfAllElements.Value else False)
+            let dstIndexCheck = (dstIndex << dstLB.Value) ||| (if TypeUtils.isLong dstIndex then dstIndex >> dstNumOfAllElements.Value else False)
 
             StatedConditionalExecutionCIL cilState
                 (fun state k -> k (primitiveLengthCheck ||| srcIndexCheck ||| dstIndexCheck, state))
@@ -1261,6 +1262,11 @@ type internal ILInterpreter(isConcolicMode : bool) as this =
         x.InitializeStatics cilState constructorInfo.DeclaringType (fun cilState ->
         let this, args = x.RetrieveCalledMethodAndArgs OpCodes.Newobj calledMethod cilState
         assert(Option.isNone this)
+        let pushObjRef ref cilState =
+            // TODO: push it after constructor exits
+            // NOTE: in concolic mode, ref should not be pushed, concolic will do this
+            if isConcolicMode then ()
+            else push ref cilState
         let wasConstructorInlined stackSizeBefore (afterCall : cilState) =
             // [NOTE] For example, if constructor is external call, it will be inlined and executed simultaneously
             Memory.CallStackSize afterCall.state = stackSizeBefore
@@ -1276,18 +1282,17 @@ type internal ILInterpreter(isConcolicMode : bool) as this =
             if Types.IsValueType typ || TypeUtils.isPointer typ then
                 let freshValue = Memory.DefaultOf typ
                 let ref = Memory.AllocateTemporaryLocalVariable cilState.state typ freshValue
-                push ref cilState // NOTE: ref is used to retrieve constructed struct
+                pushObjRef ref cilState // NOTE: ref is used to retrieve constructed struct
                 let stackSizeBefore = Memory.CallStackSize cilState.state
                 callConstructor cilState ref (List.map (fun afterCall -> modifyValueResultIfConstructorWasCalled stackSizeBefore afterCall; afterCall))
             else
                 let ref = Memory.AllocateDefaultClass cilState.state typ
-                // TODO: if concolic mode, ref should not be pushed, concolic will do this
-                push ref cilState // NOTE: ref is used as result afterCall
+                pushObjRef ref cilState // NOTE: ref is used as result afterCall
                 callConstructor cilState ref id
 
         let k reference =
             let newIp = moveInstruction (fallThroughTarget m offset) (currentIp cilState)
-            push reference cilState
+            pushObjRef reference cilState
             setCurrentIp newIp cilState
             [cilState]
 
@@ -1865,7 +1870,7 @@ type internal ILInterpreter(isConcolicMode : bool) as this =
         assert(List.length ctors = 1)
         let ctor = List.head ctors
         let fullConstructorName = Reflection.getFullMethodName ctor
-        assert (Loader.hasRuntimeExceptionsImplementation fullConstructorName)
+        assert(Loader.hasRuntimeExceptionsImplementation fullConstructorName)
         let proxyCtor = Loader.getRuntimeExceptionsImplementation fullConstructorName |> Application.getMethod
         x.InitFunctionFrameCIL cilState proxyCtor None (Some arguments)
 
