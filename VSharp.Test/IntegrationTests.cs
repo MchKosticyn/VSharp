@@ -186,7 +186,7 @@ namespace VSharp.Test
         public TestMethod BuildFrom(IMethodInfo method, NUnit.Framework.Internal.Test suite)
         {
             var defaultParameters = method.GetParameters().Select(
-                parameter => TypeUtils.defaultOf(parameter.ParameterType)).ToArray();
+                parameter => Reflection.defaultOf(parameter.ParameterType)).ToArray();
             var parameters = new TestCaseParameters(defaultParameters);
             if (method.ReturnType.Type != typeof(void))
                 parameters.ExpectedResult = null;

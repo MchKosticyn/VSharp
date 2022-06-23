@@ -149,11 +149,16 @@ module public Reflection =
 
     // ----------------------------------- Creating objects ----------------------------------
 
+    let defaultOf (t : Type) =
+        if t.IsValueType && not (TypeUtils.isNullable t) && not t.ContainsGenericParameters
+            then Activator.CreateInstance t
+            else null
+
     let createObject (t : Type) =
         match t with
         | _ when t = typeof<String> -> String.Empty :> obj
         | _ when TypeUtils.isNullable t -> null
-        | _ when t.IsArray -> null
+        | _ when t.IsArray -> Array.CreateInstance(typeof<obj>, 1)
         | _ -> System.Runtime.Serialization.FormatterServices.GetUninitializedObject t
 
     let BitConverterToUIntPtr =
