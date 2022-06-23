@@ -149,6 +149,7 @@ type ClientMachine(entryPoint : MethodBase, requestMakeStep : cilState -> unit, 
         Logger.trace "ClientMachine.Terminate()"
         concolicProcess.Kill()
         concolicProcess.WaitForExit()
+        concolicProcess.Close()
 
     member x.IsRunning = isRunning
 
