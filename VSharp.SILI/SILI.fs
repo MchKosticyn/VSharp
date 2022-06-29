@@ -24,11 +24,7 @@ type public SILI(options : SiliOptions) =
     let statistics = SILIStatistics()
     let infty = UInt32.MaxValue
     let emptyState = Memory.EmptyState()
-    let isConcolicMode =
-        match options.executionMode with
-        | ConcolicMode -> true
-        | SymbolicMode -> false
-    let interpreter = ILInterpreter(isConcolicMode)
+    let interpreter = ILInterpreter()
 
     let mutable entryIP : ip = Unchecked.defaultof<ip>
     let mutable reportFinished : cilState -> unit = fun _ -> internalfail "reporter not configured!"

@@ -543,8 +543,7 @@ module internal InstructionsSet =
 
 open InstructionsSet
 
-// TODO: instead of 'isConcolicMode' check if cilState contains concolic machine
-type internal ILInterpreter(isConcolicMode : bool) as this =
+type internal ILInterpreter() as this =
 
     let cilStateImplementations : Map<string, cilState -> term option -> term list -> cilState list> =
         Map.ofList [
@@ -880,7 +879,7 @@ type internal ILInterpreter(isConcolicMode : bool) as this =
 
     member x.InitializeStatics (cilState : cilState) (t : Type) whenInitializedCont =
         match t with
-        | _ when isConcolicMode -> whenInitializedCont cilState
+        | _ when controlledByConcolic cilState -> whenInitializedCont cilState
         | _ when t.IsGenericParameter -> whenInitializedCont cilState
         | _ ->
             let typeInitialized = Memory.IsTypeInitialized cilState.state t
@@ -1175,7 +1174,7 @@ type internal ILInterpreter(isConcolicMode : bool) as this =
             let this, args = x.RetrieveCalledMethodAndArgs OpCodes.Call calledMethod cilState
             x.InitFunctionFrameCIL cilState calledMethod this (Some args)
             x.CommonCall calledMethod cilState id
-        if isConcolicMode then getArgsAndCall cilState
+        if controlledByConcolic cilState then getArgsAndCall cilState
         else x.InitializeStatics cilState calledMethod.DeclaringType getArgsAndCall
     member x.CommonCallVirt (ancestorMethod : Method) (cilState : cilState) (k : cilState list -> 'a) =
         let this = Memory.ReadThis cilState.state ancestorMethod
@@ -1271,7 +1270,7 @@ type internal ILInterpreter(isConcolicMode : bool) as this =
         let pushObjRef ref cilState =
             // TODO: push it after constructor exits
             // NOTE: in concolic mode, ref should not be pushed, concolic will do this
-            if isConcolicMode then ()
+            if controlledByConcolic cilState then ()
             else push ref cilState
         let wasConstructorInlined stackSizeBefore (afterCall : cilState) =
             // [NOTE] For example, if constructor is external call, it will be inlined and executed simultaneously
