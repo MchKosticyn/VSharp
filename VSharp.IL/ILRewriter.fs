@@ -142,6 +142,7 @@ type probes = {
     mutable setLocSize : uint64
     mutable enter : uint64
     mutable enterStructCtor : uint64
+    mutable enterVirtual : uint64
     mutable enterMain : uint64
     mutable leave : uint64
     mutable leaveMain_0 : uint64

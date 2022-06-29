@@ -150,9 +150,13 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                 let sizeInstr = x.TypeSizeInstr locType (fun () -> x.AcceptLocVarTypeToken locType i)
                 x.PrependProbe(probes.setLocSize, [(OpCodes.Ldc_I4, Arg32 i); sizeInstr], x.tokens.void_i1_size_sig, &firstInstr) |> ignore
 
-        // If x.m is a constructor of structure, then we should register structure address (it becomes explicit only here)
+        // NOTE: If 'x.m' is a constructor of structure,
+        // then we should register structure address (it becomes explicit only here)
         if x.m.IsConstructor && x.m.DeclaringType.IsValueType then
             x.PrependProbe(probes.enterStructCtor, [(OpCodes.Ldarg_0, NoArg); (OpCodes.Conv_I, NoArg)], x.tokens.void_i_sig, &firstInstr) |> ignore
+        // NOTE: If 'x.m' is virtual, we should remember and send 'this' to SILI for method resolving
+        elif x.m.IsVirtual then
+            x.PrependProbe(probes.enterVirtual, [(OpCodes.Ldarg_0, NoArg); (OpCodes.Conv_I, NoArg)], x.tokens.void_i_sig, &firstInstr) |> ignore
 
     member private x.PrependMem_p(idx, instr : ilInstr byref) =
         x.PrependInstr(OpCodes.Conv_I, NoArg, &instr) |> ignore

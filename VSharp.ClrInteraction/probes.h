@@ -7,6 +7,7 @@
 #include <vector>
 
 #define COND INT_PTR
+#define ADDRESS_SIZE sizeof(INT32) + sizeof(UINT_PTR) + sizeof(UINT_PTR) + sizeof(BYTE) + sizeof(BYTE) * 2;
 
 namespace vsharp {
 
@@ -42,7 +43,7 @@ struct EvalStackOperand {
         switch (typ) {
             case OpRef:
                 // NOTE: evaluation stack type * base address * offset * object type * object key
-                return sizeof(INT32) + sizeof(UINT_PTR) + sizeof(UINT_PTR) + sizeof(BYTE) + sizeof(BYTE) * 2;
+                return ADDRESS_SIZE;
             case OpEmpty:
                 return sizeof(INT32);
             default:
@@ -55,28 +56,7 @@ struct EvalStackOperand {
         buffer += sizeof(INT32);
         switch (typ) {
             case OpRef: {
-                VirtualAddress address = content.address;
-                *(UINT_PTR *)buffer = address.obj; buffer += sizeof(UINT_PTR);
-                *(UINT_PTR *)buffer = address.offset; buffer += sizeof(UINT_PTR);
-                ObjectLocation location = address.location;
-                ObjectType type = location.type;
-                *(BYTE *)buffer = type; buffer += sizeof(BYTE);
-                switch (type) {
-                    case TemporaryAllocatedStruct:
-                    case LocalVariable:
-                    case Parameter: {
-                        StackKey key = location.key.stackKey;
-                        *(BYTE *) buffer = key.frame; buffer += sizeof(BYTE);
-                        *(BYTE *) buffer = key.idx; buffer += sizeof(BYTE);
-                        break;
-                    }
-                    case Statics:
-                        *(INT16 *) buffer = location.key.staticFieldKey; buffer += sizeof(INT16);
-                        break;
-                    default:
-                        buffer += sizeof(BYTE) * 2;
-                        break;
-                }
+                content.address.serialize(buffer);
                 break;
             }
             case OpEmpty:
@@ -91,8 +71,7 @@ struct EvalStackOperand {
         typ = *(EvalStackArgType *)buffer;
         buffer += sizeof(EvalStackArgType);
         if (typ == OpRef) {
-            content.address.obj = (OBJID) *(UINT_PTR *)buffer; buffer += sizeof(UINT_PTR);
-            content.address.offset = (SIZE) *(UINT_PTR *)buffer; buffer += sizeof(UINT_PTR);
+            content.address.deserialize(buffer);
             // NOTE: deserialization of object location is not needed, because updateMemory needs only address and offset
         } else {
             content.number = *(INT64 *)buffer; buffer += sizeof(INT64);
@@ -109,6 +88,7 @@ struct ExecCommand {
     unsigned evaluationStackPops;
     unsigned newAddressesCount;
     std::pair<unsigned, unsigned> *newCallStackFrames;
+    VirtualAddress *thisAddresses;
     unsigned *ipStack;
     EvalStackOperand *evaluationStackPushes;
     // TODO: add deleted addresses
@@ -120,6 +100,8 @@ struct ExecCommand {
         count = 7 * sizeof(unsigned) + 2 * sizeof(unsigned) * newCallStackFramesCount + sizeof(unsigned) * ipStackCount;
         for (unsigned i = 0; i < evaluationStackPushesCount; ++i)
             count += evaluationStackPushes[i].size();
+        for (unsigned i = 0; i < newCallStackFramesCount; ++i)
+            count += ADDRESS_SIZE;
         count += sizeof(UINT_PTR) * newAddressesCount;
         count += newAddressesCount * sizeof(UINT64);
         UINT64 fullTypesSize = 0;
@@ -139,6 +121,9 @@ struct ExecCommand {
         for (int i = 0; i < newCallStackFramesCount; i++) {
             *(unsigned *)buffer = newCallStackFrames[i].first; buffer += size;
             *(unsigned *)buffer = newCallStackFrames[i].second; buffer += size;
+        }
+        for (int i = 0; i < newCallStackFramesCount; i++) {
+            thisAddresses[i].serialize(buffer);
         }
         size = ipStackCount * sizeof(unsigned);
         memcpy(buffer, (char*)ipStack, size); buffer += size;
@@ -165,9 +150,14 @@ void initCommand(OFFSET offset, bool isBranch, unsigned opsCount, EvalStackOpera
     command.ipStackCount = currCallFrames;
     command.newCallStackFrames = new std::pair<unsigned, unsigned>[command.newCallStackFramesCount];
     for (unsigned i = minCallFrames; i < currCallFrames; ++i) {
-        auto pair = std::make_pair(stack.moduleTokenAt(i), stack.methodTokenAt(i));
+        auto pair = std::make_pair(stack.resolvedMethodTokenAt(i), stack.unresolvedMethodTokenAt(i));
         command.newCallStackFrames[i - minCallFrames] = pair;
     }
+    command.thisAddresses = new VirtualAddress[command.newCallStackFramesCount];
+    for (unsigned i = minCallFrames; i < currCallFrames; ++i) {
+        stack.thisAddressAt(i, command.thisAddresses[i - minCallFrames]);
+    }
+
     command.ipStack = new unsigned[command.ipStackCount];
     for (unsigned i = 0; i < currCallFrames; ++i) {
         command.ipStack[i] = stack.offsetAt(i);
@@ -246,6 +236,7 @@ bool readExecResponse(StackFrame &top, EvalStackOperand *ops, unsigned &count, i
 
 void freeCommand(ExecCommand &command) {
     delete[] command.newCallStackFrames;
+    delete[] command.thisAddresses;
     delete[] command.evaluationStackPushes;
     delete[] command.newAddresses;
     delete[] command.newAddressesTypeLengths;
@@ -987,6 +978,12 @@ PROBE(void, Track_StructCtor, (ADDR address)) {
         heap.allocateLocal(&cell);
         prevFrame.addAllocatedLocal(&cell);
     }
+}
+
+PROBE(void, Track_Virtual, (ADDR thisAddress)) {
+    VirtualAddress virtualAddress{};
+    heap.physToVirtAddress(thisAddress, virtualAddress);
+    topFrame().setThisAddress(virtualAddress);
 }
 
 PROBE(void, Track_EnterMain, (mdMethodDef token, unsigned moduleToken, UINT16 argsCount, bool argsConcreteness, unsigned maxStackSize, unsigned localsCount)) {

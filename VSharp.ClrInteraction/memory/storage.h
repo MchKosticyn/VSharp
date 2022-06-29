@@ -128,6 +128,35 @@ struct VirtualAddress
     OBJID obj;
     SIZE offset;
     ObjectLocation location;
+
+    void serialize(char *&buffer) const {
+        *(UINT_PTR *)buffer = obj; buffer += sizeof(UINT_PTR);
+        *(UINT_PTR *)buffer = offset; buffer += sizeof(UINT_PTR);
+        ObjectType type = location.type;
+        *(BYTE *)buffer = type; buffer += sizeof(BYTE);
+        switch (type) {
+            case TemporaryAllocatedStruct:
+            case LocalVariable:
+            case Parameter: {
+                StackKey key = location.key.stackKey;
+                *(BYTE *) buffer = key.frame; buffer += sizeof(BYTE);
+                *(BYTE *) buffer = key.idx; buffer += sizeof(BYTE);
+                break;
+            }
+            case Statics:
+                *(INT16 *) buffer = location.key.staticFieldKey; buffer += sizeof(INT16);
+                break;
+            default:
+                buffer += sizeof(BYTE) * 2;
+                break;
+        }
+    }
+
+    void deserialize(char *&buffer) {
+        obj = (OBJID) *(UINT_PTR *)buffer; buffer += sizeof(UINT_PTR);
+        offset = (SIZE) *(UINT_PTR *)buffer; buffer += sizeof(UINT_PTR);
+        // NOTE: deserialization of object location is not needed, because updateMemory needs only address and offset
+    }
 };
 
 class Storage {

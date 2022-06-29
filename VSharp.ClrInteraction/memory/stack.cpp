@@ -26,6 +26,12 @@ StackFrame::StackFrame(unsigned resolvedToken, unsigned unresolvedToken, const b
 {
     for (int i = 0; i < argsCount; i++)
         m_args[i].writeConcretenessWholeObject(args[i]);
+
+    // NOTE: setting default 'this' address to 'null'
+    ObjectKey key{};
+    key.none = nullptr;
+    m_thisAddress = {0, 0, ReferenceType, key};
+
     resetPopsTracking();
 }
 
@@ -224,6 +230,16 @@ void StackFrame::setResolvedToken(unsigned resolved)
     this->m_resolvedToken = resolved;
 }
 
+void StackFrame::thisAddress(VirtualAddress &virtAddress) const
+{
+    virtAddress = this->m_thisAddress;
+}
+
+void StackFrame::setThisAddress(const VirtualAddress &address)
+{
+    this->m_thisAddress = VirtualAddress(address);
+}
+
 unsigned StackFrame::ip() const {
     return m_ip;
 }
@@ -372,9 +388,19 @@ unsigned Stack::moduleTokenAt(unsigned index) const
     return m_frames[index].moduleToken();
 }
 
-unsigned Stack::methodTokenAt(unsigned index) const
+unsigned Stack::resolvedMethodTokenAt(unsigned index) const
 {
     return m_frames[index].resolvedToken();
+}
+
+unsigned Stack::unresolvedMethodTokenAt(unsigned index) const
+{
+    return m_frames[index].unresolvedToken();
+}
+
+void Stack::thisAddressAt(unsigned index, VirtualAddress &virtualAddress) const
+{
+    m_frames[index].thisAddress(virtualAddress);
 }
 
 unsigned Stack::offsetAt(unsigned int index) const {

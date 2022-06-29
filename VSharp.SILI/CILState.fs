@@ -160,6 +160,11 @@ module internal CilStateOperations =
 
     let currentOffset = currentIp >> offsetOf
 
+    let changeIpOffset (ip : ip) offset =
+        match ip with
+        | Instruction(_, m) -> Instruction(offset, m)
+        | _ -> internalfailf "changeIpOffset: unexpected ip %O" ip
+
     let startsFromMethodBeginning (s : cilState) =
         match s.startingIP with
         | Instruction (0<offsets>, _) -> true
