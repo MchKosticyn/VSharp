@@ -145,6 +145,7 @@ type probes = {
     mutable setLocSize : uint64
     mutable enter : uint64
     mutable enterStructCtor : uint64
+    mutable enterVirtual : uint64
     mutable enterMain : uint64
     mutable leave : uint64
     mutable leaveMain_0 : uint64
@@ -405,17 +406,19 @@ type evalStackArgType =
     | OpStruct = 7
     | OpEmpty = 8
 
-type ConcolicAddressKey =
+type concolicAddressKey =
     | ReferenceType
     | LocalVariable of byte * byte // frame number * idx
     | Parameter of byte * byte // frame number * idx
     | Statics of int16 // static field id
     | TemporaryAllocatedStruct of byte * byte // frame number * offset
 
+type concolicAddress = UIntPtr * UIntPtr * concolicAddressKey
+
 type evalStackOperand =
     | EmptyOp
     | NumericOp of evalStackArgType * int64
-    | PointerOp of UIntPtr * UIntPtr * ConcolicAddressKey
+    | PointerOp of concolicAddress
 
 [<type: StructLayout(LayoutKind.Sequential, Pack=1, CharSet=CharSet.Ansi)>]
 type private execCommandStatic = {
@@ -432,6 +435,7 @@ type execCommand = {
     callStackFramesPops : uint32
     evaluationStackPops : uint32
     newCallStackFrames : array<int32 * int32>
+    thisAddresses : concolicAddress array
     ipStack : int32 list
     evaluationStackPushes : evalStackOperand array // NOTE: operands for executing instruction
     newAddresses : UIntPtr array
@@ -807,6 +811,76 @@ type Communicator(pipeFile) =
         | CorElementType.ELEMENT_TYPE_U       -> Some(typeof<UIntPtr>)
         | _ -> None
 
+    member private x.ParseType(bytes : byte array, offset : int byref) =
+        let mutable currentOffset = offset
+        let rec readType() =
+            let isValid = bytes[currentOffset] = 1uy
+            currentOffset <- currentOffset + sizeof<byte>
+            if isValid then
+                let isArray = BitConverter.ToBoolean(bytes, currentOffset)
+                currentOffset <- currentOffset + sizeof<bool>
+                if isArray then
+                    let corElementType = Microsoft.FSharp.Core.LanguagePrimitives.EnumOfValue<byte, CorElementType>(bytes.[currentOffset])
+                    currentOffset <- currentOffset + sizeof<byte>
+                    let rank = BitConverter.ToInt32(bytes, currentOffset)
+                    currentOffset <- currentOffset + sizeof<int32>
+                    let t = Option.defaultWith readType (x.corElementTypeToType corElementType)
+                    if rank = 1 then t.MakeArrayType() else t.MakeArrayType(rank)
+                else
+                    let token = BitConverter.ToInt32(bytes, currentOffset)
+                    currentOffset <- currentOffset + sizeof<int>
+                    let assemblySize = BitConverter.ToInt32(bytes, currentOffset)
+                    currentOffset <- currentOffset + sizeof<int>
+                    // NOTE: truncating null terminator
+                    let assemblyBytes = bytes.[currentOffset .. currentOffset + assemblySize - 3]
+                    currentOffset <- currentOffset + assemblySize
+                    let assemblyName = Encoding.Unicode.GetString(assemblyBytes)
+                    let assembly = Reflection.loadAssembly assemblyName
+                    let moduleSize = BitConverter.ToInt32(bytes, currentOffset)
+                    currentOffset <- currentOffset + sizeof<int>
+                    let moduleBytes = bytes.[currentOffset .. currentOffset + moduleSize - 1]
+                    currentOffset <- currentOffset + moduleSize
+                    let moduleName = Encoding.Unicode.GetString(moduleBytes) |> Path.GetFileName
+                    let typeModule = Reflection.resolveModuleFromAssembly assembly moduleName
+                    let typeArgsCount = BitConverter.ToInt32(bytes, currentOffset)
+                    currentOffset <- currentOffset + sizeof<int>
+                    let typeArgs = Array.init typeArgsCount (fun _ -> readType())
+                    let resultType = Reflection.resolveTypeFromModule typeModule token
+                    if Array.isEmpty typeArgs then resultType else resultType.MakeGenericType(typeArgs)
+            else typeof<Void>
+        let parsedType = readType()
+        offset <- currentOffset
+        parsedType
+
+    member private x.ParseRef(bytes : byte array, offset : int byref) =
+        let mutable currentOffset = offset
+        let parseFrameAndIdx() =
+            let frame = bytes[currentOffset]
+            currentOffset <- currentOffset + 1
+            let idx = bytes[currentOffset]
+            currentOffset <- currentOffset + 1
+            frame, idx
+        let parseStaticFieldId() =
+            let id = BitConverter.ToInt16(bytes, currentOffset)
+            currentOffset <- currentOffset + 2
+            id
+        let baseAddr = Reflection.BitConverterToUIntPtr bytes currentOffset
+        currentOffset <- currentOffset + UIntPtr.Size
+        let shift = Reflection.BitConverterToUIntPtr bytes currentOffset
+        currentOffset <- currentOffset + UIntPtr.Size
+        let locationType = bytes[currentOffset]
+        currentOffset <- currentOffset + 1
+        let key =
+            match locationType with
+            | 1uy -> currentOffset <- currentOffset + 2; ReferenceType
+            | 2uy -> LocalVariable(parseFrameAndIdx())
+            | 3uy -> Parameter(parseFrameAndIdx())
+            | 4uy -> Statics(parseStaticFieldId())
+            | 5uy -> TemporaryAllocatedStruct(parseFrameAndIdx())
+            | _ -> internalfailf "ReadExecuteCommand: unexpected object location type: %O" locationType
+        offset <- currentOffset
+        baseAddr, shift, key
+
     member x.ReadExecuteCommand() =
         match readBuffer() with
         | Some bytes ->
@@ -816,10 +890,12 @@ type Communicator(pipeFile) =
             let callStackEntrySize = sizeof<int32> * 2
             let callStackOffset = (int staticPart.newCallStackFramesCount) * callStackEntrySize
             let newCallStackFrames = Array.init (int staticPart.newCallStackFramesCount) (fun i ->
-                let moduleToken = BitConverter.ToInt32(dynamicBytes, i * callStackEntrySize)
-                let methodToken = BitConverter.ToInt32(dynamicBytes, i * callStackEntrySize + sizeof<int32>)
-                moduleToken, methodToken)
+                let resolvedToken = BitConverter.ToInt32(dynamicBytes, i * callStackEntrySize)
+                let unresolvedToken = BitConverter.ToInt32(dynamicBytes, i * callStackEntrySize + sizeof<int32>)
+                resolvedToken, unresolvedToken)
             let mutable offset = callStackOffset
+            let thisAddresses = Array.init (int staticPart.newCallStackFramesCount) (fun _ ->
+                x.ParseRef(dynamicBytes, &offset))
             let ipStack = List.init (int staticPart.ipStackCount) (fun _ ->
                 let res = BitConverter.ToInt32(dynamicBytes, offset) in offset <- offset + sizeof<int>; res)
             let evaluationStackPushes = Array.init (int staticPart.evaluationStackPushesCount) (fun _ ->
@@ -828,30 +904,7 @@ type Communicator(pipeFile) =
                 let evalStackArgType = LanguagePrimitives.EnumOfValue evalStackArgTypeNum
                 match evalStackArgType with
                 | evalStackArgType.OpRef ->
-                    let parseFrameAndIdx() =
-                        let frame = dynamicBytes[offset]
-                        offset <- offset + 1
-                        let idx = dynamicBytes[offset]
-                        offset <- offset + 1
-                        frame, idx
-                    let parseStaticFieldId() =
-                        let id = BitConverter.ToInt16(dynamicBytes, offset)
-                        offset <- offset + 2
-                        id
-                    let baseAddr = Reflection.BitConverterToUIntPtr dynamicBytes offset
-                    offset <- offset + UIntPtr.Size
-                    let shift = Reflection.BitConverterToUIntPtr dynamicBytes offset
-                    offset <- offset + UIntPtr.Size
-                    let locationType = dynamicBytes[offset]
-                    offset <- offset + 1
-                    let key =
-                        match locationType with
-                        | 1uy -> offset <- offset + 2; ReferenceType
-                        | 2uy -> LocalVariable(parseFrameAndIdx())
-                        | 3uy -> Parameter(parseFrameAndIdx())
-                        | 4uy -> Statics(parseStaticFieldId())
-                        | 5uy -> TemporaryAllocatedStruct(parseFrameAndIdx())
-                        | _ -> internalfailf "ReadExecuteCommand: unexpected object location type: %O" locationType
+                    let baseAddr, shift, key = x.ParseRef(dynamicBytes, &offset)
                     PointerOp(baseAddr, shift, key)
                 | evalStackArgType.OpSymbolic
                 | evalStackArgType.OpI4
@@ -871,46 +924,12 @@ type Communicator(pipeFile) =
                 let res = BitConverter.ToUInt64(dynamicBytes, offset) in offset <- offset + sizeof<uint64>; res)
             let newAddressesTypes = Array.init (int staticPart.newAddressesCount) (fun i ->
                 let size = int newAddressesTypesLengths.[i]
-                let rec readType () =
-                    let isValid = dynamicBytes[offset] = 1uy
-                    offset <- offset + sizeof<byte>
-                    if isValid then
-                        let isArray = BitConverter.ToBoolean(dynamicBytes, offset)
-                        offset <- offset + sizeof<bool>
-                        if isArray then
-                            let corElementType = Microsoft.FSharp.Core.LanguagePrimitives.EnumOfValue<byte, CorElementType>(dynamicBytes.[offset])
-                            offset <- offset + sizeof<byte>
-                            let rank = BitConverter.ToInt32(dynamicBytes, offset)
-                            offset <- offset + sizeof<int32>
-                            let t = Option.defaultWith readType (x.corElementTypeToType corElementType)
-                            if rank = 1 then t.MakeArrayType() else t.MakeArrayType(rank)
-                        else
-                            let token = BitConverter.ToInt32(dynamicBytes, offset)
-                            offset <- offset + sizeof<int>
-                            let assemblySize = BitConverter.ToInt32(dynamicBytes, offset)
-                            offset <- offset + sizeof<int>
-                            // NOTE: truncating null terminator
-                            let assemblyBytes = dynamicBytes.[offset .. offset + assemblySize - 3]
-                            offset <- offset + assemblySize
-                            let assemblyName = Encoding.Unicode.GetString(assemblyBytes)
-                            let assembly = Reflection.loadAssembly assemblyName
-                            let moduleSize = BitConverter.ToInt32(dynamicBytes, offset)
-                            offset <- offset + sizeof<int>
-                            let moduleBytes = dynamicBytes.[offset .. offset + moduleSize - 1]
-                            offset <- offset + moduleSize
-                            let moduleName = Encoding.Unicode.GetString(moduleBytes) |> Path.GetFileName
-                            let typeModule = Reflection.resolveModuleFromAssembly assembly moduleName
-                            let typeArgsCount = BitConverter.ToInt32(dynamicBytes, offset)
-                            offset <- offset + sizeof<int>
-                            let typeArgs = Array.init typeArgsCount (fun _ -> readType())
-                            let resultType = Reflection.resolveTypeFromModule typeModule token
-                            if Array.isEmpty typeArgs then resultType else resultType.MakeGenericType(typeArgs)
-                    else typeof<Void>
-                readType())
+                x.ParseType(dynamicBytes, &offset))
             { isBranch = staticPart.isBranch
               callStackFramesPops = staticPart.callStackFramesPops
               evaluationStackPops = staticPart.evaluationStackPops
               newCallStackFrames = newCallStackFrames
+              thisAddresses = thisAddresses
               ipStack = ipStack
               evaluationStackPushes = evaluationStackPushes
               newAddresses = newAddresses

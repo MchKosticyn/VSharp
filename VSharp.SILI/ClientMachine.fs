@@ -219,26 +219,51 @@ type ClientMachine(entryPoint : MethodBase, requestMakeStep : cilState -> unit, 
             | _ -> internalfail "CalleeParamsIfPossible: unexpected opcode"
         | None -> internalfail "CalleeParamsIfPossible: could not get offset"
 
+    member private x.ResolveMethod cilState declaringTermType resolvedToken unresolvedToken =
+        let topMethod = Memory.GetCurrentExploringFunction cilState.state
+        let resolved = Reflection.resolveMethod topMethod unresolvedToken
+        if declaringTermType <> Null then
+            // NOTE: if 'declaringTermType <> Null', resolving method is callvirt
+            let declaringType = Types.ToDotNetType declaringTermType
+            let methods = Reflection.getAllMethods declaringType
+            let method = methods |> Array.tryFind (fun x -> x.MetadataToken = resolvedToken)
+            match method with
+            | Some m when m.IsGenericMethodDefinition ->
+                m.MakeGenericMethod(resolved.GetGenericArguments()) :> MethodBase
+            | Some m -> m :> MethodBase
+            | None -> internalfailf "ResolveMethod: unable to find method for 'this' type %O" declaringType
+        else resolved
+
+    member private x.TypeOfConcolicThisRef thisRef =
+        match thisRef.term with
+        | Ptr(StackLocation key, _ , offset) when offset = MakeNumber 0 -> key.TypeOfLocation
+        | Ptr(HeapLocation (_, typ), _, offset) when offset = MakeNumber 0 -> typ
+        | HeapRef(_, typ) -> typ
+        | Ptr _ -> internalfailf "TypeOfConcolicThisRef: non-zero offset pointer case is not implemented %O" thisRef
+        | _ -> internalfailf "TypeOfConcolicThisRef: unexpected 'this' %O" thisRef
+
     member x.SynchronizeStates (c : execCommand) =
-        let toPop = int c.callStackFramesPops
-        if toPop > 0 then CilStateOperations.popFramesOf toPop cilState
-        assert(Memory.CallStackSize cilState.state > 0)
-        let initFrame (moduleToken, methodToken) =
-            let method = Coverage.resolveMethod moduleToken methodToken
-            initSymbolicFrame method
-        Array.iter initFrame c.newCallStackFrames
-        let setIp ip offset =
-            match ip with
-            | Instruction(_, m) -> Instruction(offset, m)
-            | _ -> internalfailf "SynchronizeStates: unexpected ip in ipStack: %O" ip
-        cilState.ipStack <- List.map2 setIp cilState.ipStack (List.rev c.ipStack)
-        let evalStack = EvaluationStack.PopMany (int c.evaluationStackPops) cilState.state.evaluationStack |> snd
         let concreteMemory = cilState.state.concreteMemory
         let allocateAddress address typ =
             let typ = Types.FromDotNetType typ
             let concreteAddress = lazy(Memory.AllocateEmptyType cilState.state typ)
             concreteMemory.Allocate address concreteAddress
         Array.iter2 allocateAddress c.newAddresses c.newAddressesTypes
+
+        let toPop = int c.callStackFramesPops
+        if toPop > 0 then CilStateOperations.popFramesOf toPop cilState
+
+        assert(Memory.CallStackSize cilState.state > 0)
+        let initFrame (resolved, unresolved) (addr, offset, k) =
+            let declaringType = x.MarshallRefFromConcolic addr offset k |> x.TypeOfConcolicThisRef
+            let resolved = x.ResolveMethod cilState declaringType resolved unresolved
+            initSymbolicFrame resolved
+        Array.iter2 initFrame c.newCallStackFrames c.thisAddresses
+
+        assert(List.length cilState.ipStack = List.length c.ipStack)
+        cilState.ipStack <- List.map2 CilStateOperations.changeIpOffset cilState.ipStack (List.rev c.ipStack)
+
+        let evalStack = EvaluationStack.PopMany (int c.evaluationStackPops) cilState.state.evaluationStack |> snd
         let argTypes = lazy x.CalleeArgTypesIfPossible()
         let mutable maxIndex = 0
         let createTerm i operand =

@@ -400,7 +400,7 @@ namespace vsharp {
         size = obj->sizeOf();
         VirtualAddress vAddress{objID, 0};
         buffer = readBytes(vAddress, size);
-        char *type = buffer + sizeof(UINT_PTR);
+        char *type = buffer;
         for (int i = 0; i < refOffsetsLength; i++) {
             char *refAddress = type + refOffsets[i];
             resolveRefInHeapBytes(refAddress);

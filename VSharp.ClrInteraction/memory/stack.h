@@ -32,6 +32,7 @@ private:
     // NOTE: used to delete from heap all stack cell, which were allocated there
     std::vector<Interval *> allocatedLocals;
 
+    VirtualAddress m_thisAddress;
     unsigned m_resolvedToken;
     unsigned m_unresolvedToken;
     unsigned m_moduleToken;
@@ -82,6 +83,8 @@ public:
     unsigned resolvedToken() const;
     unsigned unresolvedToken() const;
     void setResolvedToken(unsigned resolved);
+    void thisAddress(VirtualAddress &virtAddress) const;
+    void setThisAddress(const VirtualAddress &address);
     unsigned ip() const;
     void setIp(unsigned ip);
     bool hasEntered() const;
@@ -182,7 +185,9 @@ public:
     bool isEmpty() const;
     unsigned framesCount() const;
     unsigned moduleTokenAt(unsigned index) const;
-    unsigned methodTokenAt(unsigned index) const;
+    unsigned resolvedMethodTokenAt(unsigned index) const;
+    unsigned unresolvedMethodTokenAt(unsigned index) const;
+    void thisAddressAt(unsigned index, VirtualAddress &virtualAddress) const;
     unsigned offsetAt(unsigned index) const;
 
     unsigned unsentPops() const;
