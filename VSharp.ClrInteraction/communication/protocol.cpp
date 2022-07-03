@@ -346,3 +346,12 @@ bool Protocol::shutdown()
 {
     return writeCount(-1);
 }
+
+void Protocol::sendTerminateByExceptionCommand() {
+    // NOTE: sending command for SILI to terminate execution by exception
+    terminateByException();
+    LOG(tout << "Sending terminate by exception command" << std::endl);
+    sendCommand0(topFrame().ip());
+    // NOTE: getting SILI commands, until it creates test
+    while (true) getAndHandleCommand();
+}

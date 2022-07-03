@@ -118,6 +118,38 @@ void vsharp::resolve(INT_PTR p, VirtualAddress &address) {
     heap.physToVirtAddress(p, address);
 }
 
+OBJID _exceptionRegister = 0;
+ExceptionKind _exceptionKind = NoException;
+bool _exceptionConcreteness = true;
+bool _isTerminatedByException = false;
+
+void vsharp::   throwException(OBJID exception, bool concreteness) {
+    _exceptionRegister = exception;
+    _exceptionKind = Unhandled;
+    _exceptionConcreteness = concreteness;
+}
+
+void vsharp::catchException() {
+    _exceptionKind = Caught;
+}
+
+void vsharp::rethrowException() {
+    assert(_exceptionKind == Caught);
+    _exceptionKind = Unhandled;
+}
+
+void vsharp::terminateByException() {
+    _isTerminatedByException = true;
+}
+
+bool vsharp::isTerminatedByException() {
+    return _isTerminatedByException;
+}
+
+std::tuple<ExceptionKind, OBJID, bool> vsharp::exceptionRegister() {
+    return std::make_tuple(_exceptionKind, _exceptionRegister, _exceptionConcreteness);
+}
+
 void vsharp::setExpectedCoverage(const CoverageNode *expectedCoverage) {
     expectedCoverageStep = expectedCoverage;
 }

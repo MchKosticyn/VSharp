@@ -140,6 +140,14 @@ module internal InstructionsSet =
         | _ -> internalfail "internal call should return tuple term * state!"
 
     let isFSharpInternalCall method = Map.containsKey (Reflection.fullGenericMethodName method) Loader.FSharpImplementations
+    let isCSharpInternalCall method = Map.containsKey (Reflection.fullGenericMethodName method) Loader.CSharpImplementations
+    let isExceptionCtor method = Loader.hasRuntimeExceptionsImplementation (Reflection.fullGenericMethodName method)
+    let isInternalCall method =
+        let name = Reflection.fullGenericMethodName method
+        Map.containsKey name Loader.FSharpImplementations ||
+        Map.containsKey name Loader.CSharpImplementations ||
+        Loader.hasRuntimeExceptionsImplementation name
+
     // ------------------------------- CIL instructions -------------------------------
 
     let referenceLocalVariable index (methodBase : MethodBase) =
@@ -1987,6 +1995,9 @@ type internal ILInterpreter() as this =
                 makeStep' ip (fun states ->
                 List.iter makeLeaveIfNeeded states
                 k states)
+            // NOTE: state from concolic
+            | SearchingForHandler([], []) ->
+                k [cilState]
             | SearchingForHandler([], framesToPop) ->
                 let popFrameWithContents _ =
                     clearEvaluationStackLastFrame cilState

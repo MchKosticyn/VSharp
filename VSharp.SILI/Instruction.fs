@@ -208,14 +208,14 @@ module internal Instruction =
     let unconditionalBranchTarget (m : MethodBase) pos =
         match getIpTransition m pos with
         | UnconditionalBranch target -> target
-        | _ -> __unreachable__()
+        | ipTransition -> internalfailf "unconditionalBranchTarget: unexpected ip transition %O" ipTransition
 
     let fallThroughTarget (m : MethodBase) pos =
         match getIpTransition m pos with
         | FallThrough target -> target
-        | _ -> __unreachable__()
+        | ipTransition -> internalfailf "fallThroughTarget: unexpected ip transition %O" ipTransition
 
     let conditionalBranchTarget (m : MethodBase) pos =
         match getIpTransition m pos with
         | ConditionalBranch(fallThrough, rest) -> fallThrough, rest
-        | _ -> __unreachable__()
+        | ipTransition -> internalfailf "conditionalBranchTarget: unexpected ip transition %O" ipTransition

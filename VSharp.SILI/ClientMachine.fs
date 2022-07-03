@@ -243,12 +243,28 @@ type ClientMachine(entryPoint : MethodBase, requestMakeStep : cilState -> unit, 
         | _ -> internalfailf "TypeOfConcolicThisRef: unexpected 'this' %O" thisRef
 
     member x.SynchronizeStates (c : execCommand) =
+        Logger.trace "Synchronizing states with Concolic"
         let concreteMemory = cilState.state.concreteMemory
         let allocateAddress address typ =
             let typ = Types.FromDotNetType typ
             let concreteAddress = lazy(Memory.AllocateEmptyType cilState.state typ)
             concreteMemory.Allocate address concreteAddress
         Array.iter2 allocateAddress c.newAddresses c.newAddressesTypes
+
+        let exceptionRegister =
+            // NOTE: is exception is symbolic, it was already raised in SILI, so ignoring exception ref
+            match c.exceptionRegister, cilState.state.exceptionsRegister.ExceptionTerm with
+            | UnhandledConcolic(exceptionRegister, exceptionIsConcrete), _ when exceptionIsConcrete ->
+                Unhandled(x.MarshallRefFromConcolic exceptionRegister UIntPtr.Zero ReferenceType)
+            | UnhandledConcolic _, Some exc ->
+                Unhandled exc
+            | CaughtConcolic(exceptionRegister, exceptionIsConcrete), _ when exceptionIsConcrete ->
+                Caught(x.MarshallRefFromConcolic exceptionRegister UIntPtr.Zero ReferenceType)
+            | CaughtConcolic _, Some exc ->
+                Caught exc
+            | NoExceptionConcolic, _ -> NoException
+            | exceptionRegister, _ -> internalfailf "SynchronizeStates: unexpected exception register %O" exceptionRegister
+        cilState.state.exceptionsRegister <- exceptionRegister
 
         let toPop = int c.callStackFramesPops
         if toPop > 0 then CilStateOperations.popFramesOf toPop cilState
@@ -262,6 +278,8 @@ type ClientMachine(entryPoint : MethodBase, requestMakeStep : cilState -> unit, 
 
         assert(List.length cilState.ipStack = List.length c.ipStack)
         cilState.ipStack <- List.map2 CilStateOperations.changeIpOffset cilState.ipStack (List.rev c.ipStack)
+        if c.isTerminatedByException then
+            CilStateOperations.setCurrentIp (SearchingForHandler([], [])) cilState
 
         let evalStack = EvaluationStack.PopMany (int c.evaluationStackPops) cilState.state.evaluationStack |> snd
         let argTypes = lazy x.CalleeArgTypesIfPossible()
@@ -377,9 +395,10 @@ type ClientMachine(entryPoint : MethodBase, requestMakeStep : cilState -> unit, 
         let methodEnded = CilStateOperations.methodEnded cilState
         let notEndOfEntryPoint = CilStateOperations.currentIp cilState <> Exit entryPoint
         let isIIEState = CilStateOperations.isIIEState cilState
+        let stoppedByException = CilStateOperations.stoppedByException cilState
         if methodEnded && notEndOfEntryPoint then
             let method = CilStateOperations.currentMethod cilState
-            if InstructionsSet.isFSharpInternalCall method then callIsSkipped <- true
+            if InstructionsSet.isInternalCall method then callIsSkipped <- true
             cilState
         else
             let concretizedOps =
@@ -393,7 +412,8 @@ type ClientMachine(entryPoint : MethodBase, requestMakeStep : cilState -> unit, 
             let connectConcolic cilState =
                 cilState.concolicState <- Running
                 cilState.state.concreteMemory <- concolicMemory
-            if notEndOfEntryPoint && not isIIEState then connectConcolic cilState
+            // TODO: unify stopping execution with searcher
+            if notEndOfEntryPoint && not isIIEState && not stoppedByException then connectConcolic cilState
             let lastPushInfo =
                 match cilState.lastPushInfo with
                 | Some x when IsConcrete x && notEndOfEntryPoint ->

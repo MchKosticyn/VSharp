@@ -1393,7 +1393,7 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                         let hasThis = Reflection.hasThis callee && not isNewObj
                         let argsCount = parameters.Length
                         let argsCount = if hasThis then argsCount + 1 else argsCount
-                        let isModeledInternalCall = InstructionsSet.isFSharpInternalCall callee // TODO: add other cases
+                        let isModeledInternalCall = InstructionsSet.isInternalCall callee // TODO: add other cases
                         let isExecutableMethod = Loader.isExecutable callee
                         x.PrependProbe(probes.call, [(OpCodes.Ldc_I4, Arg32 argsCount)], x.tokens.bool_u2_sig, &prependTarget) |> ignore
 
@@ -1476,7 +1476,9 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                     atLeastOneReturnFound <- true
                     x.PlaceLeaveProbe &instr
                 | OpCodeValues.Throw ->
-                    x.PrependProbeWithOffset(probes.throw, [], x.tokens.void_offset_sig, &prependTarget) |> ignore
+                    x.PrependDup(&prependTarget) |> ignore
+                    x.PrependInstr(OpCodes.Conv_I, NoArg, &prependTarget) |> ignore
+                    x.PrependProbeWithOffset(probes.throw, [], x.tokens.void_i_offset_sig, &prependTarget) |> ignore
                     atLeastOneReturnFound <- true
 
                 // Ignored instructions

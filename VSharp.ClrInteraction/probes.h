@@ -87,6 +87,8 @@ struct ExecCommand {
     unsigned evaluationStackPushesCount;
     unsigned evaluationStackPops;
     unsigned newAddressesCount;
+    std::tuple<ExceptionKind, OBJID, bool> exceptionRegister;
+    BYTE isTerminatedByException;
     std::pair<unsigned, unsigned> *newCallStackFrames;
     VirtualAddress *thisAddresses;
     unsigned *ipStack;
@@ -97,7 +99,7 @@ struct ExecCommand {
     char *newAddressesTypes;
 
     void serialize(char *&bytes, unsigned &count) const {
-        count = 7 * sizeof(unsigned) + 2 * sizeof(unsigned) * newCallStackFramesCount + sizeof(unsigned) * ipStackCount;
+        count = 7 * sizeof(unsigned) + 3 * sizeof(BYTE) + sizeof(UINT_PTR) + 2 * sizeof(unsigned) * newCallStackFramesCount + sizeof(unsigned) * ipStackCount;
         for (unsigned i = 0; i < evaluationStackPushesCount; ++i)
             count += evaluationStackPushes[i].size();
         for (unsigned i = 0; i < newCallStackFramesCount; ++i)
@@ -118,6 +120,11 @@ struct ExecCommand {
         *(unsigned *)buffer = evaluationStackPushesCount; buffer += size;
         *(unsigned *)buffer = evaluationStackPops; buffer += size;
         *(unsigned *)buffer = newAddressesCount; buffer += size;
+        *(BYTE *)buffer = (BYTE) std::get<0>(exceptionRegister); buffer += sizeof(BYTE);
+        *(UINT_PTR *)buffer = (OBJID) std::get<1>(exceptionRegister); buffer += sizeof(OBJID);
+        BYTE exceptionIsConcrete = std::get<2>(exceptionRegister) ? 1 : 0;
+        *(BYTE *)buffer = exceptionIsConcrete; buffer += sizeof(BYTE);
+        *(BYTE *)buffer = isTerminatedByException; buffer += sizeof(BYTE);
         for (int i = 0; i < newCallStackFramesCount; i++) {
             *(unsigned *)buffer = newCallStackFrames[i].first; buffer += size;
             *(unsigned *)buffer = newCallStackFrames[i].second; buffer += size;
@@ -179,6 +186,8 @@ void initCommand(OFFSET offset, bool isBranch, unsigned opsCount, EvalStackOpera
     command.evaluationStackPushes = ops;
     auto newAddresses = heap.flushObjects();
     auto addressesSize = newAddresses.size();
+    command.exceptionRegister = exceptionRegister();
+    command.isTerminatedByException = isTerminatedByException() ? 1 : 0;
     command.newAddressesCount = addressesSize;
     command.newAddresses = new UINT_PTR[addressesSize];
     unsigned long fullTypesSize = 0;
@@ -1150,14 +1159,22 @@ PROBE(void, Track_Calli, (mdSignature signature, OFFSET offset)) {
     FAIL_LOUD("CALLI NOT IMLEMENTED!");
 }
 
-PROBE(void, Track_Throw, (OFFSET offset)) {
+PROBE(void, Track_Throw, (UINT_PTR exceptionRef, OFFSET offset)) {
+    VirtualAddress virtualAddress{};
+    resolve(exceptionRef, virtualAddress);
+    assert(!virtualAddress.offset);
     StackFrame &top = topFrame();
-    if (!top.pop1())
+    bool concreteness = top.pop1();
+    if (!concreteness)
         sendCommand1(offset);
-    else
-        top.push1Concrete();
+    // NOTE: clear evaluation stack of top frame
+    top.pop(top.count());
+    // NOTE: raise exception register
+    throwException(virtualAddress.obj, concreteness);
 }
-PROBE(void, Track_Rethrow, (OFFSET offset)) { /*TODO*/ }
+PROBE(void, Track_Rethrow, (OFFSET offset)) {
+    rethrowException();
+}
 
 //PROBE(void, Mem_p, (INT_PTR arg)) { clear_mem(); mem_p(arg); }
 

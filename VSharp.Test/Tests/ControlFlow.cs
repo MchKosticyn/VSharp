@@ -377,7 +377,7 @@ namespace IntegrationTests
             return res;
         }
 
-        [TestSvm(78)]
+        [Ignore("Works too long in concolic")]
         public static int NestedForsHard(int x)
         {
             for (int i = 0; i < x; i++)

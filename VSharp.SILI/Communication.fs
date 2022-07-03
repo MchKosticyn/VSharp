@@ -420,6 +420,11 @@ type evalStackOperand =
     | NumericOp of evalStackArgType * int64
     | PointerOp of concolicAddress
 
+type concolicExceptionRegister =
+    | UnhandledConcolic of UIntPtr * bool
+    | CaughtConcolic of UIntPtr * bool
+    | NoExceptionConcolic
+
 [<type: StructLayout(LayoutKind.Sequential, Pack=1, CharSet=CharSet.Ansi)>]
 type private execCommandStatic = {
     isBranch : uint32
@@ -429,11 +434,17 @@ type private execCommandStatic = {
     evaluationStackPushesCount : uint32
     evaluationStackPops : uint32
     newAddressesCount : uint32
+    exceptionKind : byte
+    exceptionRegister : UIntPtr
+    exceptionIsConcrete : byte
+    isTerminatedByException : byte
 }
 type execCommand = {
     isBranch : uint32
     callStackFramesPops : uint32
     evaluationStackPops : uint32
+    exceptionRegister : concolicExceptionRegister
+    isTerminatedByException : bool
     newCallStackFrames : array<int32 * int32>
     thisAddresses : concolicAddress array
     ipStack : int32 list
@@ -887,6 +898,14 @@ type Communicator(pipeFile) =
             let staticSize = Marshal.SizeOf typeof<execCommandStatic>
             let staticBytes, dynamicBytes = Array.splitAt staticSize bytes
             let staticPart = x.Deserialize<execCommandStatic> staticBytes
+            let exceptionIsConcrete = staticPart.exceptionIsConcrete = 1uy
+            let exceptionRegister =
+                match staticPart.exceptionKind with
+                | 1uy -> UnhandledConcolic(staticPart.exceptionRegister, exceptionIsConcrete)
+                | 2uy -> CaughtConcolic(staticPart.exceptionRegister, exceptionIsConcrete)
+                | 3uy -> NoExceptionConcolic
+                | ek -> internalfailf "ReadExecuteCommand: unexpected exception kind %O" ek
+            let terminatedByException = staticPart.isTerminatedByException = 1uy
             let callStackEntrySize = sizeof<int32> * 2
             let callStackOffset = (int staticPart.newCallStackFramesCount) * callStackEntrySize
             let newCallStackFrames = Array.init (int staticPart.newCallStackFramesCount) (fun i ->
@@ -928,6 +947,8 @@ type Communicator(pipeFile) =
             { isBranch = staticPart.isBranch
               callStackFramesPops = staticPart.callStackFramesPops
               evaluationStackPops = staticPart.evaluationStackPops
+              exceptionRegister = exceptionRegister
+              isTerminatedByException = terminatedByException
               newCallStackFrames = newCallStackFrames
               thisAddresses = thisAddresses
               ipStack = ipStack

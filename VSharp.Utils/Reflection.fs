@@ -112,6 +112,13 @@ module public Reflection =
 //            else methodBase.GetGenericArguments() |> Seq.map getFullTypeName |> join ", " |> sprintf "[%s]"
         sprintf "%s %s.%s(%s)" returnType declaringType methodBase.Name parameters
 
+    let public methodToString (m : MethodBase) =
+        let hasThis = hasThis m
+        let returnsSomething = hasNonVoidResult m
+        let argsCount = m.GetParameters().Length
+        if m.DeclaringType = null then m.Name
+        else sprintf "%s %s.%s(%s)" (if returnsSomething then "nonvoid" else "void") m.DeclaringType.FullName m.Name (if hasThis then sprintf "%d+1" argsCount else toString argsCount)
+
     let isArrayConstructor (methodBase : MethodBase) =
         methodBase.IsConstructor && methodBase.DeclaringType.IsArray
 
@@ -257,13 +264,6 @@ module public Reflection =
     let concretizeField (f : fieldId) (subst : Type -> Type) =
         let declaringType = concretizeType subst f.declaringType
         {declaringType = declaringType; name = f.name; typ = concretizeType subst f.typ}
-
-    let public methodToString (m : MethodBase) =
-        let hasThis = hasThis m
-        let returnsSomething = hasNonVoidResult m
-        let argsCount = m.GetParameters().Length
-        if m.DeclaringType = null then m.Name
-        else sprintf "%s %s.%s(%s)" (if returnsSomething then "nonvoid" else "void") m.DeclaringType.FullName m.Name (if hasThis then sprintf "%d+1" argsCount else toString argsCount)
 
     // --------------------------------- Fields ---------------------------------
 

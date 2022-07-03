@@ -1030,11 +1030,9 @@ type ILRewriter(body : rawMethodBody) =
             Logger.trace "matcher: %O" eh.matcher
             Logger.trace "try begin: %s" <| x.ILInstrToString probes eh.tryBegin
             Logger.trace "try end: %s" <| x.ILInstrToString probes eh.tryEnd
-            Logger.trace "try end next: %s" <| x.ILInstrToString probes eh.tryEnd.next
             Logger.trace "try length: %d" <| eh.tryEnd.next.offset - eh.tryBegin.offset
             Logger.trace "handler begin: %s" <| x.ILInstrToString probes eh.handlerBegin
             Logger.trace "handler end: %s" <| x.ILInstrToString probes eh.handlerEnd
-            Logger.trace "handler end next: %s" <| x.ILInstrToString probes eh.handlerEnd.next
             Logger.trace "handler length: %d" <| eh.handlerEnd.next.offset - eh.handlerBegin.offset
             encodeEH eh) ehs
 //        let ehs = Array.map encodeEH ehs

@@ -4,10 +4,17 @@ namespace VSharp.CSharpUtils
 {
     public static class Exceptions
     {
+        // TODO: why constructor call implies throw? Fix this
         [Implements("System.Void System.InvalidCastException..ctor(this, System.String)")]
         public static void CreateInvalidCastException(string msg)
         {
             throw new InvalidCastException(msg);
+        }
+
+        [Implements("System.Void System.SystemException..ctor(this)")]
+        public static void CreateSystemException()
+        {
+            throw new SystemException();
         }
 
         [Implements("System.Void System.NullReferenceException..ctor(this)")]
