@@ -52,6 +52,10 @@ module SR =
         assert(List.length args = 0)
         Memory.AllocateString "Arg_ArgumentNullException" state
 
+    let internal get_Arg_TargetInvocationException (state : state) (args : term list) : term =
+        assert(List.length args = 0)
+        Memory.AllocateString "Arg_TargetInvocationException" state
+
     let internal get_ArgumentNull_Generic (state : state) (args : term list) : term =
         assert(List.length args = 0)
         Memory.AllocateString "ArgumentNull_Generic" state

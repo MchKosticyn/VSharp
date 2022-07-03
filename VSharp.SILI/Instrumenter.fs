@@ -1477,7 +1477,9 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                     atLeastOneReturnFound <- true
                     x.PlaceLeaveProbe &instr
                 | OpCodeValues.Throw ->
-                    x.PrependProbeWithOffset(probes.throw, [], x.tokens.void_offset_sig, &prependTarget) |> ignore
+                    x.PrependDup(&prependTarget) |> ignore
+                    x.PrependInstr(OpCodes.Conv_I, NoArg, &prependTarget) |> ignore
+                    x.PrependProbeWithOffset(probes.throw, [], x.tokens.void_i_offset_sig, &prependTarget) |> ignore
                     atLeastOneReturnFound <- true
 
                 // Ignored instructions

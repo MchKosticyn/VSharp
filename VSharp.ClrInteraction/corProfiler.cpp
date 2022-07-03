@@ -678,12 +678,24 @@ HRESULT STDMETHODCALLTYPE CorProfiler::ExceptionSearchFunctionEnter(FunctionID f
 HRESULT STDMETHODCALLTYPE CorProfiler::ExceptionSearchFunctionLeave()
 {
     LOG(tout << "EXCEPTION Search function leave" << std::endl);
+    // TODO: use for filter support
     return S_OK;
 }
 
 HRESULT STDMETHODCALLTYPE CorProfiler::ExceptionSearchFilterEnter(FunctionID functionId)
 {
     LOG(tout << "EXCEPTION Search filter enter" << std::endl);
+
+    if (isMainEntered()) {
+        // TODO: support filter: modify ip, because need to execute lower frames, but do not need to pop them
+        ExceptionKind kind;
+        OBJID exceptionRef;
+        bool isConcrete;
+        std::tie(kind, exceptionRef, isConcrete) = exceptionRegister();
+        // NOTE: pushing exception ref onto stack
+        topFrame().pushPrimitive(isConcrete);
+        FAIL_LOUD("Filter is not supported");
+    }
     UNUSED(functionId);
     return S_OK;
 }
@@ -691,6 +703,10 @@ HRESULT STDMETHODCALLTYPE CorProfiler::ExceptionSearchFilterEnter(FunctionID fun
 HRESULT STDMETHODCALLTYPE CorProfiler::ExceptionSearchFilterLeave()
 {
     LOG(tout << "EXCEPTION Search filter leave" << std::endl);
+    if (isMainEntered()) {
+        // TODO: support filter
+        FAIL_LOUD("Filter is not supported");
+    }
     return S_OK;
 }
 
@@ -725,6 +741,17 @@ HRESULT STDMETHODCALLTYPE CorProfiler::ExceptionUnwindFunctionEnter(FunctionID f
 HRESULT STDMETHODCALLTYPE CorProfiler::ExceptionUnwindFunctionLeave()
 {
     LOG(tout << "EXCEPTION UNWIND FUNCTION LEAVE!" << std::endl);
+    if (isMainEntered()) {
+        Stack &s = stack();
+        if (s.framesCount() == 1) {
+            // NOTE: clear pop cache, because it's not needed for terminating state
+            topFrame().pop0();
+            // NOTE: sending command to end SILI execution
+            Protocol::sendTerminateByExceptionCommand();
+        }
+        // NOTE: popping stack frame
+        s.popFrame();
+    }
     return S_OK;
 }
 
@@ -744,6 +771,15 @@ HRESULT STDMETHODCALLTYPE CorProfiler::ExceptionUnwindFinallyLeave()
 HRESULT STDMETHODCALLTYPE CorProfiler::ExceptionCatcherEnter(FunctionID functionId, ObjectID objectId)
 {
     LOG(tout << "EXCEPTION CATCHER ENTER!" << std::endl);
+    if (isMainEntered()) {
+        ExceptionKind kind;
+        OBJID exceptionRef;
+        bool isConcrete;
+        std::tie(kind, exceptionRef, isConcrete) = exceptionRegister();
+        // NOTE: pushing exception ref onto stack
+        topFrame().pushPrimitive(isConcrete);
+        catchException();
+    }
     UNUSED(functionId);
     UNUSED(objectId);
     return S_OK;

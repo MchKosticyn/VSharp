@@ -42,6 +42,22 @@ void validateStackEmptyness();
 
 void resolve(INT_PTR p, VirtualAddress &vAddress);
 
+// Exceptions handling
+
+void throwException(UINT_PTR exception, bool concreteness);
+void catchException();
+void rethrowException();
+void terminateByException();
+bool isTerminatedByException();
+
+enum ExceptionKind {
+    Unhandled = 1,
+    Caught = 2,
+    NoException = 3
+};
+
+std::tuple<ExceptionKind, OBJID, bool> exceptionRegister();
+
 // Coverage collection
 
 struct CoverageNode {

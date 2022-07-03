@@ -8,7 +8,13 @@ namespace IntegrationTests
     [TestSvmFixture]
     public class ExceptionsControlFlow
     {
-        [Ignore("need deep copy for concrete memory or concolic")]
+        [TestSvm]
+        public static int SimpleThrow()
+        {
+            throw new NullReferenceException();
+        }
+
+        [Ignore("FilterHandler support")]
         public static int TestWithHandlers(int x, int y) {
             //A[] array = new A[15];
             int addition = 1;
@@ -32,8 +38,6 @@ namespace IntegrationTests
             return checked(x + y);
         }
 
-
-        // expecting 111
         [TestSvm]
         public static int TestWithNestedFinallyHandlers(int x, int y)
         {
@@ -44,9 +48,9 @@ namespace IntegrationTests
                 try { }
                 finally
                 {
-                    addition += 10;
+                    addition += x;
                 }
-                addition += 100;
+                addition += y;
             }
 
             return addition;
@@ -112,7 +116,7 @@ namespace IntegrationTests
         }
 
         [TestSvm]
-        public static int ThrowExceptionInCall()
+        public static int ThrowExceptionInCall(int x)
         {
             int globalMemory = 0;
             try
@@ -121,7 +125,7 @@ namespace IntegrationTests
             }
             catch (Exception)
             {
-                globalMemory = 12;
+                globalMemory = x;
             }
             finally
             {
@@ -162,7 +166,7 @@ namespace IntegrationTests
         }
 
         [TestSvm(79)]
-        public static int NestedTryCatchFinally()
+        public static int NestedTryCatchFinally(int x)
         {
             int globalMemory = 0;
             try
@@ -173,7 +177,7 @@ namespace IntegrationTests
                 }
                 catch (Exception)
                 {
-                    globalMemory = 42;
+                    globalMemory = x + globalMemory;
                 }
                 finally
                 {
@@ -182,7 +186,7 @@ namespace IntegrationTests
             }
             catch (Exception)
             {
-                globalMemory = 12;
+                globalMemory = x + x;
             }
             finally
             {

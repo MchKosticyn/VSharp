@@ -1397,5 +1397,16 @@ type ILRewriter(body : rawMethodBody) =
                 | ClassToken tok -> tok
                 | Filter instr -> instr.offset
         }
-        let ehs = Array.map encodeEH ehs
+        let probes = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof<probes>) :?> probes
+        let ehs = Array.map (fun eh ->
+            Logger.trace "flags: %d" eh.flags
+            Logger.trace "matcher: %O" eh.matcher
+            Logger.trace "try begin: %s" <| x.ILInstrToString probes eh.tryBegin
+            Logger.trace "try end: %s" <| x.ILInstrToString probes eh.tryEnd
+            Logger.trace "try length: %d" <| eh.tryEnd.next.offset - eh.tryBegin.offset
+            Logger.trace "handler begin: %s" <| x.ILInstrToString probes eh.handlerBegin
+            Logger.trace "handler end: %s" <| x.ILInstrToString probes eh.handlerEnd
+            Logger.trace "handler length: %d" <| eh.handlerEnd.next.offset - eh.handlerBegin.offset
+            encodeEH eh) ehs
+//        let ehs = Array.map encodeEH ehs
         {properties = methodProps; il = Array.truncate (int methodProps.ilCodeSize) outputIL; ehs = ehs}

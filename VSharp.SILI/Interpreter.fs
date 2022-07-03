@@ -2039,6 +2039,9 @@ type internal ILInterpreter() as this =
                 makeStep' ip (fun states ->
                 List.iter makeLeaveIfNeeded states
                 k states)
+            // NOTE: state from concolic
+            | SearchingForHandler([], []) ->
+                k [cilState]
             | SearchingForHandler([], framesToPop) ->
                 let popFrameWithContents _ =
                     clearEvaluationStackLastFrame cilState
