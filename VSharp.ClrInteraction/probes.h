@@ -356,6 +356,7 @@ CommandType getAndHandleCommand() {
 
 void trackCoverage(OFFSET offset, int &lastPushInfo, bool &stillExpectsCoverage) {
     if (!addCoverageStep(offset, lastPushInfo, stillExpectsCoverage)) {
+        freeLock();
         FAIL_LOUD("Path divergence")
     }
 }
@@ -373,6 +374,7 @@ void sendCommand(OFFSET offset, unsigned opsCount, EvalStackOperand *ops, bool m
             StackFrame &top = vsharp::topFrame();
             top.pushPrimitive(lastStackPush == 2);
         }
+        freeLock();
         return;
     }
     protocol->sendSerializable(ExecuteCommand, command);
