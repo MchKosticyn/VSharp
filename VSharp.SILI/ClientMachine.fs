@@ -381,10 +381,11 @@ type ClientMachine(entryPoint : MethodBase, cmdArgs : string[] option, requestMa
 
     member x.StepDone (steppedStates : cilState list) =
         let methodEnded = CilStateOperations.methodEnded cilState
-        let notEndOfEntryPoint = CilStateOperations.currentIp cilState <> Exit entryPoint
         let isIIEState = CilStateOperations.isIIEState cilState
         let stoppedByException = CilStateOperations.stoppedByException cilState
-        if methodEnded && notEndOfEntryPoint then
+        // NOTE: if current ip is end of entryPoint, test was already generated, so concolic can be terminated
+        if CilStateOperations.currentIp cilState = Exit entryPoint then x.Terminate()
+        elif methodEnded then
             let method = CilStateOperations.currentMethod cilState
             if InstructionsSet.isInternalCall method then callIsSkipped <- true
         else
@@ -400,10 +401,12 @@ type ClientMachine(entryPoint : MethodBase, cmdArgs : string[] option, requestMa
                 cilState.concolicStatus <- concolicStatus.Running
                 cilState.state.concreteMemory <- concolicMemory
             // TODO: unify stopping execution with searcher
-            if notEndOfEntryPoint && not isIIEState && not stoppedByException then connectConcolic cilState
+            if not isIIEState && not stoppedByException then connectConcolic cilState
+            // TODO: Need second bypass after searching for handler failed
+            else x.Terminate()
             let lastPushInfo cilState =
                 match cilState.lastPushInfo with
-                | Some x when IsConcrete x && notEndOfEntryPoint ->
+                | Some x when IsConcrete x ->
                     CilStateOperations.pop cilState |> ignore
                     Some true
                 | Some _ -> Some false
