@@ -15,6 +15,8 @@
 #include "../profiler_win.h"
 #endif
 
+#define sizeOfCoverageNode (2 * sizeof(int) + sizeof(BYTE) + sizeof(mdMethodDef) + sizeof(OFFSET))
+
 namespace vsharp {
 
 enum CommandType {

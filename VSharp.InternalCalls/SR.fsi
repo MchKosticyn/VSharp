@@ -37,7 +37,7 @@ module internal SR =
     val internal get_Arg_ArgumentNullException : state -> term list -> term
 
     [<Implements("System.String System.SR.get_Arg_TargetInvocationException()")>]
-    val internal get_Arg_OverflowException : state -> term list -> term
+    val internal get_Arg_TargetInvocationException : state -> term list -> term
 
     [<Implements("System.String System.SR.get_ArgumentNull_Generic()")>]
     val internal get_ArgumentNull_Generic : state -> term list -> term

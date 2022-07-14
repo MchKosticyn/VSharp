@@ -412,13 +412,9 @@ type ClientMachine(entryPoint : MethodBase, cmdArgs : string[] option, requestMa
                 | Some _ -> Some false
                 | None -> None
             steppedStates |> List.iter (fun cilState ->
-                let lastPush =
-                    match lastPushInfo cilState with
-                    | Some isConcrete when isConcrete -> 2
-                    | Some _ -> 1
-                    | None -> 0
                 match cilState.path with
                 | head::tail ->
+                    let lastPush = lastPushInfo cilState |> x.communicator.SerializeStackPush
                     cilState.path <- {head with stackPush = lastPush}::tail
                 | [] -> __unreachable__())
             let internalCallResult =
@@ -428,7 +424,10 @@ type ClientMachine(entryPoint : MethodBase, cmdArgs : string[] option, requestMa
                 | _ -> None
             let framesCount = Memory.CallStackSize cilState.state
             assert(not cilState.path.IsEmpty)
-            x.communicator.SendExecResponse concretizedOps internalCallResult (lastPushInfo cilState) framesCount
+            let currentStackPush =
+                assert(cilState.path.Length > 0)
+                cilState.path.Head.stackPush
+            x.communicator.SendExecResponse concretizedOps internalCallResult currentStackPush framesCount
             callIsSkipped <- false
 
 [<AllowNullLiteral>]

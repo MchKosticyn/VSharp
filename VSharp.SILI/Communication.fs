@@ -354,18 +354,18 @@ type instrumentedMethodBody = {
 
 // Lightweight types for representing coverage information
 [<Struct>]
-[<StructLayout(LayoutKind.Sequential)>]
+[<type: StructLayout(LayoutKind.Sequential, Pack=1, CharSet=CharSet.Ansi)>]
 type coverageLocation = {
     moduleToken : int
     methodToken : int
     offset : int
     threadToken : int
-    stackPush : int // 0 = no push, 1 = symbolic push, 2 = concrete push
+    stackPush : byte // 0 = no push, 1 = symbolic push, 2 = concrete push
 
 }
 with
     override x.ToString() =
-        sprintf "%x::%d[%d]" x.methodToken x.offset x.stackPush
+        sprintf "%x::%d[%O]" x.methodToken x.offset x.stackPush
 
 type CorElementType =
     | ELEMENT_TYPE_END            = 0x0uy
@@ -692,7 +692,7 @@ type Communicator(pipeFile) =
             x.Serialize<int>(loc.methodToken, bytes, idx + sizeof<int32>)
             x.Serialize<int>(loc.offset, bytes, idx + 2 * sizeof<int32>)
             x.Serialize<int>(loc.threadToken, bytes, idx + 3 * sizeof<int32>)
-            x.Serialize<int>(loc.stackPush, bytes, idx + 4 * sizeof<int32>)) cov
+            x.Serialize<byte>(loc.stackPush, bytes, idx + 4 * sizeof<int32>)) cov
         writeBuffer bytes
 
     member x.SendCommand (command : commandForConcolic) =
@@ -987,8 +987,8 @@ type Communicator(pipeFile) =
                 offset <- offset + sizeof<int32>
                 let threadToken = BitConverter.ToInt32(dynamicBytes, offset)
                 offset <- offset + sizeof<int32>
-                let stackPush = BitConverter.ToInt32(dynamicBytes, offset)
-                offset <- offset + sizeof<int32>
+                let stackPush = dynamicBytes[offset]
+                offset <- offset + sizeof<byte>
                 let node : coverageLocation = {moduleToken = moduleToken; methodToken = methodToken; offset = ilOffset; threadToken = threadToken; stackPush = stackPush}
                 newCoveragePath <- node::newCoveragePath
             { isBranch = staticPart.isBranch
@@ -1075,13 +1075,14 @@ type Communicator(pipeFile) =
             index <- index + size)
         bytes
 
-    member x.SendExecResponse (ops : (obj * Core.symbolicType) list option) (result : (obj * Core.symbolicType) option) lastPush (framesCount : int) =
+    member x.SerializeStackPush (lastStackPush : bool option) =
+        match lastStackPush with
+        | Some isConcrete when isConcrete -> 2uy
+        | Some _ -> 1uy
+        | None -> 0uy
+
+    member x.SendExecResponse (ops : (obj * Core.symbolicType) list option) (result : (obj * Core.symbolicType) option) (lastPush : byte) (framesCount : int) =
         x.SendCommand ReadExecResponse
-        let lastPush =
-            match lastPush with
-            | Some isConcrete when isConcrete -> 2uy
-            | Some _ -> 1uy
-            | None -> 0uy
         let len, opsBytes =
             match ops with
             | Some ops -> ops.Length, x.SerializeOperands ops
