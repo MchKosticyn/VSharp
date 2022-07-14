@@ -247,12 +247,12 @@ CoverageNode *Protocol::acceptCoverageInformation() {
         LOG_ERROR(tout << "Accepting coverage information failed!");
         return nullptr;
     }
-    int entrySize = 3 * sizeof(int) + sizeof(mdMethodDef) + sizeof(OFFSET);
     assert(messageLength >= sizeof(unsigned));
     char *start = message;
     unsigned entriesCount = *((unsigned *)message);
     message += sizeof(unsigned);
-    assert(messageLength == sizeof(unsigned) + entriesCount * entrySize);
+    tout << "messageLength = " << messageLength << "sizeof(unsigned) + entriesCount * sizeOfCoverageNode = " << sizeof(unsigned) + entriesCount * sizeOfCoverageNode << std::endl;
+    assert(messageLength == sizeof(unsigned) + entriesCount * sizeOfCoverageNode);
     CoverageNode *result = nullptr;
     CoverageNode *current = nullptr;
     for (unsigned i = 0; i < entriesCount; ++i) {
@@ -260,7 +260,7 @@ CoverageNode *Protocol::acceptCoverageInformation() {
         mdMethodDef methodToken = *((mdMethodDef *)message); message += sizeof(mdMethodDef);
         OFFSET offset = *((OFFSET *)message); message += sizeof(OFFSET);
         int threadToken = *((int *)message); message += sizeof(int);
-        int stackPush = *((int *)message); message += sizeof(int);
+        BYTE stackPush = *((BYTE *)message); message += sizeof(BYTE);
         CoverageNode *node = new CoverageNode{moduleToken, methodToken, offset, threadToken, stackPush, nullptr};
         if (current) {
             current->next = node;

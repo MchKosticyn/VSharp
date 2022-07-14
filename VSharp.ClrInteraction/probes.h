@@ -111,9 +111,8 @@ struct ExecCommand {
         for (int i = 0; i < newAddressesCount; ++i)
             fullTypesSize += newAddressesTypeLengths[i];
         count += fullTypesSize;
-        unsigned coverageNodesCount = newCoverageNodes ? newCoverageNodes->size() : 0;
-        unsigned coverageNodeSize = 3 * sizeof(int) + sizeof(mdMethodDef) + sizeof(OFFSET);
-        count += sizeof(unsigned) + coverageNodesCount * coverageNodeSize;
+        unsigned coverageNodesCount = newCoverageNodes ? newCoverageNodes->size() : 0;;
+        count += sizeof(unsigned) + coverageNodesCount * sizeOfCoverageNode;
         bytes = new char[count];
         char *buffer = bytes;
         unsigned size = sizeof(unsigned);
@@ -354,7 +353,7 @@ CommandType getAndHandleCommand() {
     return command;
 }
 
-void trackCoverage(OFFSET offset, int &lastPushInfo, bool &stillExpectsCoverage) {
+void trackCoverage(OFFSET offset, BYTE &lastPushInfo, bool &stillExpectsCoverage) {
     if (!addCoverageStep(offset, lastPushInfo, stillExpectsCoverage)) {
         freeLock();
         FAIL_LOUD("Path divergence")
@@ -363,7 +362,7 @@ void trackCoverage(OFFSET offset, int &lastPushInfo, bool &stillExpectsCoverage)
 
 void sendCommand(OFFSET offset, unsigned opsCount, EvalStackOperand *ops, bool mightFork = true) {
     getLock();
-    int lastStackPush = 0;
+    BYTE lastStackPush = 0;
     bool commandsDisabled;
     trackCoverage(offset, lastStackPush, commandsDisabled);
 
@@ -501,7 +500,7 @@ int registerProbe(unsigned long long probe) {
     RETTYPE STDMETHODCALLTYPE NAME ARGS
 
 PROBE(void, Track_Coverage, (OFFSET offset)) {
-    int unused1;
+    BYTE unused1;
     bool unused2;
     trackCoverage(offset, unused1, unused2);
 }

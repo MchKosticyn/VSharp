@@ -332,7 +332,7 @@ type Communicator(pipeFile) =
             x.Serialize<int>(loc.methodToken, bytes, idx + sizeof<int32>)
             x.Serialize<int>(loc.offset, bytes, idx + 2 * sizeof<int32>)
             x.Serialize<int>(loc.threadToken, bytes, idx + 3 * sizeof<int32>)
-            x.Serialize<int>(loc.stackPush, bytes, idx + 4 * sizeof<int32>)) cov
+            x.Serialize<byte>(loc.stackPush, bytes, idx + 4 * sizeof<int32>)) cov
         writeBuffer bytes
 
     member x.SendCommand (command : commandForConcolic) =
@@ -628,8 +628,8 @@ type Communicator(pipeFile) =
                 offset <- offset + sizeof<int32>
                 let threadToken = BitConverter.ToInt32(dynamicBytes, offset)
                 offset <- offset + sizeof<int32>
-                let stackPush = BitConverter.ToInt32(dynamicBytes, offset)
-                offset <- offset + sizeof<int32>
+                let stackPush = dynamicBytes[offset]
+                offset <- offset + sizeof<byte>
                 let node : coverageLocation = {moduleToken = moduleToken; methodToken = methodToken; offset = ilOffset; threadToken = threadToken; stackPush = stackPush}
                 newCoveragePath <- node::newCoveragePath
             { isBranch = staticPart.isBranch
@@ -716,13 +716,14 @@ type Communicator(pipeFile) =
             index <- index + size)
         bytes
 
-    member x.SendExecResponse (ops : (obj * Type) list option) (result : (obj * Type) option) lastPush (framesCount : int) =
+    member x.SerializeStackPush (lastStackPush : bool option) =
+        match lastStackPush with
+        | Some isConcrete when isConcrete -> 2uy
+        | Some _ -> 1uy
+        | None -> 0uy
+
+    member x.SendExecResponse (ops : (obj * Type) list option) (result : (obj * Type) option) (lastPush : byte) (framesCount : int) =
         x.SendCommand ReadExecResponse
-        let lastPush =
-            match lastPush with
-            | Some isConcrete when isConcrete -> 2uy
-            | Some _ -> 1uy
-            | None -> 0uy
         let len, opsBytes =
             match ops with
             | Some ops -> ops.Length, x.SerializeOperands ops

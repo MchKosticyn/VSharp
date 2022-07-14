@@ -156,7 +156,7 @@ void vsharp::setExpectedCoverage(const CoverageNode *expectedCoverage) {
     expectedCoverageExpirated = !expectedCoverage;
 }
 
-bool vsharp::addCoverageStep(OFFSET offset, int &lastStackPush, bool &stillExpectsCoverage) {
+bool vsharp::addCoverageStep(OFFSET offset, BYTE &lastStackPush, bool &stillExpectsCoverage) {
     int threadToken = 0; // TODO: support multithreading
     StackFrame &top = topFrame();
     int moduleToken = top.moduleToken();
@@ -194,7 +194,7 @@ bool vsharp::addCoverageStep(OFFSET offset, int &lastStackPush, bool &stillExpec
     return true;
 }
 
-int vsharp::expectedStackPush() {
+BYTE vsharp::expectedStackPush() {
     return expectedCoverageStep ? expectedCoverageStep->stackPush : 0;
 }
 
@@ -215,5 +215,5 @@ void CoverageNode::serialize(char *&buffer) const {
     *(mdMethodDef *)buffer = methodToken; buffer += sizeof(mdMethodDef);
     *(OFFSET *)buffer = offset; buffer += sizeof(OFFSET);
     *(int *)buffer = threadToken; buffer += sizeof(int);
-    *(int *)buffer = stackPush; buffer += sizeof(int);
+    *(BYTE *)buffer = stackPush; buffer += sizeof(BYTE);
 }

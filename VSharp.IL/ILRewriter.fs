@@ -351,18 +351,17 @@ type instrumentedMethodBody = {
 
 // Lightweight types for representing coverage information
 [<Struct>]
-[<StructLayout(LayoutKind.Sequential)>]
+[<type: StructLayout(LayoutKind.Sequential, Pack=1, CharSet=CharSet.Ansi)>]
 type coverageLocation = {
     moduleToken : int
     methodToken : int
     offset : int
     threadToken : int
-    stackPush : int // 0 = no push, 1 = symbolic push, 2 = concrete push
+    stackPush : byte // 0 = no push, 1 = symbolic push, 2 = concrete push
 }
 with
     override x.ToString() =
-        sprintf "%x::%d[%d]" x.methodToken x.offset x.stackPush
-
+        sprintf "%x::%d[%O]" x.methodToken x.offset x.stackPush
 
 type evaluationStackCellType =
     | I1 = 0
