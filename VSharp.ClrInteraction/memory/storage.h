@@ -184,6 +184,7 @@ public:
     void clearAfterGC();
 
     void deleteObjects(const std::vector<Interval *> &objects);
+    std::vector<OBJID> deletedByGC();
 
     std::map<OBJID, std::pair<char*, unsigned long>> flushObjects();
 

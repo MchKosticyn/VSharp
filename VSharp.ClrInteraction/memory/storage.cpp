@@ -451,6 +451,10 @@ namespace vsharp {
             deletedAddresses.push_back((OBJID) address);
     }
 
+    std::vector<OBJID> Storage::deletedByGC() {
+        return deletedAddresses;
+    }
+
     // TODO: store new addresses or get them from tree? #do
     std::map<OBJID, std::pair<char*, unsigned long>> Storage::flushObjects() {
         std::map<OBJID, std::pair<char*, unsigned long>> result(newAddresses);

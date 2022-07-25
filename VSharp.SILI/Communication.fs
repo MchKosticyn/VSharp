@@ -449,6 +449,7 @@ type private execCommandStatic = {
     evaluationStackPushesCount : uint32
     evaluationStackPops : uint32
     newAddressesCount : uint32
+    deletedAddressesCount : uint32
     exceptionKind : byte
     exceptionRegister : UIntPtr
     exceptionIsConcrete : byte
@@ -465,6 +466,7 @@ type execCommand = {
     ipStack : int32 list
     evaluationStackPushes : evalStackOperand array // NOTE: operands for executing instruction
     newAddresses : UIntPtr array
+    deletedAddresses : UIntPtr array
     newAddressesTypes : Type array
     // TODO: add deleted addresses
     newCoveragePath : coverageLocation list
@@ -970,6 +972,8 @@ type Communicator(pipeFile) =
                 | _ -> internalfailf "unexpected evaluation stack argument type %O" evalStackArgType)
             let newAddresses = Array.init (int staticPart.newAddressesCount) (fun _ ->
                 let res = Reflection.BitConverterToUIntPtr dynamicBytes offset in offset <- offset + UIntPtr.Size; res)
+            let deletedAddresses = Array.init (int staticPart.deletedAddressesCount) (fun _ ->
+                let res = Reflection.BitConverterToUIntPtr dynamicBytes offset in offset <- offset + UIntPtr.Size; res)
             let newAddressesTypesLengths = Array.init (int staticPart.newAddressesCount) (fun _ ->
                 let res = BitConverter.ToUInt64(dynamicBytes, offset) in offset <- offset + sizeof<uint64>; res)
             let newAddressesTypes = Array.init (int staticPart.newAddressesCount) (fun i ->
@@ -1001,6 +1005,7 @@ type Communicator(pipeFile) =
               ipStack = ipStack
               evaluationStackPushes = evaluationStackPushes
               newAddresses = newAddresses
+              deletedAddresses = deletedAddresses
               newAddressesTypes = newAddressesTypes
               newCoveragePath = newCoveragePath }
         | None -> unexpectedlyTerminated()

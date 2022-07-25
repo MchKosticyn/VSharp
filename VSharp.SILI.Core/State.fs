@@ -85,6 +85,7 @@ type concreteData =
 // TODO: use custom type as result of concrete memory operations?
 type IConcreteMemory =
     abstract Allocate : UIntPtr -> Lazy<concreteHeapAddress> -> unit // physical address * virtual address
+    abstract DeleteAddress : UIntPtr -> unit
     abstract Contains : concreteHeapAddress -> bool
     abstract ReadClassField : concreteHeapAddress -> fieldId -> obj
     abstract ReadArrayIndex : concreteHeapAddress -> int list -> arrayType -> bool -> obj

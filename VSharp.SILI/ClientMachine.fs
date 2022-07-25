@@ -232,6 +232,7 @@ type ClientMachine(entryPoint : MethodBase, cmdArgs : string[] option, requestMa
     member x.SynchronizeStates (c : execCommand) =
         Logger.trace "Synchronizing states with Concolic"
         let concreteMemory = cilState.state.concreteMemory
+        Array.iter concreteMemory.DeleteAddress c.deletedAddresses
         let allocateAddress address typ =
             let typ = Types.FromDotNetType typ
             let concreteAddress = lazy(Memory.AllocateEmptyType cilState.state typ)
