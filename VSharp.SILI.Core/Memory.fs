@@ -29,6 +29,7 @@ module internal Memory =
             member x.GetAllArrayData _ _ = internalfail "GetAllArrayData from empty concrete memory"
             member x.Unmarshall _ _ = internalfail "Unmarshalling address from empty concrete memory"
             member x.Allocate _ _ = internalfail "Allocating address to empty concrete memory"
+            member x.DeleteAddress _ = internalfail "Deleting address from empty concrete memory"
             member x.GetPhysicalAddress _ = internalfail "Getting physical address from empty concrete memory"
             member x.GetVirtualAddress _ = internalfail "Getting virtual address from empty concrete memory"
 

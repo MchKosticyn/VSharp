@@ -213,6 +213,12 @@ type ConcolicMemory(communicator : Communicator) =
         member x.Allocate physAddress virtAddress =
             physicalAddresses.Add(physAddress, virtAddress)
 
+        member x.DeleteAddress (physAddress : UIntPtr) =
+            let virtAddress = physicalAddresses[physAddress]
+            let success = physicalAddresses.Remove physAddress in assert(success)
+            if virtAddress.IsValueCreated then
+                let success = virtualAddresses.Remove(virtAddress.Value) in assert(success)
+
         member x.GetVirtualAddress physAddress =
             if physAddress = UIntPtr.Zero then zeroHeapAddress
             else

@@ -87,6 +87,7 @@ struct ExecCommand {
     unsigned evaluationStackPushesCount;
     unsigned evaluationStackPops;
     unsigned newAddressesCount;
+    unsigned deletedAddressesCount;
     std::tuple<ExceptionKind, OBJID, bool> exceptionRegister;
     BYTE isTerminatedByException;
     std::pair<unsigned, unsigned> *newCallStackFrames;
@@ -97,15 +98,17 @@ struct ExecCommand {
     OBJID *newAddresses;
     UINT64 *newAddressesTypeLengths;
     char *newAddressesTypes;
+    OBJID *deletedAddresses;
     const CoverageNode *newCoverageNodes;
 
     void serialize(char *&bytes, unsigned &count) const {
-        count = 7 * sizeof(unsigned) + 3 * sizeof(BYTE) + sizeof(UINT_PTR) + 2 * sizeof(unsigned) * newCallStackFramesCount + sizeof(unsigned) * ipStackCount;
+        count = 8 * sizeof(unsigned) + 3 * sizeof(BYTE) + sizeof(UINT_PTR) + 2 * sizeof(unsigned) * newCallStackFramesCount + sizeof(unsigned) * ipStackCount;
         for (unsigned i = 0; i < evaluationStackPushesCount; ++i)
             count += evaluationStackPushes[i].size();
         for (unsigned i = 0; i < newCallStackFramesCount; ++i)
             count += ADDRESS_SIZE;
         count += sizeof(UINT_PTR) * newAddressesCount;
+        count += sizeof(UINT_PTR) * deletedAddressesCount;
         count += newAddressesCount * sizeof(UINT64);
         UINT64 fullTypesSize = 0;
         for (int i = 0; i < newAddressesCount; ++i)
@@ -123,6 +126,7 @@ struct ExecCommand {
         *(unsigned *)buffer = evaluationStackPushesCount; buffer += size;
         *(unsigned *)buffer = evaluationStackPops; buffer += size;
         *(unsigned *)buffer = newAddressesCount; buffer += size;
+        *(unsigned *)buffer = deletedAddressesCount; buffer += size;
         *(BYTE *)buffer = (BYTE) std::get<0>(exceptionRegister); buffer += sizeof(BYTE);
         *(UINT_PTR *)buffer = (OBJID) std::get<1>(exceptionRegister); buffer += sizeof(OBJID);
         BYTE exceptionIsConcrete = std::get<2>(exceptionRegister) ? 1 : 0;
@@ -142,6 +146,8 @@ struct ExecCommand {
         }
         size = newAddressesCount * sizeof(UINT_PTR);
         memcpy(buffer, (char*)newAddresses, size); buffer += size;
+        size = deletedAddressesCount * sizeof(UINT_PTR);
+        memcpy(buffer, (char*)deletedAddresses, size); buffer += size;
         size = newAddressesCount * sizeof(UINT64);
         memcpy(buffer, (char*)newAddressesTypeLengths, size); buffer += size;
         memcpy(buffer, newAddressesTypes, fullTypesSize); buffer += fullTypesSize;
@@ -218,6 +224,16 @@ void initCommand(OFFSET offset, bool isBranch, unsigned opsCount, EvalStackOpera
         i++;
     }
     command.newAddressesTypes = begin;
+    std::vector<OBJID> deletedAddresses = heap.deletedByGC();
+    auto deletedAddressesSize = deletedAddresses.size();
+    command.deletedAddressesCount = deletedAddressesSize;
+    command.deletedAddresses = new UINT_PTR[deletedAddressesSize];
+    i = 0;
+    for (OBJID deletedAddress : deletedAddresses) {
+        command.deletedAddresses[i] = deletedAddress;
+        i++;
+    }
+
     command.newCoverageNodes = flushNewCoverageNodes();
 }
 
