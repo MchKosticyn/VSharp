@@ -20,7 +20,7 @@ namespace vsharp {
 // --------------------------- Interval ---------------------------
 
     Interval::Interval()
-        : left(0), right(0), marked(false), flushed(false) { }
+        : left(0), right(0), marked(false), flushed(false), handledByGC(true) { }
 
     Interval::Interval(ADDR leftValue, SIZE size)
         : Interval()
@@ -82,6 +82,14 @@ namespace vsharp {
 
     bool Interval::isFlushed() const {
         return flushed;
+    }
+
+    void Interval::disableGC() {
+        handledByGC = false;
+    }
+
+    bool Interval::isHandledByGC() const {
+        return handledByGC;
     }
 
 // --------------------------- Object ---------------------------
@@ -292,6 +300,7 @@ namespace vsharp {
     OBJID Storage::allocateLocal(LocalObject *local) {
         const Interval *i;
         if (!tree.find(local->left, i)) {
+            local->disableGC();
             tree.add(*local);
             return (OBJID) local;
         }
@@ -305,6 +314,7 @@ namespace vsharp {
         if (!tree.find(address, i)) {
             ObjectLocation location{Statics, key};
             auto *obj = new Object(address, size, location);
+            obj->disableGC();
             tree.add(*obj);
             return (OBJID) obj;
         }
@@ -447,12 +457,20 @@ namespace vsharp {
 
     void Storage::clearAfterGC() {
         auto deleted = tree.clearUnmarked();
-        for (Interval *address : deleted)
-            deletedAddresses.push_back((OBJID) address);
+        for (const Interval *address : deleted) {
+            OBJID objID = (OBJID) address;
+            if (newAddresses.count(objID)) {
+                newAddresses.erase(objID);
+            } else {
+                deletedAddresses.push_back(objID);
+            }
+        }
     }
 
-    std::vector<OBJID> Storage::deletedByGC() {
-        return deletedAddresses;
+    std::vector<OBJID> Storage::flushDeletedByGC() {
+        std::vector<OBJID> result(deletedAddresses);
+        deletedAddresses.clear();
+        return result;
     }
 
     // TODO: store new addresses or get them from tree? #do

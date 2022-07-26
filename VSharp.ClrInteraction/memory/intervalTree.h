@@ -48,7 +48,9 @@ public:
         std::vector<Interval *> marked;
         std::vector<Interval *> unmarked;
         for (Interval *obj : objects)
-            if (obj->isMarked()) {
+            if (!obj->isHandledByGC()) {
+                marked.push_back(obj);
+            } else if (obj->isMarked()) {
                 obj->unmark();
                 marked.push_back(obj);
             } else {
