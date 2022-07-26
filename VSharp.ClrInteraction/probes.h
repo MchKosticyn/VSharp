@@ -224,7 +224,7 @@ void initCommand(OFFSET offset, bool isBranch, unsigned opsCount, EvalStackOpera
         i++;
     }
     command.newAddressesTypes = begin;
-    std::vector<OBJID> deletedAddresses = heap.deletedByGC();
+    std::vector<OBJID> deletedAddresses = heap.flushDeletedByGC();
     auto deletedAddressesSize = deletedAddresses.size();
     command.deletedAddressesCount = deletedAddressesSize;
     command.deletedAddresses = new UINT_PTR[deletedAddressesSize];

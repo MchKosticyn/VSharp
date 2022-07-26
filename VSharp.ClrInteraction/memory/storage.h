@@ -27,6 +27,7 @@ class Interval {
 private:
     bool marked;
     bool flushed;
+    bool handledByGC;
 public:
     ADDR left;
     ADDR right;
@@ -53,7 +54,8 @@ public:
     bool isMarked() const;
     void flush();
     bool isFlushed() const;
-
+    void disableGC();
+    bool isHandledByGC() const;
 };
 
 typedef char cell;
@@ -184,7 +186,7 @@ public:
     void clearAfterGC();
 
     void deleteObjects(const std::vector<Interval *> &objects);
-    std::vector<OBJID> deletedByGC();
+    std::vector<OBJID> flushDeletedByGC();
 
     std::map<OBJID, std::pair<char*, unsigned long>> flushObjects();
 
