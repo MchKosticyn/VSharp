@@ -4,92 +4,56 @@
 #include "../logging.h"
 #include <cassert>
 
+template<typename Interval>
+class TreapNode {
+public:
+    TreapNode *left;
+    TreapNode *right;
+    int key;
+    Interval *obj;
+
+    ~TreapNode();
+    TreapNode(Interval *node);
+};
+
 template<typename Interval, typename Shift, typename Point>
 class IntervalTree {
 private:
-    std::vector<Interval *> objects;
+    TreapNode<Interval> *root = nullptr;
+    TreapNode<Interval> *marked = nullptr;
+    TreapNode<Interval> *unhandledByGC = nullptr;
+
+    TreapNode<Interval> *merge(TreapNode<Interval> *left, TreapNode<Interval> *right);
+    std::pair<TreapNode<Interval>*, TreapNode<Interval>*> split(TreapNode<Interval> *tree, Point point);
+    void moveSubTree(TreapNode<Interval> *tree, const Shift &shift);
+    void markSubTree(TreapNode<Interval> *tree);
+    void unmarkSubTree(TreapNode<Interval> *tree);
+    void getAllSubTreeNodes(TreapNode<Interval> *tree, std::vector<TreapNode<Interval>*> &array) const;
+    void addToTree(TreapNode<Interval> *&tree, Interval &node);
+    bool unhandledPresenceCheck(const Interval &interval);
+    TreapNode<Interval> *cutFromTree(TreapNode<Interval> *&tree, const Interval &interval);
+    TreapNode<Interval> *findInTree(TreapNode<Interval> *tree, const Point &p) const;
+    
 public:
-    void add(Interval &node) {
-        objects.push_back(&node);
-    }
+    void add(Interval &node);
 
-    bool find(const Point &p, const Interval *&result) const {
-        for (const Interval *obj : objects) {
-            if (obj->contains(p)) {
-                result = obj;
-                return true;
-            }
-        }
-        return false;
-    }
+    bool find(const Point &p, const Interval *&result) const;
 
-    void moveAndMark(const Interval &interval, const Shift &shift) {
-        for (Interval *obj : objects) {
-            if (interval.includes(*obj)) {
-                obj->move(shift);
-                obj->mark();
-            } else {
-                assert(!interval.intersects(*obj));
-            }
-        }
-    }
+    void moveAndMark(const Interval &interval, const Shift &shift);
 
-    void mark(const Interval &interval) {
-        for (Interval *obj : objects) {
-            if (interval.includes(*obj))
-                obj->mark();
-            else
-                assert(!interval.intersects(*obj));
-        }
-    }
+    void mark(const Interval &interval);
 
     // TODO: copy all marked and clear or remove unmarked one by one?
-    std::vector<Interval *> clearUnmarked() {
-        std::vector<Interval *> marked;
-        std::vector<Interval *> unmarked;
-        for (Interval *obj : objects)
-            if (!obj->isHandledByGC()) {
-                marked.push_back(obj);
-            } else if (obj->isMarked()) {
-                obj->unmark();
-                marked.push_back(obj);
-            } else {
-                unmarked.push_back(obj);
-                delete obj;
-            }
-        objects = marked;
-        return unmarked;
-    }
+    std::vector<Interval *> clearUnmarked();
 
-    void deleteIntervals(const std::vector<Interval *> &intervals) {
-        objects.erase(
-            remove_if(
-                objects.begin(),
-                objects.end(),
-                [&intervals](Interval *i) {
-                    return std::find(intervals.begin(), intervals.end(), i) != intervals.end();
-                }
-            ),
-            objects.end()
-        );
-    }
+    void deleteIntervals(const std::vector<Interval *> &intervals);
 
-    std::vector<Interval*> flush() {
-        std::vector<Interval*> newAddresses;
-        for (Interval *obj : objects)
-            if (!obj->isFlushed()) {
-                newAddresses.push_back(obj);
-                obj->flush();
-            }
-        return newAddresses;
-    }
+    std::vector<Interval *> flush();
 
-    std::string dumpObjects() const {
-        std::string dump;
-        for (const Interval *obj : objects)
-            dump += obj->toString() + "\n";
-        return dump;
-    }
+    std::string dumpObjects() const;
 };
+
+// decoupling it from the .h file results in compilation/linking issues due to templates
+#include "intervalTree.cpp"
 
 #endif // INTERVALTREE_H_
