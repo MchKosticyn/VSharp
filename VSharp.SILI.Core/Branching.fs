@@ -139,7 +139,37 @@ module Branching =
             else
                 conditionState.pc <- PC.add pc notCondition
                 elseBranch conditionState (List.singleton >> k)
-        else __unreachable__())
+        else
+            let thenPc = PC.add pc condition
+            conditionState.pc <- thenPc
+            match SolverInteraction.checkSat conditionState with
+            | SolverInteraction.SmtUnknown _ ->
+                let elsePc = PC.add pc !!condition
+                conditionState.pc <- elsePc
+                match SolverInteraction.checkSat conditionState with
+                | SolverInteraction.SmtUnsat _
+                | SolverInteraction.SmtUnknown _ ->
+                    __insufficientInformation__ "Unable to witness branch"
+                | SolverInteraction.SmtSat model ->
+                    conditionState.model <- Some model.mdl
+                    elseBranch conditionState (List.singleton >> k)
+            | SolverInteraction.SmtUnsat _ ->
+                elseBranch conditionState (List.singleton >> k)
+            | SolverInteraction.SmtSat model ->
+                let elsePc = PC.add pc !!condition
+                conditionState.pc <- elsePc
+                conditionState.model <- Some model.mdl
+                match SolverInteraction.checkSat conditionState with
+                | SolverInteraction.SmtUnsat _
+                | SolverInteraction.SmtUnknown _ ->
+                    conditionState.pc <- thenPc
+                    thenBranch conditionState (List.singleton >> k)
+                | SolverInteraction.SmtSat model ->
+                    let thenState = conditionState
+                    let elseState = Memory.copy conditionState elsePc
+                    elseState.model <- Some model.mdl
+                    thenState.pc <- thenPc
+                    execution thenState elseState condition k)
 
     let statedConditionalExecutionWithMergek state conditionInvocation thenBranch elseBranch k =
         commonStatedConditionalExecutionk state conditionInvocation thenBranch elseBranch Memory.merge2Results k

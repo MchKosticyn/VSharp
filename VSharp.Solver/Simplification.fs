@@ -182,7 +182,7 @@ module public Simplification =
                 push()
                 assumptions |> solverAssert
                 let x = transformXor formula |> toNNF |> simplify'
-                printfn $"@ %O{x}"
+                Logger.error $"@ %O{x}"
                 pop()
                 x |> syntaxSimplify
         with

@@ -60,16 +60,16 @@ module public SolverInteraction =
             | _ -> PC.add PC.empty t
         let ctx = getEncodingContext state
         let assump = (PC.makeTerm state.pc)
-        printfn $"Common %O{condition}"
+        Logger.error $"Common %O{condition}"
         match incrementalSolver with
         | Some s ->
             match simplifier with
             | Some simplifier' ->
                 let x = simplifier'.Simplify assump condition ctx s
                 if not (x = condition) then
-                    printfn $"Assumptions: %O{assump}"
-                    printfn $"Simplified: %O{x}"
-                    printfn ""
+                    Logger.error $"Assumptions: %O{assump}"
+                    Logger.error $"Simplified: %O{x}"
+                    Logger.error ""
                 else ()
                 x
             | None -> condition
