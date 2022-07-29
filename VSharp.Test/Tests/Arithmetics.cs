@@ -1068,8 +1068,7 @@ namespace IntegrationTests
 
             return 42;
         }
-
-        [TestSvm(100)]
+        [Ignore("")]
         public static int DecimalTest(decimal sum)
         {
             return sum switch

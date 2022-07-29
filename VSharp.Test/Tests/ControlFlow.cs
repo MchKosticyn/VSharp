@@ -391,6 +391,95 @@ namespace IntegrationTests
 
             return x;
         }
+        [TestSvm(100)]
+        public static int Kek(int x, int y)
+        {
+            int cnt = 0;
+            bool cond = false;
+            for (int i = 0; i < 10; i++)
+            {
+                for (int j = 0; j < i; j++)
+                {
+                    cond |= x < i && y > j;
+                    if (cond)
+                    {
+                        cnt++;
+                    }
+                }
+            }
+            return cnt;
+        }
+        [TestSvm(100)]
+        public static int Kek1(int idx)
+        {
+            bool cond = true;
+            int[] a = new int[20];
+            a[10] = 1;
+            for (int i = 0; i < 10; i++)
+            {
+                cond &= idx > i;
+            }
+
+            if (cond && a[0] != 0)
+                return 1;
+
+            for (int i = 10; i < 20; i++)
+            {
+                cond &= idx <= i;
+            }
+
+            if (cond && a[0] != 0)
+                return 1;
+
+            if (cond && a[idx] != 1)
+            {
+                return 132;
+            }
+
+            return 0;
+        }
+
+        [TestSvm(100)]
+        public static int Lol(int x)
+        {
+            bool cond = false;
+            int cnt = 0;
+            for (int i = 0; i < 100; i++)
+            {
+                cond |= x < i && x < i - 1 | (x > i * i);
+            }
+
+            for (int i = 0; i < 100; i++)
+            {
+                if (cond)
+                {
+                    cnt++;
+                }
+            }
+            return cnt;
+        }
+        [TestSvm(100)]
+        public static int Check(int x, int y, int[] f)
+        {
+            if (x == y && (f[x] == 1 || (f[y] == 1 && x + y <= 1)))
+            {
+                return 1;
+            }
+            return 2;
+        }
+        [TestSvm(100)]
+        public static int Check2(int x, int y, int[] f)
+        {
+            if (x == y)
+            {
+                if (f[x] == 1 | (f[y] == 1 && x + y <= 1))
+                {
+                    return 1;
+                }
+            }
+
+            return 2;
+        }
 
 //        [TestSvm]
 //        public static int CycleWith3EntryPoints(int x)

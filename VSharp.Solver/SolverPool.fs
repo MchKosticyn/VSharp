@@ -15,5 +15,9 @@ module public SolverPool =
         match currentSolver with
         | Z3 -> Z3.Z3Solver() :> ISolver
 
+    let mkIncrementalSolver (): IIncrementalSolver =
+        match currentSolver with
+        | Z3 -> Z3.Z3Solver() :> IIncrementalSolver
+
     let reset() =
         Z3.reset()

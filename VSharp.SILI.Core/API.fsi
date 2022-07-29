@@ -6,7 +6,8 @@ open System.Reflection
 [<AutoOpen>]
 module API =
     val ConfigureSolver : SolverInteraction.ISolver -> unit
-    val ConfigureSimplifier : IPropositionalSimplifier -> unit
+    val ConfigureIncrementalSolver : SolverInteraction.IIncrementalSolver -> unit
+    val ConfigureSimplifier : SolverInteraction.ISimplifier -> unit
     val Reset : unit -> unit
     val SaveConfiguration : unit -> unit
     val Restore : unit -> unit
@@ -82,6 +83,7 @@ module API =
         val (|Negation|_|) : term -> term option
         val (|Conjunction|_|) : term -> term list option
         val (|Disjunction|_|) : term -> term list option
+        val (|Xor|_|) : term -> (term * term) option
         val (|NullRef|_|) : term -> unit option
         val (|NullPtr|_|) : term -> unit option
 

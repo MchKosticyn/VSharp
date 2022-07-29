@@ -34,6 +34,8 @@ module internal PC =
             if isFalse acc' then falsePC else k acc'
         Cps.Seq.foldlk mapAndAdd empty (toSeq pc) id
     let public mapSeq mapper (pc : pathCondition) = toSeq pc |> Seq.map mapper
+    
+    let public makeTerm (pc: pathCondition) = toSeq pc |> Seq.fold (&&&) True
 
     let toString pc = mapSeq toString pc |> Seq.sort |> join " /\ "
 

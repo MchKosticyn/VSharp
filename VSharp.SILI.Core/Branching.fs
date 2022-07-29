@@ -4,6 +4,7 @@ open VSharp
 
 module Branching =
     let checkSat state = TypeCasting.checkSatWithSubtyping state
+    let simplify = SolverInteraction.simplify
 
     let commonGuardedStatedApplyk f state term mergeResults k =
         match term.term with
@@ -58,6 +59,7 @@ module Branching =
             merge2Results thenResult elseResult |> k))
         conditionInvocation state (fun (condition, conditionState) ->
         let pc = state.pc
+        let condition = SolverInteraction.simplify state condition
         let evaled =
             match state.model with
             | Some model -> model.Eval condition
@@ -86,7 +88,7 @@ module Branching =
                 thenBranch conditionState (List.singleton >> k)
         elif isFalse evaled then
             let notCondition = !!condition
-            let thenPc = PC.add state.pc condition
+            let thenPc = PC.add pc condition
             if PC.isFalse thenPc then
                 elseBranch conditionState (List.singleton >> k)
             elif not branchesReleased then

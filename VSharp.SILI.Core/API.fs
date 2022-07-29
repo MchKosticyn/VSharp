@@ -8,8 +8,10 @@ open VSharp
 module API =
     let ConfigureSolver solver =
         SolverInteraction.configureSolver solver
+    let ConfigureIncrementalSolver solver =
+        SolverInteraction.configureIncrementalSolver solver
     let ConfigureSimplifier simplifier =
-        configureSimplifier simplifier
+        SolverInteraction.configureSimplifier simplifier
 
     let Reset() =
         IdGenerator.reset()
@@ -126,6 +128,7 @@ module API =
         let (|Negation|_|) t = Terms.(|NegationT|_|) t
         let (|Conjunction|_|) term = Terms.(|Conjunction|_|) term.term
         let (|Disjunction|_|) term = Terms.(|Disjunction|_|) term.term
+        let (|Xor|_|) term = Terms.(|Xor|_|) term
         let (|NullRef|_|) = function
             | {term = HeapRef(addr, _)} when addr = zeroAddress -> Some()
             | _ -> None

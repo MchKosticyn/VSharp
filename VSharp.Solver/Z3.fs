@@ -152,7 +152,7 @@ module internal Z3 =
                 | Constant(name, source, typ) -> x.EncodeConstant encCtx name.v source typ
                 | Expression(op, args, typ) -> x.EncodeExpression encCtx t op args typ
                 | HeapRef(address, _) -> x.EncodeTerm encCtx address
-                | _ -> internalfailf "unexpected term: %O" t
+                | _ -> raise <| EncodingException ""//internalfailf "unexpected term: %O" t
             encodingCache.Get(t, getResult)
 
         member private x.EncodeConcrete encCtx (obj : obj) typ : encodingResult =
@@ -760,6 +760,28 @@ module internal Z3 =
 //            let group = null
 //            pathAtoms |> Seq.iter (fun atom -> optCtx.AssertSoft(atom, weight, group) |> ignore)
 //            pathAtoms
+        interface IIncrementalSolver with
+            member x.Check() =
+                match optCtx.Check() with 
+                | Status.SATISFIABLE ->
+                    let z3Model = optCtx.Model
+                    let model = builder.MkModel z3Model
+                    SmtSat { mdl = model }
+                | Status.UNSATISFIABLE -> SmtUnsat { core = Array.empty }
+                | Status.UNKNOWN -> SmtUnknown optCtx.ReasonUnknown
+                | _ -> __unreachable__()
+            member x.Assert t encCtx =
+                try 
+                    let encoded = builder.EncodeTerm encCtx t
+                    optCtx.Assert(encoded.expr :?> BoolExpr)
+                    true
+                with
+                | :? EncodingException as e ->
+                    printLog Info "SOLVER: exception was thrown: %s" e.Message
+                    false
+                    
+            member x.Pop() = optCtx.Pop 1u
+            member x.Push() = optCtx.Push()
 
         interface ISolver with
             member x.CheckSat (encCtx : encodingContext) (q : term) : smtResult =
@@ -795,9 +817,10 @@ module internal Z3 =
 
             member x.Assert encCtx (fml : term) =
                 printLogLazy Trace "SOLVER: Asserting: %s" (lazy(fml.ToString()))
-                let encoded = builder.EncodeTerm encCtx fml
+                let encoded = builder.EncodeTerm encCtx fml // TODO: care about encoding exception
                 let encoded = List.fold (fun acc x -> builder.MkAnd(acc, x)) (encoded.expr :?> BoolExpr) encoded.assumptions
                 optCtx.Assert(encoded)
+
 
     let reset() =
         builder.Reset()
