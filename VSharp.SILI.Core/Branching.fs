@@ -12,17 +12,47 @@ module Branching =
             let filterUnsat (g, v) k =
                 let pc = PC.add state.pc g
                 if PC.isFalse pc then k None
-                else Some (pc, v) |> k
-            Cps.List.choosek filterUnsat gvs (fun pcs ->
-            match pcs with
-            | [] -> k []
-            | (pc, v)::pcs ->
-                let copyState (pc, v) k = f (Memory.copy state pc) v k
-                Cps.List.mapk copyState pcs (fun results ->
+                else
+                    let tmpPc = state.pc
                     state.pc <- pc
-                    f state v (fun r ->
-                    r::results |> mergeResults |> k)))
+                    let satResult = SolverInteraction.checkSat state
+                    state.pc <- tmpPc
+                    match satResult with
+                    | SolverInteraction.SmtUnsat _ -> k None
+                    | SolverInteraction.SmtUnknown _ -> __insufficientInformation__ "Unable to witness branch"
+                    | SolverInteraction.SmtSat model ->
+                        Some (pc, v, model.mdl) |> k
+            Cps.List.choosek filterUnsat gvs (function
+                | [] -> k []
+                | (pc, v, model)::pcs ->
+                    let copyState (pc, v, model) k =
+                        let newState = Memory.copy state pc
+                        newState.model <- Some model
+                        f newState v k
+                    Cps.List.mapk copyState pcs (fun results ->
+                        state.pc <- pc
+                        state.model <- Some model
+                        f state v (fun r ->
+                        r::results |> mergeResults |> k)))
         | _ -> f state term (List.singleton >> k)
+
+//    let commonGuardedStatedApplyk f state term mergeResults k =
+//        match term.term with
+//        | Union gvs ->
+//            let filterUnsat (g, v) k =
+//                let pc = PC.add state.pc g
+//                if PC.isFalse pc then k None
+//                else Some (pc, v) |> k
+//            Cps.List.choosek filterUnsat gvs (fun pcs ->
+//            match pcs with
+//            | [] -> k []
+//            | (pc, v)::pcs ->
+//                let copyState (pc, v) k = f (Memory.copy state pc) v k
+//                Cps.List.mapk copyState pcs (fun results ->
+//                    state.pc <- pc
+//                    f state v (fun r ->
+//                    r::results |> mergeResults |> k)))
+//        | _ -> f state term (List.singleton >> k)
     let guardedStatedApplyk f state term k = commonGuardedStatedApplyk f state term Memory.mergeResults k
     let guardedStatedApply f state term = guardedStatedApplyk (Cps.ret2 f) state term id
 

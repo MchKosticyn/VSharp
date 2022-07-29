@@ -37,6 +37,14 @@ module API =
     let GuardedStatedApplyk f state term mergeStates k =
         Branching.commonGuardedStatedApplyk f state term mergeStates k
 
+    let GuardedStatedApply2k f state term1 term2 mergeStates k =
+        let mutable result = []
+        Branching.commonGuardedStatedApplyk (fun state term1 k1 ->
+            Branching.commonGuardedStatedApplyk
+                (fun state term2 k2 -> f state term1 term2 k2) state term2 mergeStates
+                (fun states -> result <- states::result; List.head (List.head result) |> k1))
+            state term1 mergeStates (fun _ -> result |> List.concat |> k)
+
     let ReleaseBranches() = Branching.branchesReleased <- true
     let AquireBranches() = Branching.branchesReleased <- false
 
