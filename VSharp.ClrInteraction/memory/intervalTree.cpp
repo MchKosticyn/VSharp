@@ -35,7 +35,7 @@ std::pair<TreapNode<Interval>*, TreapNode<Interval>*> IntervalTree<Interval, Shi
 template<typename Interval, typename Shift, typename Point>
 TreapNode<Interval> *IntervalTree<Interval, Shift, Point>::cutFromTree(TreapNode<Interval> *&tree, const Interval &interval) {
     auto treeLeftSplit = split(tree, interval.left);
-    // increasing by one to include the right bound of the interval to the splitted part
+    // increasing by one to include the right bound of the interval to the split part
     auto treeRightSplit = split(treeLeftSplit.second, interval.right + 1);
     tree = merge(treeLeftSplit.first, treeRightSplit.second);
     return treeRightSplit.first;
@@ -127,6 +127,18 @@ void IntervalTree<Interval, Shift, Point>::getAllSubTreeNodes(TreapNode<Interval
 }
 
 template<typename Interval, typename Shift, typename Point>
+void IntervalTree<Interval, Shift, Point>::clearUnmarkedOnSubTree(TreapNode<Interval> *tree, std::vector<Interval *> &array) {
+    if (tree == nullptr)
+        return;
+    clearUnmarkedOnSubTree(tree->left, array);
+    array.push_back(tree->obj);
+    clearUnmarkedOnSubTree(tree->right, array);
+    tree->left = nullptr;
+    tree->right = nullptr;
+    delete tree;
+}
+
+template<typename Interval, typename Shift, typename Point>
 void IntervalTree<Interval, Shift, Point>::moveAndMark(const Interval &interval, const Shift &shift) {
     //LOG(tout << "IntervalTree.moveAndMark was called" << std::endl);
     if (unhandledPresenceCheck(interval))
@@ -161,12 +173,7 @@ template<typename Interval, typename Shift, typename Point>
 std::vector<Interval *> IntervalTree<Interval, Shift, Point>::clearUnmarked() {
     // unhandledByGC is not being changed as we always treat those nodes as marked
     std::vector<Interval *> unmarked;
-    std::vector<TreapNode<Interval>*> nodes;
-    getAllSubTreeNodes(root, nodes);
-    for (auto node : nodes) {
-        unmarked.push_back(node->obj);
-    }
-    delete root;
+    clearUnmarkedOnSubTree(root, unmarked);
     root = nullptr;
     unmarkSubTree(marked);
     std::swap(root, marked);

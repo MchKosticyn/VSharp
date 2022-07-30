@@ -33,6 +33,7 @@ private:
     bool unhandledPresenceCheck(const Interval &interval);
     TreapNode<Interval> *cutFromTree(TreapNode<Interval> *&tree, const Interval &interval);
     TreapNode<Interval> *findInTree(TreapNode<Interval> *tree, const Point &p) const;
+    void clearUnmarkedOnSubTree(TreapNode<Interval> *tree, std::vector<Interval *> &array);
     
 public:
     void add(Interval &node);
