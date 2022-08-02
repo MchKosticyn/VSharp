@@ -75,7 +75,6 @@ TreapNode<Interval> *IntervalTree<Interval, Shift, Point>::findInTree(TreapNode<
 
 template<typename Interval, typename Shift, typename Point>
 bool IntervalTree<Interval, Shift, Point>::find(const Point &p, const Interval *&result) const {
-    //LOG(tout << "IntervalTree.find was called" << std::endl);
     // TODO: add functionality to be able to iterate through all trees available?
     // throw exception if p was found in more than one tree?
     auto node = findInTree(root, p);
@@ -140,7 +139,6 @@ void IntervalTree<Interval, Shift, Point>::clearUnmarkedOnSubTree(TreapNode<Inte
 
 template<typename Interval, typename Shift, typename Point>
 void IntervalTree<Interval, Shift, Point>::moveAndMark(const Interval &interval, const Shift &shift) {
-    //LOG(tout << "IntervalTree.moveAndMark was called" << std::endl);
     if (unhandledPresenceCheck(interval))
         FAIL_LOUD("IntervalTree: nodes unhandled by GC were unexpectedly moved");
 
@@ -156,7 +154,6 @@ void IntervalTree<Interval, Shift, Point>::moveAndMark(const Interval &interval,
 
 template<typename Interval, typename Shift, typename Point>
 void IntervalTree<Interval, Shift, Point>::mark(const Interval &interval) {
-    //LOG(tout << "IntervalTree.mark was called" << std::endl);
     if (unhandledPresenceCheck(interval))
         FAIL_LOUD("IntervalTree: nodes unhandled by GC were unexpectedly marked");
 
@@ -182,7 +179,6 @@ std::vector<Interval *> IntervalTree<Interval, Shift, Point>::clearUnmarked() {
 
 template<typename Interval, typename Shift, typename Point>
 void IntervalTree<Interval, Shift, Point>::deleteIntervals(const std::vector<Interval *> &intervals) {
-    //LOG(tout << "IntervalTree.deleteIntervals was called" << std::endl);
     for (auto interval : intervals) {
         // TODO: fit all trees into an array to be able to iterate through them all?
         delete cutFromTree(root, *interval);
