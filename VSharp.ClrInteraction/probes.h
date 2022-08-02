@@ -114,7 +114,7 @@ struct ExecCommand {
         for (int i = 0; i < newAddressesCount; ++i)
             fullTypesSize += newAddressesTypeLengths[i];
         count += fullTypesSize;
-        unsigned coverageNodesCount = newCoverageNodes ? newCoverageNodes->size() : 0;;
+        unsigned coverageNodesCount = newCoverageNodes ? newCoverageNodes->size() : 0;
         count += sizeof(unsigned) + coverageNodesCount * sizeOfCoverageNode;
         bytes = new char[count];
         char *buffer = bytes;
