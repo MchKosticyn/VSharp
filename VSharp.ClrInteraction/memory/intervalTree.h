@@ -3,6 +3,7 @@
 
 #include "../logging.h"
 #include <cassert>
+#include <random>
 
 template<typename Interval>
 class TreapNode {
@@ -13,7 +14,7 @@ public:
     Interval *obj;
 
     ~TreapNode();
-    TreapNode(Interval *node);
+    TreapNode(Interval *node, int key);
 };
 
 template<typename Interval, typename Shift, typename Point>
@@ -22,6 +23,9 @@ private:
     TreapNode<Interval> *root = nullptr;
     TreapNode<Interval> *marked = nullptr;
     TreapNode<Interval> *unhandledByGC = nullptr;
+
+    std::mt19937 rng;
+    std::uniform_int_distribution<int> resultRange = std::uniform_int_distribution<int>(INT32_MIN, INT32_MAX);
 
     TreapNode<Interval> *merge(TreapNode<Interval> *left, TreapNode<Interval> *right);
     std::pair<TreapNode<Interval>*, TreapNode<Interval>*> split(TreapNode<Interval> *tree, Point point);
@@ -52,6 +56,8 @@ public:
     std::vector<Interval *> flush();
 
     std::string dumpObjects() const;
+
+    IntervalTree();
 };
 
 // decoupling it from the .h file results in compilation/linking issues due to templates
