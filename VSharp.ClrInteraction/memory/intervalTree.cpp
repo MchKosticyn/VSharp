@@ -49,7 +49,7 @@ bool IntervalTree<Interval, Shift, Point>::unhandledPresenceCheck(const Interval
 template<typename Interval, typename Shift, typename Point>
 void IntervalTree<Interval, Shift, Point>::addToTree(TreapNode<Interval> *&tree, Interval &node) {
     auto nodeSplit = split(tree, node.left);
-    auto newNode = new TreapNode<Interval>(&node);
+    auto newNode = new TreapNode<Interval>(&node, resultRange(rng));
     auto rootLeftAndNewNode = merge(nodeSplit.first, newNode);
     tree = merge(rootLeftAndNewNode, nodeSplit.second);
 }
@@ -165,7 +165,6 @@ void IntervalTree<Interval, Shift, Point>::mark(const Interval &interval) {
     marked = merge(res, markedLeftSplit.second);
 }
 
-// TODO: copy all marked and clear or remove unmarked one by one?
 template<typename Interval, typename Shift, typename Point>
 std::vector<Interval *> IntervalTree<Interval, Shift, Point>::clearUnmarked() {
     // unhandledByGC is not being changed as we always treat those nodes as marked
@@ -180,7 +179,6 @@ std::vector<Interval *> IntervalTree<Interval, Shift, Point>::clearUnmarked() {
 template<typename Interval, typename Shift, typename Point>
 void IntervalTree<Interval, Shift, Point>::deleteIntervals(const std::vector<Interval *> &intervals) {
     for (auto interval : intervals) {
-        // TODO: fit all trees into an array to be able to iterate through them all?
         delete cutFromTree(root, *interval);
         delete cutFromTree(marked, *interval);
         delete cutFromTree(unhandledByGC, *interval);
@@ -220,6 +218,12 @@ std::string IntervalTree<Interval, Shift, Point>::dumpObjects() const {
     return dump;
 }
 
+template<typename Interval, typename Shift, typename Point>
+IntervalTree<Interval, Shift, Point>::IntervalTree() {
+    std::random_device seedDevice;
+    rng = std::mt19937(seedDevice());
+}
+
 // --------------------------- TreapNode ---------------------------
 
 template<typename Interval>
@@ -230,6 +234,5 @@ TreapNode<Interval>::~TreapNode() {
 }
 
 template<typename Interval>
-TreapNode<Interval>::TreapNode(Interval *node)
-// TODO : a proper random number generator
-        : left(nullptr), right(nullptr), obj(node), key(std::rand()) { }
+TreapNode<Interval>::TreapNode(Interval *node, int key)
+        : left(nullptr), right(nullptr), obj(node), key(key) { }
