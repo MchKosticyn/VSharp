@@ -570,6 +570,133 @@ namespace IntegrationTests
         }
     }
 
+    [TestSvmFixture]
+    public static class MemoryTest
+    {
+        private class MemoryTestClassMedium
+        {
+            private int a0 = 0;
+            private int a1 = 92;
+            private double a2 = 8;
+            private string a3 = "hello";
+            private string a4 = "bye";
+            private int q0 = 0;
+            private int q1 = 92;
+            private double q2 = 8;
+            private string q3 = "hello";
+            private string q4 = "bye";
+
+            public MemoryTestClassMedium(int x)
+            {
+                a0 = x;
+                a2 = x / 51;
+            }
+        }
+    
+        private class MemoryTestClassSmall
+        {
+            private int a0 = Int32.MaxValue;
+            private double a1 = 5;
+            private string a3 = "pastsa";
+
+            public MemoryTestClassSmall(int x)
+            {
+            
+            }
+        }
+    
+        private class MemoryTestClassLarge
+        {
+            private int a0 = Int32.MaxValue;
+            private double a1 = 5;
+            private string a3 = "pastsa";
+            private int b0 = 0;
+            private int b1 = 92;
+            private double b2 = 8;
+            private string b3 = "hello";
+            private string b4 = "bye";
+            private int c0 = 0;
+            private int c1 = 92;
+            private double c2 = 8;
+            private string c3 = "hello";
+            private string c4 = "bye";
+            private int d0 = Int32.MaxValue;
+            private double d1 = 5;
+            private string d3 = "pastsa";
+            private int e0 = Int32.MaxValue;
+            private double e1 = 5;
+            private string e3 = "pastsa";
+
+            public MemoryTestClassLarge(int x)
+            {
+            
+            }
+        }
+        
+        [TestSvm(concolicMode:true)]
+        public static bool SmallMemoryInteractionTest(int n)
+        {
+            MemoryTestClassMedium[] a = new MemoryTestClassMedium[300];
+            for (int i = 0; i < 300; i++)
+            {
+                a[i] = new MemoryTestClassMedium(i);
+            }
+            int sum = 0;
+            return n == sum;
+        }
+        
+        [TestSvm(concolicMode:true)]
+        public static bool BigMemoryInteractionTest(int n)
+        {
+            object[] a = new object[1200];
+            int MOD = 67;
+            int ADD = 35;
+            int IND = 1;
+            for (int i = 0; i < 300; i++)
+            {
+                for (int k = 0; k < 4; k++)
+                {
+                    IND = IND * MOD + ADD;
+                    IND = (IND % 1000) + IND / 1000;
+                    switch (IND % 4)
+                    {
+                        case 0:
+                            a[i * 4 + k] = new A(k);
+                            break;
+                        case 1:
+                            a[i * 4 + k] = new ClassesSimpleC();
+                            break;
+                        case 2:
+                            a[i * 4 + k] = new MemoryTestClassMedium(i);
+                            break;
+                        case 3:
+                            a[i * 4 + k] = new MemoryTestClassLarge(k);
+                            break;
+                    }
+                }
+            }
+
+            return n == 35;
+        }
+        
+        [Ignore("GarbageCollection fails on random occasions")]
+        //[TestSvm(concolicMode: true)]
+        public static int GarbageCollectorTest(int n)
+        {
+            int sum = 0;
+            for (int i = 0; i < 100; i++)
+            {
+                int[] smallArr = new int[100];
+                int[] hugeArr = new int[100000];
+                smallArr[i] = 2;    
+                hugeArr[2 * i] = 3;
+                sum += 0;
+            }
+
+            return sum;
+        }
+    }
+
     public static class Container
     {
         public static int X = 0;
