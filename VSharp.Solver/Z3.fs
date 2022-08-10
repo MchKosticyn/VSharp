@@ -690,10 +690,10 @@ module internal Z3 =
                         stackEntries.Add(key, HeapRef addr t |> ref)
                     | _ -> ()
                 | {term = Constant(_, :? IStatedSymbolicConstantSource, _)} -> ()
-                | {term = Constant(_, source, t)} ->
+                | {term = Constant(_, source, t)} as constant ->
                     let refinedExpr = m.Eval(kvp.Value.expr, false)
                     let term = x.Decode t refinedExpr
-                    subst.Add(source, term)
+                    if constant <> term then subst.Add(source, term)
                 | _ -> ())
 
             let frame = stackEntries |> Seq.map (fun kvp ->
