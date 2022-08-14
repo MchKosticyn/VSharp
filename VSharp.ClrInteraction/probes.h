@@ -88,6 +88,7 @@ struct ExecCommand {
     unsigned evaluationStackPops;
     unsigned newAddressesCount;
     unsigned deletedAddressesCount;
+    unsigned delegatesCount;
     std::tuple<ExceptionKind, OBJID, bool> exceptionRegister;
     BYTE isTerminatedByException;
     std::pair<unsigned, unsigned> *newCallStackFrames;
@@ -99,16 +100,18 @@ struct ExecCommand {
     UINT64 *newAddressesTypeLengths;
     char *newAddressesTypes;
     OBJID *deletedAddresses;
+    OBJID *delegateCoupling;
     const CoverageNode *newCoverageNodes;
 
     void serialize(char *&bytes, unsigned &count) const {
-        count = 8 * sizeof(unsigned) + 3 * sizeof(BYTE) + sizeof(UINT_PTR) + 2 * sizeof(unsigned) * newCallStackFramesCount + sizeof(unsigned) * ipStackCount;
+        count = 9 * sizeof(unsigned) + 3 * sizeof(BYTE) + sizeof(UINT_PTR) + 2 * sizeof(unsigned) * newCallStackFramesCount + sizeof(unsigned) * ipStackCount;
         for (unsigned i = 0; i < evaluationStackPushesCount; ++i)
             count += evaluationStackPushes[i].size();
         for (unsigned i = 0; i < newCallStackFramesCount; ++i)
             count += ADDRESS_SIZE;
         count += sizeof(UINT_PTR) * newAddressesCount;
         count += sizeof(UINT_PTR) * deletedAddressesCount;
+        count += sizeOfDelegate * delegatesCount;
         count += newAddressesCount * sizeof(UINT64);
         UINT64 fullTypesSize = 0;
         for (int i = 0; i < newAddressesCount; ++i)
@@ -127,6 +130,7 @@ struct ExecCommand {
         *(unsigned *)buffer = evaluationStackPops; buffer += size;
         *(unsigned *)buffer = newAddressesCount; buffer += size;
         *(unsigned *)buffer = deletedAddressesCount; buffer += size;
+        *(unsigned *)buffer = delegatesCount; buffer += size;
         *(BYTE *)buffer = (BYTE) std::get<0>(exceptionRegister); buffer += sizeof(BYTE);
         *(UINT_PTR *)buffer = (OBJID) std::get<1>(exceptionRegister); buffer += sizeof(OBJID);
         BYTE exceptionIsConcrete = std::get<2>(exceptionRegister) ? 1 : 0;
@@ -148,6 +152,8 @@ struct ExecCommand {
         memcpy(buffer, (char*)newAddresses, size); buffer += size;
         size = deletedAddressesCount * sizeof(UINT_PTR);
         memcpy(buffer, (char*)deletedAddresses, size); buffer += size;
+        size = delegatesCount * sizeOfDelegate;
+        memcpy(buffer, (char*)delegateCoupling, size); buffer += size;
         size = newAddressesCount * sizeof(UINT64);
         memcpy(buffer, (char*)newAddressesTypeLengths, size); buffer += size;
         memcpy(buffer, newAddressesTypes, fullTypesSize); buffer += fullTypesSize;
@@ -232,6 +238,17 @@ void initCommand(OFFSET offset, bool isBranch, unsigned opsCount, EvalStackOpera
     for (OBJID deletedAddress : deletedAddresses) {
         command.deletedAddresses[i] = deletedAddress;
         i++;
+    }
+
+    auto delegates = heap.flushDelegates();
+    auto delegatesSize = delegates.size();
+    command.delegatesCount = delegatesSize;
+    command.delegateCoupling = new OBJID[delegatesSize * 3]; // actionPtr -> functionPtr, closureRef; thus 3
+    i = 0;
+    for (auto delegate : delegates) {
+        command.delegateCoupling[i++] = delegate.first;
+        command.delegateCoupling[i++] = delegate.second.first;
+        command.delegateCoupling[i++] = delegate.second.second;
     }
 
     command.newCoverageNodes = flushNewCoverageNodes();
