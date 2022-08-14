@@ -257,7 +257,7 @@ module API =
         val AllocateConcreteVectorArray : state -> term -> Type -> 'a seq -> term
         val AllocateString : string -> state -> term
         val AllocateEmptyString : state -> term -> term
-        val AllocateDelegate : state -> term -> term
+        val AllocateDelegate : state -> term -> concreteHeapAddress
         val CreateStringFromChar : state -> term -> term
 
         val LinearizeArrayIndex : state -> term -> term list -> arrayType -> term

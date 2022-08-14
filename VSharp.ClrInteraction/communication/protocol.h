@@ -16,6 +16,7 @@
 #endif
 
 #define sizeOfCoverageNode (2 * sizeof(int) + sizeof(BYTE) + sizeof(mdMethodDef) + sizeof(OFFSET))
+#define sizeOfDelegate (2 * sizeof(UINT_PTR) + sizeof(INT32))
 
 namespace vsharp {
 

@@ -1227,7 +1227,9 @@ type internal ILInterpreter() as this =
             | Concrete(:? MethodInfo as mi, _) -> mi
             | _ -> __unreachable__()
         let lambda = Lambdas.make (retrieveMethodInfo methodPtr, target) ctor.DeclaringType
-        Memory.AllocateDelegate cilState.state lambda |> k
+        let concreteAddress = Memory.AllocateDelegate cilState.state lambda
+        let address = ConcreteHeapAddress concreteAddress
+        HeapRef address ctor.DeclaringType |> k
 
     member x.CommonNewObj isCallNeeded (ctor : Method) (cilState : cilState) (args : term list) (k : cilState list -> 'a) : 'a =
         __notImplemented__()

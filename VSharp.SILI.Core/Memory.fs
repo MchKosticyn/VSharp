@@ -1165,10 +1165,10 @@ module internal Memory =
 
     let allocateDelegate state delegateTerm =
         let concreteAddress = freshAddress state
-        let address = ConcreteHeapAddress concreteAddress
+        let typ = typeOf delegateTerm |> ConcreteType
         state.delegates <- PersistentDict.add concreteAddress delegateTerm state.delegates
-        state.allocatedTypes <- PersistentDict.add concreteAddress (delegateTerm |> typeOf |> ConcreteType) state.allocatedTypes
-        HeapRef address (typeOf delegateTerm)
+        state.allocatedTypes <- PersistentDict.add concreteAddress typ state.allocatedTypes
+        concreteAddress
 
     let rec lengthOfString state heapRef =
         match heapRef.term with

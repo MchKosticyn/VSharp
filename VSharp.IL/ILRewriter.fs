@@ -18,6 +18,7 @@ type probes = {
     mutable ldarg : uint64
     mutable ldarga_primitive : uint64
     mutable ldarga_struct : uint64
+    mutable track_delegate : uint64
 
     mutable ldloc_0 : uint64
     mutable ldloc_1 : uint64
@@ -204,6 +205,7 @@ type signatureTokens = {
     mutable void_sig : uint32
     mutable bool_sig : uint32
     mutable i_sig : uint32
+    mutable void_u_sig : uint32
     mutable void_u1_sig : uint32
     mutable void_u4_sig : uint32
     mutable void_i_sig : uint32

@@ -91,6 +91,7 @@ type private execCommandStatic = {
     evaluationStackPops : uint32
     newAddressesCount : uint32
     deletedAddressesCount : uint32
+    delegatesCount : uint32
     exceptionKind : byte
     exceptionRegister : UIntPtr
     exceptionIsConcrete : byte
@@ -108,6 +109,7 @@ type execCommand = {
     evaluationStackPushes : evalStackOperand array // NOTE: operands for executing instruction
     newAddresses : UIntPtr array
     deletedAddresses : UIntPtr array
+    delegates : array<UIntPtr * Int32 * UIntPtr>
     newAddressesTypes : Type array
     // TODO: add deleted addresses
     newCoveragePath : coverageLocation list
@@ -614,6 +616,11 @@ type Communicator(pipeFile) =
                 let res = Reflection.BitConverterToUIntPtr dynamicBytes offset in offset <- offset + UIntPtr.Size; res)
             let deletedAddresses = Array.init (int staticPart.deletedAddressesCount) (fun _ ->
                 let res = Reflection.BitConverterToUIntPtr dynamicBytes offset in offset <- offset + UIntPtr.Size; res)
+            let delegates = Array.init (int staticPart.delegatesCount) (fun _ ->
+                let actionPtr = Reflection.BitConverterToUIntPtr dynamicBytes offset in offset <- offset + UIntPtr.Size
+                let functionPtr = BitConverter.ToInt32(dynamicBytes, offset) in offset <- offset + sizeof<Int32>
+                let closureRef = Reflection.BitConverterToUIntPtr dynamicBytes offset in offset <- offset + UIntPtr.Size
+                actionPtr, functionPtr, closureRef)
             let newAddressesTypesLengths = Array.init (int staticPart.newAddressesCount) (fun _ ->
                 let res = BitConverter.ToUInt64(dynamicBytes, offset) in offset <- offset + sizeof<uint64>; res)
             let newAddressesTypes = Array.init (int staticPart.newAddressesCount) (fun _ ->
@@ -647,6 +654,7 @@ type Communicator(pipeFile) =
               evaluationStackPushes = evaluationStackPushes
               newAddresses = newAddresses
               deletedAddresses = deletedAddresses
+              delegates = delegates
               newAddressesTypes = newAddressesTypes
               newCoveragePath = newCoveragePath }
         | None -> unexpectedlyTerminated()
