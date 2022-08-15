@@ -58,6 +58,20 @@ namespace IntegrationTests
             return a + b + c == n + n;
         }
 
+        [TestSvm(100)]
+        public static bool DoubleValue2(int n, bool flag)
+        {
+            int a = 0, b = 0;
+            Action<int> assign;
+            assign = m =>
+            {
+                a = m;
+                b = m;
+            };
+            assign(n);
+            return a + b == n + n;
+        }
+
         public static bool CheckIsLambda<T>(object o)
         {
             return o is Action<int>;
