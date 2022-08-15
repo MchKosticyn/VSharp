@@ -986,7 +986,6 @@ PROBE(void, Track_Ckfinite, ()) {
 }
 PROBE(void, Track_Sizeof, ()) { topFrame().push1Concrete(); }
 PROBE(void, Track_Ldftn, (INT_PTR functionPtr, INT32 functionID)) {
-    LOG(tout << "Ldftn call: " << functionPtr << ", " << functionID << std::endl);
     addFunctionId(functionPtr, functionID);
     topFrame().push1Concrete();
 }
