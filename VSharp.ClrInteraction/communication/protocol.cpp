@@ -251,7 +251,6 @@ CoverageNode *Protocol::acceptCoverageInformation() {
     char *start = message;
     unsigned entriesCount = *((unsigned *)message);
     message += sizeof(unsigned);
-    tout << "messageLength = " << messageLength << "sizeof(unsigned) + entriesCount * sizeOfCoverageNode = " << sizeof(unsigned) + entriesCount * sizeOfCoverageNode << std::endl;
     assert(messageLength == sizeof(unsigned) + entriesCount * sizeOfCoverageNode);
     CoverageNode *result = nullptr;
     CoverageNode *current = nullptr;

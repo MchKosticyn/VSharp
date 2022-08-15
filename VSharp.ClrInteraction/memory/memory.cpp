@@ -124,7 +124,7 @@ ExceptionKind _exceptionKind = NoException;
 bool _exceptionConcreteness = true;
 bool _isTerminatedByException = false;
 
-void vsharp::   throwException(OBJID exception, bool concreteness) {
+void vsharp::throwException(OBJID exception, bool concreteness) {
     _exceptionRegister = exception;
     _exceptionKind = Unhandled;
     _exceptionConcreteness = concreteness;
@@ -149,6 +149,16 @@ bool vsharp::isTerminatedByException() {
 
 std::tuple<ExceptionKind, OBJID, bool> vsharp::exceptionRegister() {
     return std::make_tuple(_exceptionKind, _exceptionRegister, _exceptionConcreteness);
+}
+
+std::map<INT_PTR, INT32> functionIDs;
+
+void vsharp::addFunctionId(INT_PTR functionPtr, INT32 functionID) {
+    functionIDs[functionPtr] = functionID;
+}
+
+INT32 vsharp::getFunctionId(INT_PTR functionPtr) {
+    return functionIDs[functionPtr];
 }
 
 void vsharp::setExpectedCoverage(const CoverageNode *expectedCoverage) {

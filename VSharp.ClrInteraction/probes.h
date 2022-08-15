@@ -947,7 +947,11 @@ PROBE(void, Track_Ckfinite, ()) {
     // TODO: if exn is thrown, no value is pushed onto the stack
 }
 PROBE(void, Track_Sizeof, ()) { topFrame().push1Concrete(); }
-PROBE(void, Track_Ldftn, ()) { topFrame().push1Concrete(); }
+PROBE(void, Track_Ldftn, (INT_PTR functionPtr, INT32 functionID)) {
+    addFunctionId(functionPtr, functionID);
+    topFrame().push1Concrete();
+}
+
 PROBE(void, Track_Ldvirtftn, (INT_PTR ptr, mdToken token, OFFSET offset)) { /*TODO*/ }
 PROBE(void, Track_Arglist, ()) { topFrame().push1Concrete(); }
 PROBE(void, Track_Mkrefany, ()) {

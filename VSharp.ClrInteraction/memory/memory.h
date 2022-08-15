@@ -58,6 +58,11 @@ enum ExceptionKind {
 
 std::tuple<ExceptionKind, OBJID, bool> exceptionRegister();
 
+// Matching function pointers on IDs
+
+void addFunctionId(INT_PTR functionPtr, INT32 functionID);
+INT32 getFunctionId(INT_PTR functionPtr);
+
 // Coverage collection
 
 struct CoverageNode {

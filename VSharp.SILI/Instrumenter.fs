@@ -20,6 +20,18 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
         else
             let kvp = staticFieldIDs |> Seq.find (fun kvp -> kvp.Value = fieldInfo)
             kvp.Key
+
+    let mutable currentFunctionID = 0
+    let functionsIDs = Dictionary<int, MethodInfo>()
+    let registerFunctionID (method : MethodInfo) =
+        if functionsIDs.ContainsValue(method) |> not then
+            currentFunctionID <- currentFunctionID + 1
+            functionsIDs.Add(currentFunctionID, method)
+            currentFunctionID
+        else
+            let kvp = functionsIDs |> Seq.find (fun kvp -> kvp.Value = method)
+            kvp.Key
+
     let hasComplexSize (t : System.Type) =
         (t.IsValueType && not t.IsPrimitive) || t.ContainsGenericParameters
 
@@ -29,6 +41,7 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
     [<DefaultValue>] val mutable m : MethodBase
 
     member x.StaticFieldByID id = staticFieldIDs[id]
+    member x.FunctionByID id = functionsIDs[id]
 
     member private x.MkCalli(instr : ilInstr byref, signature : uint32) =
         instr <- x.rewriter.NewInstr OpCodes.Calli
@@ -570,7 +583,12 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                 | OpCodeValues.Pop -> x.AppendProbe(probes.pop, [], x.tokens.void_sig, instr) |> ignore
                 | OpCodeValues.Ldtoken -> x.AppendProbe(probes.ldtoken, [], x.tokens.void_sig, instr) |> ignore
                 | OpCodeValues.Arglist -> x.AppendProbe(probes.arglist, [], x.tokens.void_sig, instr) |> ignore
-                | OpCodeValues.Ldftn -> x.AppendProbe(probes.ldftn, [], x.tokens.void_sig, instr) |> ignore
+                | OpCodeValues.Ldftn ->
+                    let method = Reflection.resolveMethod x.m instr.Arg32 :?> MethodInfo
+                    let id = registerFunctionID method
+                    x.AppendProbe(probes.ldftn, [(OpCodes.Ldc_I4, Arg32 id)], x.tokens.void_i_i4_sig, instr) |> ignore
+                    x.AppendInstr OpCodes.Conv_I NoArg instr
+                    x.AppendDup(instr)
                 | OpCodeValues.Sizeof -> x.AppendProbe(probes.sizeof, [], x.tokens.void_sig, instr) |> ignore
 
                 // Branchings
