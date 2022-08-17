@@ -409,14 +409,13 @@ type ClientMachine(entryPoint : MethodBase, cmdArgs : string[] option, requestMa
             let concretizedOps =
                 if callIsSkipped then Some List.empty
                 else steppedStates |> List.tryPick x.EvalOperands
-            let concolicMemory = cilState.state.concreteMemory
+            // TODO: move 'connect/disconnect' to 'ConcolicPool.StepDone'
             let disconnectConcolic cilState =
+                // TODO: need to detach concolic memory?
                 cilState.concolicStatus <- concolicStatus.Detached
-                cilState.state.concreteMemory <- Memory.EmptyConcreteMemory()
             steppedStates |> List.iter disconnectConcolic
             let connectConcolic cilState =
                 cilState.concolicStatus <- concolicStatus.Running
-                cilState.state.concreteMemory <- concolicMemory
             // TODO: unify stopping execution with searcher
             if not isIIEState && not stoppedByException then connectConcolic cilState
             // TODO: Need second bypass after searching for handler failed

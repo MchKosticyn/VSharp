@@ -96,6 +96,7 @@ type IConcreteMemory =
     abstract GetPhysicalAddress : concreteHeapAddress -> UIntPtr
     abstract GetVirtualAddress : UIntPtr -> concreteHeapAddress
     abstract Unmarshall : concreteHeapAddress -> Type -> concreteData
+    abstract Copy : unit -> IConcreteMemory
 
 type model =
     { state : state; subst : IDictionary<ISymbolicConstantSource, term>; complete : bool }

@@ -13,9 +13,9 @@ type private FieldWithOffset =
     | Ref of FieldInfo * int
 
 type ConcolicMemory(communicator : Communicator) =
-    let physicalAddresses = Dictionary<UIntPtr, concreteHeapAddress Lazy>()
-    let virtualAddresses = Dictionary<concreteHeapAddress, UIntPtr>()
-    let unmarshalledAddresses = HashSet()
+    let mutable physicalAddresses = Dictionary<UIntPtr, concreteHeapAddress Lazy>()
+    let mutable virtualAddresses = Dictionary<concreteHeapAddress, UIntPtr>()
+    let mutable unmarshalledAddresses = HashSet()
 
     let zeroHeapAddress = VectorTime.zero
 
@@ -109,6 +109,26 @@ type ConcolicMemory(communicator : Communicator) =
             assert(not t.IsValueType)
             let bytes = communicator.ReadHeapBytes address offset size (Array.singleton 0)
             Reflection.bytesToObj bytes t
+
+    member private x.PhysicalAddresses
+        with get() = physicalAddresses
+        and set anotherPhysicalAddresses =
+            physicalAddresses <- anotherPhysicalAddresses
+
+    member private x.VirtualAddresses
+        with get() = virtualAddresses
+        and set anotherVirtualAddresses =
+            virtualAddresses <- anotherVirtualAddresses
+
+    member private x.UnmarshalledAddresses
+        with get() = unmarshalledAddresses
+        and set anotherUnmarshalledAddresses =
+            unmarshalledAddresses <- anotherUnmarshalledAddresses
+
+    member x.CopyFrom (anotherConcolicMemory : ConcolicMemory) =
+        x.PhysicalAddresses <- Dictionary(anotherConcolicMemory.PhysicalAddresses)
+        x.VirtualAddresses <- Dictionary(anotherConcolicMemory.VirtualAddresses)
+        x.UnmarshalledAddresses <- HashSet(anotherConcolicMemory.UnmarshalledAddresses)
 
     interface IConcreteMemory with
         // TODO: support non-vector arrays
@@ -228,3 +248,8 @@ type ConcolicMemory(communicator : Communicator) =
                 if virtualAddresses.ContainsKey virtualAddress |> not then
                     virtualAddresses.Add(virtualAddress, physAddress)
                 virtualAddress
+
+        member x.Copy() : IConcreteMemory =
+            let concolicMemory = ConcolicMemory(communicator)
+            concolicMemory.CopyFrom(x)
+            concolicMemory

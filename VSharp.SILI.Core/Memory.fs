@@ -32,6 +32,7 @@ module internal Memory =
             member x.DeleteAddress _ = internalfail "Deleting address from empty concrete memory"
             member x.GetPhysicalAddress _ = internalfail "Getting physical address from empty concrete memory"
             member x.GetVirtualAddress _ = internalfail "Getting virtual address from empty concrete memory"
+            member x.Copy() = EmptyConcreteMemory()
 
     let makeEmpty() = {
         pc = PC.empty
@@ -60,7 +61,7 @@ module internal Memory =
         | SymbolicMemory
 
     let copy state newPc =
-        { state with pc = newPc }
+        { state with pc = newPc; concreteMemory = state.concreteMemory.Copy() }
 
     let private isZeroAddress (x : concreteHeapAddress) =
         x = VectorTime.zero
