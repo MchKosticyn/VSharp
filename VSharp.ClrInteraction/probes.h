@@ -95,7 +95,6 @@ struct ExecCommand {
     VirtualAddress *thisAddresses;
     unsigned *ipStack;
     EvalStackOperand *evaluationStackPushes;
-    // TODO: add deleted addresses
     OBJID *newAddresses;
     UINT64 *newAddressesTypeLengths;
     char *newAddressesTypes;
@@ -583,8 +582,11 @@ PROBE(void, Track_Ldarga_Struct, (INT_PTR ptr, UINT16 idx)) {
     top.push1Concrete();
 }
 
-PROBE(void, Track_Delegate, (UINT_PTR actionPtr, INT_PTR functionPtr, INT_PTR closureRef)) {
-    heap.allocateDelegate(actionPtr, getFunctionId(functionPtr),  closureRef);
+PROBE(void, Track_Delegate, (ADDR closurePtr, ADDR functionPtr)) {
+    VirtualAddress closure{};
+    heap.physToVirtAddress(closurePtr, closure);
+    assert(!closure.offset);
+    topFrame().rememberDelegateArgs(closure.obj, getFunctionId(functionPtr));
 }
 
 inline bool ldloc(INT16 idx) {
@@ -1221,7 +1223,19 @@ PROBE(void, PushInternalCallResult, ()) {
 }
 
 PROBE(void, Track_CallVirt, (UINT16 count, OFFSET offset)) { Track_Call(count); PushFrame(0, 0, false, count, offset); }
-PROBE(void, Track_Newobj, (INT_PTR ptr)) { topFrame().push1Concrete(); }
+PROBE(void, Track_Newobj, (INT_PTR ptr)) {
+    StackFrame &top = topFrame();
+    OBJID closureId;
+    INT32 functionId;
+    if (top.popDelegateArgs(closureId, functionId)) {
+        // NOTE: Delegate has been created, so allocating it
+        VirtualAddress delegate{};
+        heap.physToVirtAddress(ptr, delegate);
+        assert(!delegate.offset);
+        heap.allocateDelegate(delegate.obj, functionId, closureId);
+    }
+    top.push1Concrete();
+}
 PROBE(void, Track_Calli, (mdSignature signature, OFFSET offset)) {
     // TODO
     (void)signature;

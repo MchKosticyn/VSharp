@@ -321,17 +321,12 @@ namespace vsharp {
         return (OBJID) i;
     }
 
-    void Storage::allocateDelegate(UINT_PTR actionPtr, INT32 functionId, UINT_PTR closureRef) {
-        LOG(tout << "Allocating action object for delegate! [" << actionPtr << ", " << functionId << ", " << closureRef << "]" << std::endl);
-        VirtualAddress action{};
-        VirtualAddress closure{};
-        physToVirtAddress(actionPtr, action);
-        physToVirtAddress(closureRef, closure);
-        assert(closure.offset == 0 && action.offset == 0);
-        if (delegates.find(action.obj) != delegates.end()) {
-            LOG(tout << "Rewriting action object [" << action.obj << "]!!!" << std::endl);
+    void Storage::allocateDelegate(OBJID delegateId, INT32 functionId, OBJID closureId) {
+        LOG(tout << "Allocating action object for delegate! [" << delegateId << ", " << functionId << ", " << closureId << "]" << std::endl);
+        if (delegates.find(delegateId) != delegates.end()) {
+            LOG(tout << "Rewriting action object [" << delegateId << "]!!!" << std::endl);
         }
-        delegates[action.obj] = { functionId, closure.obj };
+        delegates[delegateId] = { functionId, closureId };
     }
 
     void Storage::moveAndMark(ADDR oldLeft, ADDR newLeft, SIZE length) {
