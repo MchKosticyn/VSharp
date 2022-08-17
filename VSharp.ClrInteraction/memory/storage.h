@@ -181,7 +181,7 @@ public:
     OBJID allocateLocal(LocalObject *s);
     // Allocate block of static memory
     OBJID allocateStaticField(ADDR address, INT32 size, INT16 id);
-    void allocateDelegate(OBJID actionPtr, INT32 functionId, OBJID closureRef);
+    void allocateDelegate(OBJID delegateId, INT32 functionId, OBJID closureId);
 
     void moveAndMark(ADDR oldLeft, ADDR newLeft, SIZE length);
     void markSurvivedObjects(ADDR start, SIZE length);

@@ -40,6 +40,11 @@ private:
     bool m_spontaneous;
     bool m_createdViaNewObj;
 
+    // NOTE: info for delegate ctor
+    bool m_creatingDelegate;
+    OBJID m_closureId;
+    INT32 m_functionId;
+
     unsigned m_ip;
 
     Storage &m_heap;
@@ -92,6 +97,10 @@ public:
     bool isSpontaneous() const;
     void setSpontaneous(bool isUnmanaged);
     bool isCreatedViaNewObj() const;
+
+    // NOTE: remembering info to create delegate
+    void rememberDelegateArgs(OBJID closureId, INT32 functionId);
+    bool popDelegateArgs(OBJID &closureId, INT32 &functionId);
 
     unsigned moduleToken() const;
     void setModuleToken(unsigned token);

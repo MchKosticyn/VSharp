@@ -1400,20 +1400,6 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                         let isNewObj = opcodeValue = OpCodeValues.Newobj
                         let methodOfStruct = callee.DeclaringType.IsValueType
 
-                        let opmemOffset = int prependTarget.offset
-                        if isNewObj && TypeUtils.isSubtypeOrEqual callee.DeclaringType typedefof<System.Delegate> then
-                            match instr.stackState with
-                            | Some list ->
-                                let types = List.take 2 list |> Array.ofList
-                                for i = 0 to 1 do
-                                    x.AppendMemForSource instructions types.[i] (1 - i) opmemOffset
-                            | None -> __unreachable__()
-                            x.AppendProbe(probes.track_delegate, [], x.tokens.void_i_i_i_sig, instr) |> ignore
-                            x.AppendProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 0)], x.tokens.i_i1_sig, instr) |> ignore
-                            x.AppendProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 1)], x.tokens.i_i1_sig, instr) |> ignore
-                            x.AppendInstr OpCodes.Conv_I NoArg instr
-                            x.AppendDup instr
-
                         if isNewObj && not methodOfStruct then
                             x.AppendProbe(probes.newobj, [], x.tokens.void_i_sig, instr) |> ignore
                             x.AppendInstr OpCodes.Conv_I NoArg instr
@@ -1428,6 +1414,18 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                         let isModeledInternalCall = InstructionsSet.isInternalCall callee // TODO: add other cases
                         let isExecutableMethod = Loader.isExecutable callee
                         x.PrependProbe(probes.call, [(OpCodes.Ldc_I4, Arg32 argsCount)], x.tokens.bool_u2_sig, &prependTarget) |> ignore
+
+                        let opmemOffset = int prependTarget.offset
+                        if isNewObj && TypeUtils.isSubtypeOrEqual callee.DeclaringType typedefof<System.Delegate> then
+                            match instr.stackState with
+                            | Some list ->
+                                let types = List.take 2 list |> Array.ofList
+                                for i = 0 to 1 do
+                                    x.AppendMemForSource instructions types.[i] (1 - i) opmemOffset
+                            | None -> __unreachable__()
+                            x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 0)], x.tokens.i_i1_sig, &prependTarget) |> ignore
+                            x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 1)], x.tokens.i_i1_sig, &prependTarget) |> ignore
+                            x.PrependProbe(probes.track_delegate, [], x.tokens.void_i_i_sig, &prependTarget) |> ignore
 
                         if isModeledInternalCall || not isExecutableMethod then
                             match instr.stackState with

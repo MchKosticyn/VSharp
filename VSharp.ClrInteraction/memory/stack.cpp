@@ -21,6 +21,9 @@ StackFrame::StackFrame(unsigned resolvedToken, unsigned unresolvedToken, const b
     , m_enteredMarker(false)
     , m_spontaneous(false)
     , m_createdViaNewObj(isNewObj)
+    , m_creatingDelegate(false)
+    , m_closureId(0)
+    , m_functionId(0)
     , m_heap(heap)
     , m_ip(0)
 {
@@ -270,6 +273,23 @@ void StackFrame::setSpontaneous(bool isUnmanaged)
 
 bool StackFrame::isCreatedViaNewObj() const {
     return m_createdViaNewObj;
+}
+
+void StackFrame::rememberDelegateArgs(OBJID closureId, INT32 functionId) {
+    assert(!m_creatingDelegate && !m_closureId && !m_functionId);
+    m_creatingDelegate = true;
+    m_closureId = closureId;
+    m_functionId = functionId;
+}
+
+bool StackFrame::popDelegateArgs(OBJID &closureId, INT32 &functionId) {
+    bool creatingDelegate = m_creatingDelegate;
+    closureId = m_closureId;
+    functionId = m_functionId;
+    m_closureId = 0;
+    m_functionId = 0;
+    m_creatingDelegate = false;
+    return creatingDelegate;
 }
 
 unsigned StackFrame::moduleToken() const
