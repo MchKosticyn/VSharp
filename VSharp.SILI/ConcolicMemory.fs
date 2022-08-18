@@ -250,6 +250,8 @@ type ConcolicMemory(communicator : Communicator) =
                 virtualAddress
 
         member x.Copy() : IConcreteMemory =
-            let concolicMemory = ConcolicMemory(communicator)
-            concolicMemory.CopyFrom(x)
-            concolicMemory
+            // TODO: need to copy concolic memory? It will be refilled via concolic
+//            let concolicMemory = ConcolicMemory(communicator)
+//            concolicMemory.CopyFrom(x)
+//            concolicMemory
+            Memory.EmptyConcreteMemory()

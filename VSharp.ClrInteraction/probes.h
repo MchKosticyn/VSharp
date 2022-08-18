@@ -399,8 +399,6 @@ void sendCommand(OFFSET offset, unsigned opsCount, EvalStackOperand *ops, bool m
     bool commandsDisabled;
     trackCoverage(offset, lastStackPush, commandsDisabled);
 
-    ExecCommand command{};
-    initCommand(offset, false, opsCount, ops, command);
     if (commandsDisabled) {
         if (lastStackPush) {
             StackFrame &top = vsharp::topFrame();
@@ -409,6 +407,9 @@ void sendCommand(OFFSET offset, unsigned opsCount, EvalStackOperand *ops, bool m
         freeLock();
         return;
     }
+
+    ExecCommand command{};
+    initCommand(offset, false, opsCount, ops, command);
     protocol->sendSerializable(ExecuteCommand, command);
 
     // NOTE: handling commands from SILI (ReadBytes, ...)
