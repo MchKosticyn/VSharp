@@ -167,6 +167,7 @@ private:
     // TODO: store new addresses or get them from tree? #do
     std::map<OBJID, std::pair<char*, unsigned long>> newAddresses;
     std::vector<OBJID> deletedAddresses;
+    std::map<OBJID, std::pair<INT32, OBJID>> delegates;
 
     bool resolve(ADDR address, VirtualAddress &vAddress) const;
     void resolveRefInHeapBytes(char *bytes) const;
@@ -180,6 +181,7 @@ public:
     OBJID allocateLocal(LocalObject *s);
     // Allocate block of static memory
     OBJID allocateStaticField(ADDR address, INT32 size, INT16 id);
+    void allocateDelegate(OBJID actionPtr, INT32 functionId, OBJID closureRef);
 
     void moveAndMark(ADDR oldLeft, ADDR newLeft, SIZE length);
     void markSurvivedObjects(ADDR start, SIZE length);
@@ -187,7 +189,7 @@ public:
 
     void deleteObjects(const std::vector<Interval *> &objects);
     std::vector<OBJID> flushDeletedByGC();
-
+    std::map<OBJID, std::pair<INT32, OBJID>> flushDelegates();
     std::map<OBJID, std::pair<char*, unsigned long>> flushObjects();
 
     void physToVirtAddress(ADDR physAddress, VirtualAddress &vAddress) const;

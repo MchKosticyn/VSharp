@@ -554,6 +554,7 @@ void CorProfiler::serializeType(const std::vector<bool> &isValid, const std::vec
 
 HRESULT STDMETHODCALLTYPE CorProfiler::ObjectAllocated(ObjectID objectId, ClassID classId)
 {
+    LOG(tout << "Allocated object: " << objectId << std::endl);
     ULONG size;
     this->corProfilerInfo->GetObjectSize(objectId, &size);
 

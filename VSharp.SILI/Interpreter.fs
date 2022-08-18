@@ -1180,7 +1180,9 @@ type internal ILInterpreter() as this =
             | _ -> __unreachable__()
         let typ = Types.FromDotNetType ctor.DeclaringType
         let lambda = Lambdas.make (retrieveMethodInfo methodPtr, target) typ
-        Memory.AllocateDelegate cilState.state lambda |> k
+        let concreteAddress = Memory.AllocateDelegate cilState.state lambda
+        let address = ConcreteHeapAddress concreteAddress
+        HeapRef address typ |> k
 
     member x.CommonNewObj isCallNeeded (constructorInfo : ConstructorInfo) (cilState : cilState) (args : term list) (k : cilState list -> 'a) : 'a =
         __notImplemented__()

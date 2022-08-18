@@ -100,7 +100,7 @@ struct ExecCommand {
     UINT64 *newAddressesTypeLengths;
     char *newAddressesTypes;
     OBJID *deletedAddresses;
-    OBJID *delegateCoupling;
+    std::tuple<OBJID, INT32, OBJID> *delegateCoupling;
     const CoverageNode *newCoverageNodes;
 
     void serialize(char *&bytes, unsigned &count) const {
@@ -152,8 +152,11 @@ struct ExecCommand {
         memcpy(buffer, (char*)newAddresses, size); buffer += size;
         size = deletedAddressesCount * sizeof(UINT_PTR);
         memcpy(buffer, (char*)deletedAddresses, size); buffer += size;
-        size = delegatesCount * sizeOfDelegate;
-        memcpy(buffer, (char*)delegateCoupling, size); buffer += size;
+        for (int i = 0; i < delegatesCount; i++) {
+            *(OBJID *)buffer = (OBJID) std::get<0>(delegateCoupling[i]); buffer += sizeof(OBJID);
+            *(INT32 *)buffer = (INT32) std::get<1>(delegateCoupling[i]); buffer += sizeof(INT32);
+            *(OBJID *)buffer = (OBJID) std::get<2>(delegateCoupling[i]); buffer += sizeof(OBJID);
+        }
         size = newAddressesCount * sizeof(UINT64);
         memcpy(buffer, (char*)newAddressesTypeLengths, size); buffer += size;
         memcpy(buffer, newAddressesTypes, fullTypesSize); buffer += fullTypesSize;
@@ -243,12 +246,10 @@ void initCommand(OFFSET offset, bool isBranch, unsigned opsCount, EvalStackOpera
     auto delegates = heap.flushDelegates();
     auto delegatesSize = delegates.size();
     command.delegatesCount = delegatesSize;
-    command.delegateCoupling = new OBJID[delegatesSize * 3]; // actionPtr -> functionPtr, closureRef; thus 3
+    command.delegateCoupling = new std::tuple<OBJID, INT32, OBJID>[delegatesSize];
     i = 0;
     for (auto delegate : delegates) {
-        command.delegateCoupling[i++] = delegate.first;
-        command.delegateCoupling[i++] = delegate.second.first;
-        command.delegateCoupling[i++] = delegate.second.second;
+        command.delegateCoupling[i++] = std::make_tuple(delegate.first, delegate.second.first, delegate.second.second);
     }
 
     command.newCoverageNodes = flushNewCoverageNodes();
@@ -580,6 +581,10 @@ PROBE(void, Track_Ldarga_Struct, (INT_PTR ptr, UINT16 idx)) {
     heap.allocateLocal(&cell);
     top.addAllocatedLocal(&cell);
     top.push1Concrete();
+}
+
+PROBE(void, Track_Delegate, (UINT_PTR actionPtr, INT_PTR functionPtr, INT_PTR closureRef)) {
+    heap.allocateDelegate(actionPtr, getFunctionId(functionPtr),  closureRef);
 }
 
 inline bool ldloc(INT16 idx) {
@@ -980,7 +985,12 @@ PROBE(void, Track_Ckfinite, ()) {
     // TODO: if exn is thrown, no value is pushed onto the stack
 }
 PROBE(void, Track_Sizeof, ()) { topFrame().push1Concrete(); }
-PROBE(void, Track_Ldftn, ()) { topFrame().push1Concrete(); }
+PROBE(void, Track_Ldftn, (INT_PTR functionPtr, INT32 functionID)) {
+    LOG(tout << "Ldftn call: " << functionPtr << ", " << functionID << std::endl);
+    addFunctionId(functionPtr, functionID);
+    topFrame().push1Concrete();
+}
+
 PROBE(void, Track_Ldvirtftn, (INT_PTR ptr, mdToken token, OFFSET offset)) { /*TODO*/ }
 PROBE(void, Track_Arglist, ()) { topFrame().push1Concrete(); }
 PROBE(void, Track_Mkrefany, ()) {

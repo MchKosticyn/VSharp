@@ -21,6 +21,7 @@ type probes = {
     mutable ldarg : uint64
     mutable ldarga_primitive : uint64
     mutable ldarga_struct : uint64
+    mutable track_delegate : uint64
 
     mutable ldloc_0 : uint64
     mutable ldloc_1 : uint64
@@ -207,6 +208,7 @@ type signatureTokens = {
     mutable void_sig : uint32
     mutable bool_sig : uint32
     mutable i_sig : uint32
+    mutable void_u_sig : uint32
     mutable void_u1_sig : uint32
     mutable void_u4_sig : uint32
     mutable void_i_sig : uint32
@@ -468,7 +470,7 @@ type execCommand = {
     evaluationStackPushes : evalStackOperand array // NOTE: operands for executing instruction
     newAddresses : UIntPtr array
     deletedAddresses : UIntPtr array
-    delegateCoupling : array<UIntPtr * UIntPtr * UIntPtr>
+    delegateCoupling : array<UIntPtr * Int32 * UIntPtr>
     newAddressesTypes : Type array
     // TODO: add deleted addresses
     newCoveragePath : coverageLocation list
@@ -978,7 +980,7 @@ type Communicator(pipeFile) =
                 let res = Reflection.BitConverterToUIntPtr dynamicBytes offset in offset <- offset + UIntPtr.Size; res)
             let delegateCoupling = Array.init (int staticPart.delegatesCount) (fun _ ->
                 let actionPtr = Reflection.BitConverterToUIntPtr dynamicBytes offset in offset <- offset + UIntPtr.Size
-                let functionPtr = Reflection.BitConverterToUIntPtr dynamicBytes offset in offset <- offset + UIntPtr.Size
+                let functionPtr = BitConverter.ToInt32(dynamicBytes, offset) in offset <- offset + sizeof<Int32>
                 let closureRef = Reflection.BitConverterToUIntPtr dynamicBytes offset in offset <- offset + UIntPtr.Size
                 actionPtr, functionPtr, closureRef)
             let newAddressesTypesLengths = Array.init (int staticPart.newAddressesCount) (fun _ ->

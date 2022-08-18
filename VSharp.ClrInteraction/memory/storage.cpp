@@ -321,6 +321,19 @@ namespace vsharp {
         return (OBJID) i;
     }
 
+    void Storage::allocateDelegate(UINT_PTR actionPtr, INT32 functionId, UINT_PTR closureRef) {
+        LOG(tout << "Allocating action object for delegate! [" << actionPtr << ", " << functionId << ", " << closureRef << "]" << std::endl);
+        VirtualAddress action{};
+        VirtualAddress closure{};
+        physToVirtAddress(actionPtr, action);
+        physToVirtAddress(closureRef, closure);
+        assert(closure.offset == 0 && action.offset == 0);
+        if (delegates.find(action.obj) != delegates.end()) {
+            LOG(tout << "Rewriting action object [" << action.obj << "]!!!" << std::endl);
+        }
+        delegates[action.obj] = { functionId, closure.obj };
+    }
+
     void Storage::moveAndMark(ADDR oldLeft, ADDR newLeft, SIZE length) {
         Interval i(oldLeft, length);
         Shift s{oldLeft, newLeft};
@@ -470,6 +483,12 @@ namespace vsharp {
     std::vector<OBJID> Storage::flushDeletedByGC() {
         std::vector<OBJID> result(deletedAddresses);
         deletedAddresses.clear();
+        return result;
+    }
+
+    std::map<OBJID, std::pair<INT32, OBJID>> Storage::flushDelegates() {
+        std::map<OBJID, std::pair<INT32, OBJID>> result(delegates);
+        delegates.clear();
         return result;
     }
 

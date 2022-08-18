@@ -233,11 +233,27 @@ type ClientMachine(entryPoint : MethodBase, cmdArgs : string[] option, requestMa
         Logger.trace "Synchronizing states with Concolic"
         let concreteMemory = cilState.state.concreteMemory
         Array.iter concreteMemory.DeleteAddress c.deletedAddresses
+
+        let delegateTypes = Dictionary<UIntPtr, symbolicType>()
+
         let allocateAddress address typ =
-            let typ = Types.FromDotNetType typ
-            let concreteAddress = lazy(Memory.AllocateEmptyType cilState.state typ)
-            concreteMemory.Allocate address concreteAddress
+            let symbolicType = Types.FromDotNetType typ
+            if TypeUtils.isSubtypeOrEqual typ typedefof<Delegate> then
+                delegateTypes.Add(address, symbolicType)
+            else
+                let concreteAddress = lazy(Memory.AllocateEmptyType cilState.state symbolicType)
+                concreteMemory.Allocate address concreteAddress
         Array.iter2 allocateAddress c.newAddresses c.newAddressesTypes
+
+        let allocateDelegate (actionPtr, functionId, closurePtr) =
+            let closureAddress = concreteMemory.GetVirtualAddress closurePtr |> ConcreteHeapAddress
+            let closureRef = HeapRef closureAddress (TypeOfAddress cilState.state closureAddress)
+            let methodInfo = x.instrumenter.FunctionByID functionId
+            let lambdaType = delegateTypes[actionPtr]
+            let lambda = Lambdas.make (methodInfo, closureRef) lambdaType
+            let concreteAddress = lazy(Memory.AllocateDelegate cilState.state lambda)
+            concreteMemory.Allocate actionPtr concreteAddress
+        Array.iter allocateDelegate c.delegateCoupling
 
         let exceptionRegister =
             // NOTE: is exception is symbolic, it was already raised in SILI, so ignoring exception ref
