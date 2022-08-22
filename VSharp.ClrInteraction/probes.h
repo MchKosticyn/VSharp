@@ -1007,7 +1007,7 @@ PROBE(void, SetArgSize, (INT8 idx, SIZE size)) {
     StackFrame &top = stack.topFrame();
     LocalObject &cell = top.arg(idx);
     cell.setSize((int) size);
-    ObjectLocation location{LocalVariable, frame, idx};
+    ObjectLocation location{Parameter, frame, idx};
     cell.setLocation(location);
 }
 
