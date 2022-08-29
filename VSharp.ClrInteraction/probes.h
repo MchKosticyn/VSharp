@@ -294,6 +294,9 @@ void freeCommand(ExecCommand &command) {
     delete[] command.newAddresses;
     delete[] command.newAddressesTypeLengths;
     delete[] command.newAddressesTypes;
+
+    delete[] command.deletedAddresses;
+    delete[] command.delegates;
 }
 
 void updateMemory(EvalStackOperand &op, Stack::OperandMem &opmem, unsigned int idx) {
