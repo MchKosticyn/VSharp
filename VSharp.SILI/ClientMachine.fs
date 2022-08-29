@@ -184,6 +184,13 @@ type ClientMachine(entryPoint : Method, cmdArgs : string[] option, requestMakeSt
             let offset = int offset |> MakeNumber
             Ptr (StackLocation stackKey) typeof<Void> offset
 
+    member private x.MarshallStructFromConcolic (ref : concreteHeapAddress) (rawBytes : byte array) =
+        let state = cilState.state
+        let structType = TypeOfAddress state (ConcreteHeapAddress ref)
+        let fieldsWithOffsets = Reflection.fieldsWithOffsets structType
+        let structFields = Reflection.parseFields rawBytes fieldsWithOffsets
+        ObjToTerm state structType (FieldsData structFields)
+
     member private x.CalleeArgTypesIfPossible() =
         let m = Memory.GetCurrentExploringFunction cilState.state :?> Method
         let offset = CilStateOperations.currentOffset cilState
@@ -298,6 +305,8 @@ type ClientMachine(entryPoint : Method, cmdArgs : string[] option, requestMakeSt
                 | _ -> __unreachable__()
             | PointerOp(baseAddress, offset, key) ->
                 x.MarshallRefFromConcolic baseAddress offset key
+            | StructOp(ref, rawBytes) ->
+                x.MarshallStructFromConcolic (concreteMemory.GetVirtualAddress ref) rawBytes
             | EmptyOp ->
                 let argTypes = argTypes.Value
                 Memory.DefaultOf argTypes[i]

@@ -75,6 +75,7 @@ type evalStackOperand =
     | EmptyOp
     | NumericOp of evalStackArgType * int64
     | PointerOp of concolicAddress
+    | StructOp of UIntPtr * byte array
 
 type concolicExceptionRegister =
     | UnhandledConcolic of UIntPtr * bool
@@ -610,7 +611,13 @@ type Communicator(pipeFile) =
                     NumericOp(evalStackArgType, content)
                 | evalStackArgType.OpEmpty -> EmptyOp
                 | evalStackArgType.OpStruct ->
-                    internalfail "ReadExecuteCommand: struct case is not implemented"
+                    let structRef = Reflection.BitConverterToUIntPtr dynamicBytes offset
+                    offset <- offset + UIntPtr.Size
+                    let structSize = BitConverter.ToInt32(dynamicBytes, offset)
+                    offset <- offset + sizeof<int32>
+                    let structBytes = dynamicBytes[offset..offset + structSize - 1]
+                    offset <- offset + structSize
+                    StructOp(structRef, structBytes)
                 | _ -> internalfailf "unexpected evaluation stack argument type %O" evalStackArgType)
             let newAddresses = Array.init (int staticPart.newAddressesCount) (fun _ ->
                 let res = Reflection.BitConverterToUIntPtr dynamicBytes offset in offset <- offset + UIntPtr.Size; res)

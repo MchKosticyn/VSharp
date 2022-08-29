@@ -8,6 +8,7 @@
 
 #define COND INT_PTR
 #define ADDRESS_SIZE sizeof(INT32) + sizeof(UINT_PTR) + sizeof(UINT_PTR) + sizeof(BYTE) + sizeof(BYTE) * 2;
+#define BOXED_OBJ_METADATA_SIZE sizeof(INT_PTR)
 
 namespace vsharp {
 
@@ -33,6 +34,7 @@ enum EvalStackArgType {
 union OperandContent {
     long long number;
     VirtualAddress address;
+    OBJID objStruct;
 };
 
 struct EvalStackOperand {
@@ -46,6 +48,8 @@ struct EvalStackOperand {
                 return ADDRESS_SIZE;
             case OpEmpty:
                 return sizeof(INT32);
+            case OpStruct:
+                return sizeof(INT32) + sizeof(UINT_PTR) + sizeof(INT32) + ((Object*) content.objStruct)->sizeOf() - BOXED_OBJ_METADATA_SIZE;
             default:
                 return sizeof(INT32) + sizeof(INT64);
         }
@@ -61,6 +65,14 @@ struct EvalStackOperand {
             }
             case OpEmpty:
                 break;
+            case OpStruct: {
+                *(UINT_PTR *)buffer = content.objStruct; buffer += sizeof(UINT_PTR);
+                int size = ((Object *) content.objStruct)->sizeOf() - BOXED_OBJ_METADATA_SIZE;
+                *(INT32 *)buffer = (INT32) size; buffer += sizeof(INT32);
+                memcpy(buffer, (char *) (content.objStruct + BOXED_OBJ_METADATA_SIZE), size);
+                buffer += size;
+                break;
+            }
             default:
                 *(INT64 *)buffer = (INT64) content.number; buffer += sizeof(INT64);
                 break;
@@ -70,7 +82,10 @@ struct EvalStackOperand {
     void deserialize(char *&buffer) {
         typ = *(EvalStackArgType *)buffer;
         buffer += sizeof(EvalStackArgType);
-        if (typ == OpRef) {
+        if (typ == OpStruct) {
+            FAIL_LOUD("Unexpected deserialization of struct object!");
+        }
+        else if (typ == OpRef) {
             content.address.deserialize(buffer);
             // NOTE: deserialization of object location is not needed, because updateMemory needs only address and offset
         } else {
@@ -316,7 +331,8 @@ void updateMemory(EvalStackOperand &op, Stack::OperandMem &opmem, unsigned int i
             opmem.update_p((INT_PTR) Storage::virtToPhysAddress(op.content.address), (INT8) idx);
             break;
         case OpStruct:
-            FAIL_LOUD("Not implemented!");
+            LOG(tout << "updateMemory for struct object was called; skipped" << std::endl);
+            break;
         case OpEmpty:
             FAIL_LOUD("updateMemory: trying to update empty cell!");
         case OpSymbolic:
@@ -468,7 +484,13 @@ EvalStackOperand mkop_p(INT_PTR op) {
     resolve(op, content.address);
     return {OpRef, content};
 }
-EvalStackOperand mkop_struct(INT_PTR op) { FAIL_LOUD("not implemented"); }
+EvalStackOperand mkop_struct(INT_PTR op) {
+    OperandContent content{};
+    resolve(op, content.address);
+    assert(content.address.offset == 0);
+    content.objStruct = content.address.obj;
+    return {OpStruct, content};
+}
 EvalStackOperand mkop_refLikeStruct() {
     OperandContent content{};
     return {OpStruct, content};
