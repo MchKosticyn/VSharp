@@ -58,6 +58,7 @@ module API =
         val MakeBool : bool -> term
         val MakeNumber : 'a -> term
         val MakeIntPtr : term -> term
+        val ObjToTerm : state -> Type -> obj -> term
         val AddressToBaseAndOffset : address -> pointerBase * term
 
         val TypeOf : term -> Type

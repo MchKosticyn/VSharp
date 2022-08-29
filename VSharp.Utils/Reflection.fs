@@ -3,9 +3,19 @@ namespace VSharp
 open System
 open System.Collections.Generic
 open System.Reflection
-open System.Reflection.Metadata
+
+type concreteData =
+    | StringData of char[]
+    | VectorData of obj[]
+    | ComplexArrayData of Array // TODO: support non-vector arrays
+    | FieldsData of (FieldInfo * obj)[]
 
 module public Reflection =
+
+    type FieldWithOffset =
+        | Struct of FieldInfo * int * FieldWithOffset array
+        | Primitive of FieldInfo * int
+        | Ref of FieldInfo * int
 
     // ----------------------------- Binding Flags ------------------------------
 
@@ -154,6 +164,86 @@ module public Reflection =
     let compareMethods (m1 : MethodBase) (m2 : MethodBase) =
         compare (getMethodDescriptor m1) (getMethodDescriptor m2)
 
+    // --------------------------------- Fields ---------------------------------
+
+    // TODO: add cache: map from wrapped field to unwrapped
+
+    let wrapField (field : FieldInfo) =
+        {declaringType = field.DeclaringType; name = field.Name; typ = field.FieldType}
+
+    let getFieldInfo (field : fieldId) =
+        let result = field.declaringType.GetField(field.name, allBindingFlags)
+        if result <> null then result
+        else field.declaringType.GetRuntimeField(field.name)
+
+    let rec private retrieveFields isStatic f (t : Type) =
+        let staticFlag = if isStatic then BindingFlags.Static else BindingFlags.Instance
+        let flags = BindingFlags.Public ||| BindingFlags.NonPublic ||| staticFlag
+        let fields = t.GetFields(flags) |> Array.sortBy (fun field -> field.Name)
+        let ourFields = f fields
+        if isStatic || t.BaseType = null then ourFields
+        else Array.append (retrieveFields false f t.BaseType) ourFields
+
+    let retrieveNonStaticFields t = retrieveFields false id t
+
+    let fieldsOf isStatic (t : Type) =
+        let extractFieldInfo (field : FieldInfo) =
+            // Events may appear at this point. Filtering them out...
+            if TypeUtils.isSubtypeOrEqual field.FieldType typeof<MulticastDelegate> then None
+            else Some (wrapField field, field)
+        retrieveFields isStatic (FSharp.Collections.Array.choose extractFieldInfo) t
+
+    let fieldIntersects (field : fieldId) =
+        let fieldInfo = getFieldInfo field
+        let offset = CSharpUtils.LayoutUtils.GetFieldOffset fieldInfo
+        let size = TypeUtils.internalSizeOf fieldInfo.FieldType
+        let intersects o s = o + s > offset && o < offset + size
+        let fields = fieldsOf false field.declaringType
+        let checkIntersects (_, fieldInfo : FieldInfo) =
+            let o = CSharpUtils.LayoutUtils.GetFieldOffset fieldInfo
+            let s = TypeUtils.internalSizeOf fieldInfo.FieldType
+            intersects o s
+        let intersectingFields = Array.filter checkIntersects fields
+        Array.length intersectingFields > 1
+
+    // Returns pair (valueFieldInfo, hasValueFieldInfo)
+    let fieldsOfNullable typ =
+        let fs = fieldsOf false typ
+        match fs with
+        | [|(f1, _); (f2, _)|] when f1.name.Contains("value", StringComparison.OrdinalIgnoreCase) && f2.name.Contains("hasValue", StringComparison.OrdinalIgnoreCase) -> f1, f2
+        | [|(f1, _); (f2, _)|] when f1.name.Contains("hasValue", StringComparison.OrdinalIgnoreCase) && f2.name.Contains("value", StringComparison.OrdinalIgnoreCase) -> f2, f1
+        | _ -> internalfailf "%O has unexpected fields {%O}! Probably your .NET implementation is not supported :(" (getFullTypeName typ) (fs |> Array.map (fun (f, _) -> f.name) |> join ", ")
+
+    let stringLengthField, stringFirstCharField =
+        let fs = fieldsOf false typeof<string>
+        match fs with
+        | [|(f1, _); (f2, _)|] when f1.name.Contains("length", StringComparison.OrdinalIgnoreCase) && f2.name.Contains("firstChar", StringComparison.OrdinalIgnoreCase) -> f1, f2
+        | [|(f1, _); (f2, _)|] when f1.name.Contains("firstChar", StringComparison.OrdinalIgnoreCase) && f2.name.Contains("length", StringComparison.OrdinalIgnoreCase) -> f2, f1
+        | _ -> internalfailf "System.String has unexpected fields {%O}! Probably your .NET implementation is not supported :(" (fs |> Array.map (fun (f, _) -> f.name) |> join ", ")
+
+    let emptyStringField =
+        let fs = fieldsOf true typeof<string>
+        match fs |> Array.tryFind (fun (f, _) -> f.name.Contains("empty", StringComparison.OrdinalIgnoreCase)) with
+        | Some(f, _) -> f
+        | None -> internalfailf "System.String has unexpected static fields {%O}! Probably your .NET implementation is not supported :(" (fs |> Array.map (fun (f, _) -> f.name) |> join ", ")
+
+    // --------------------------------- Offsets ---------------------------------
+
+    let relativeFieldOffset fieldId =
+        if fieldId = stringFirstCharField then 0
+        else getFieldInfo fieldId |> CSharpUtils.LayoutUtils.GetFieldOffset
+
+    let memoryFieldOffset (fieldInfo : FieldInfo) =
+        match fieldInfo with
+        | _ when fieldInfo.DeclaringType <> typeof<String> ->
+            let metadataSize = CSharpUtils.LayoutUtils.MetadataSize fieldInfo.DeclaringType
+            metadataSize + CSharpUtils.LayoutUtils.GetFieldOffset fieldInfo
+        | _ when fieldInfo.Name.Contains("length", StringComparison.OrdinalIgnoreCase) ->
+            CSharpUtils.LayoutUtils.StringLengthOffset
+        | _ when fieldInfo.Name.Contains("firstChar", StringComparison.OrdinalIgnoreCase) ->
+            CSharpUtils.LayoutUtils.StringElementsOffset
+        | _ -> __unreachable__()
+
     // ----------------------------------- Creating objects ----------------------------------
 
     let defaultOf (t : Type) =
@@ -193,6 +283,80 @@ module public Reflection =
             Enum.ToObject(t, i)
         | _ when not t.IsValueType -> BitConverterToUIntPtr bytes 0
         | _ -> internalfailf "creating object from bytes: unexpected object type %O" t
+
+    // ------------------------- Parsing objects from bytes -----------------------------
+
+    let rec fieldsWithOffsets (t : Type) : FieldWithOffset array =
+        assert(not t.IsPrimitive && not t.IsArray)
+        let fields = fieldsOf false t
+        let getFieldOffset (_, info : FieldInfo) =
+            let fieldType = info.FieldType
+            match fieldType with
+            | _ when fieldType.IsPrimitive || fieldType.IsEnum ->
+                Primitive(info, memoryFieldOffset info)
+            | _ when TypeUtils.isStruct fieldType ->
+                let fields = fieldsWithOffsets fieldType
+                Struct(info, memoryFieldOffset info, fields)
+            | _ ->
+                assert(not fieldType.IsValueType)
+                Ref(info, memoryFieldOffset info)
+        Array.map getFieldOffset fields
+
+    let chooseRefOffsets (fieldsWithOffsets : FieldWithOffset array) =
+        let rec handleOffset (position, offsets) field =
+            match field with
+            | Ref(_, offset) -> position, position + offset :: offsets
+            | Struct(_, offset, fields) ->
+                let fieldsOffsets = Array.fold handleOffset (position + offset, offsets) fields |> snd
+                position, fieldsOffsets
+            | Primitive _ -> position, offsets
+        Array.fold handleOffset (0, List.empty) fieldsWithOffsets |> snd |> List.toArray
+
+    let arrayRefOffsets (elemType : Type) =
+        match elemType with
+        | _ when elemType.IsPrimitive || elemType.IsEnum -> Array.empty
+        | _ when elemType.IsValueType -> fieldsWithOffsets elemType |> chooseRefOffsets
+        | _ ->
+            assert(not elemType.IsValueType)
+            Array.singleton 0
+
+    let parseVectorArray bytes elemType =
+        let elemSize = TypeUtils.internalSizeOf elemType |> int
+        // NOTE: skipping array header
+        let mutable offset = VSharp.CSharpUtils.LayoutUtils.ArrayLengthOffset(true, 0)
+        let length = BitConverter.ToInt64(bytes, offset) |> int
+        offset <- offset + 8
+        let parseOneElement i =
+            let offset = offset + i * elemSize
+            bytesToObj bytes[offset .. offset + elemSize - 1] elemType
+        Array.init length parseOneElement
+
+    let parseString bytes =
+        let mutable offset = VSharp.CSharpUtils.LayoutUtils.StringLengthOffset
+        let length = BitConverter.ToInt32(bytes, offset) |> int
+        offset <- VSharp.CSharpUtils.LayoutUtils.StringElementsOffset
+        let elemSize = sizeof<char>
+        let parseOneChar i =
+            let offset = offset + i * elemSize
+            let obj = bytesToObj bytes[offset .. offset + elemSize - 1] typeof<char>
+            obj :?> char
+        Array.init length parseOneChar
+
+    let rec parseFields (bytes : byte array) (fieldOffsets : FieldWithOffset array) =
+        let parseOneField (field : FieldWithOffset) =
+            match field with
+            | Primitive(fieldInfo, offset)
+            | Ref(fieldInfo, offset) ->
+                let fieldType = fieldInfo.FieldType
+                let fieldSize = TypeUtils.internalSizeOf fieldType |> int
+                fieldInfo, bytesToObj bytes[offset .. offset + fieldSize - 1] fieldType
+            | Struct(fieldInfo, offset, fields) ->
+                let fieldType = fieldInfo.FieldType
+                let fieldSize = TypeUtils.internalSizeOf fieldType |> int
+                let bytes = bytes[offset .. offset + fieldSize - 1]
+                let data = parseFields bytes fields |> FieldsData |> box
+                fieldInfo, data
+        Array.map parseOneField fieldOffsets
 
     // --------------------------------- Substitute generics ---------------------------------
 
@@ -275,69 +439,6 @@ module public Reflection =
         let declaringType = concretizeType subst f.declaringType
         {declaringType = declaringType; name = f.name; typ = concretizeType subst f.typ}
 
-    // --------------------------------- Fields ---------------------------------
-
-    // TODO: add cache: map from wrapped field to unwrapped
-
-    let wrapField (field : FieldInfo) =
-        {declaringType = field.DeclaringType; name = field.Name; typ = field.FieldType}
-
-    let getFieldInfo (field : fieldId) =
-        let result = field.declaringType.GetField(field.name, allBindingFlags)
-        if result <> null then result
-        else field.declaringType.GetRuntimeField(field.name)
-
-    let rec private retrieveFields isStatic f (t : Type) =
-        let staticFlag = if isStatic then BindingFlags.Static else BindingFlags.Instance
-        let flags = BindingFlags.Public ||| BindingFlags.NonPublic ||| staticFlag
-        let fields = t.GetFields(flags) |> Array.sortBy (fun field -> field.Name)
-        let ourFields = f fields
-        if isStatic || t.BaseType = null then ourFields
-        else Array.append (retrieveFields false f t.BaseType) ourFields
-
-    let retrieveNonStaticFields t = retrieveFields false id t
-
-    let fieldsOf isStatic (t : Type) =
-        let extractFieldInfo (field : FieldInfo) =
-            // Events may appear at this point. Filtering them out...
-            if TypeUtils.isSubtypeOrEqual field.FieldType typeof<MulticastDelegate> then None
-            else Some (wrapField field, field)
-        retrieveFields isStatic (FSharp.Collections.Array.choose extractFieldInfo) t
-
-    let fieldIntersects (field : fieldId) =
-        let fieldInfo = getFieldInfo field
-        let offset = CSharpUtils.LayoutUtils.GetFieldOffset fieldInfo
-        let size = TypeUtils.internalSizeOf fieldInfo.FieldType
-        let intersects o s = o + s > offset && o < offset + size
-        let fields = fieldsOf false field.declaringType
-        let checkIntersects (_, fieldInfo : FieldInfo) =
-            let o = CSharpUtils.LayoutUtils.GetFieldOffset fieldInfo
-            let s = TypeUtils.internalSizeOf fieldInfo.FieldType
-            intersects o s
-        let intersectingFields = Array.filter checkIntersects fields
-        Array.length intersectingFields > 1
-
-    // Returns pair (valueFieldInfo, hasValueFieldInfo)
-    let fieldsOfNullable typ =
-        let fs = fieldsOf false typ
-        match fs with
-        | [|(f1, _); (f2, _)|] when f1.name.Contains("value", StringComparison.OrdinalIgnoreCase) && f2.name.Contains("hasValue", StringComparison.OrdinalIgnoreCase) -> f1, f2
-        | [|(f1, _); (f2, _)|] when f1.name.Contains("hasValue", StringComparison.OrdinalIgnoreCase) && f2.name.Contains("value", StringComparison.OrdinalIgnoreCase) -> f2, f1
-        | _ -> internalfailf "%O has unexpected fields {%O}! Probably your .NET implementation is not supported :(" (getFullTypeName typ) (fs |> Array.map (fun (f, _) -> f.name) |> join ", ")
-
-    let stringLengthField, stringFirstCharField =
-        let fs = fieldsOf false typeof<string>
-        match fs with
-        | [|(f1, _); (f2, _)|] when f1.name.Contains("length", StringComparison.OrdinalIgnoreCase) && f2.name.Contains("firstChar", StringComparison.OrdinalIgnoreCase) -> f1, f2
-        | [|(f1, _); (f2, _)|] when f1.name.Contains("firstChar", StringComparison.OrdinalIgnoreCase) && f2.name.Contains("length", StringComparison.OrdinalIgnoreCase) -> f2, f1
-        | _ -> internalfailf "System.String has unexpected fields {%O}! Probably your .NET implementation is not supported :(" (fs |> Array.map (fun (f, _) -> f.name) |> join ", ")
-
-    let emptyStringField =
-        let fs = fieldsOf true typeof<string>
-        match fs |> Array.tryFind (fun (f, _) -> f.name.Contains("empty", StringComparison.OrdinalIgnoreCase)) with
-        | Some(f, _) -> f
-        | None -> internalfailf "System.String has unexpected static fields {%O}! Probably your .NET implementation is not supported :(" (fs |> Array.map (fun (f, _) -> f.name) |> join ", ")
-
     // --------------------------------- Types ---------------------------------
 
     let private cachedTypes = Dictionary<Type, bool>()
@@ -355,20 +456,3 @@ module public Reflection =
             let result = isReferenceOrContainsReferencesHelper t
             cachedTypes.Add(t, result)
             result
-
-    // --------------------------------- Offsets ---------------------------------
-
-    let relativeFieldOffset fieldId =
-        if fieldId = stringFirstCharField then 0
-        else getFieldInfo fieldId |> CSharpUtils.LayoutUtils.GetFieldOffset
-
-    let memoryFieldOffset (fieldInfo : FieldInfo) =
-        match fieldInfo with
-        | _ when fieldInfo.DeclaringType <> typeof<String> ->
-            let metadataSize = CSharpUtils.LayoutUtils.MetadataSize fieldInfo.DeclaringType
-            metadataSize + CSharpUtils.LayoutUtils.GetFieldOffset fieldInfo
-        | _ when fieldInfo.Name.Contains("length", StringComparison.OrdinalIgnoreCase) ->
-            CSharpUtils.LayoutUtils.StringLengthOffset
-        | _ when fieldInfo.Name.Contains("firstChar", StringComparison.OrdinalIgnoreCase) ->
-            CSharpUtils.LayoutUtils.StringElementsOffset
-        | _ -> __unreachable__()
