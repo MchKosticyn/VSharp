@@ -117,7 +117,6 @@ type execCommand = {
 
 [<type: StructLayout(LayoutKind.Sequential, Pack=1, CharSet=CharSet.Ansi)>]
 type execResponseStaticPart = {
-    framesCount : uint32
     lastPush : byte
     opsLength : int // -1 if operands were not concretized, length otherwise
     hasResult : byte
@@ -325,7 +324,8 @@ type Communicator(pipeFile) =
         Array.concat [moduleSize; methodDef; moduleNameBytes] |> writeBuffer
 
     member x.SendCoverageInformation (cov : coverageLocation list) =
-        Logger.trace "send coverage %O" cov
+        // TODO: create serializer for 'coverageLocation'
+        Logger.trace "Sending coverage information to concolic: %O" cov
         let sizeOfLocation = Marshal.SizeOf(typeof<coverageLocation>)
         let entriesCount = List.length cov
         let bytes : byte[] = Array.zeroCreate (sizeof<int32> + entriesCount * sizeOfLocation)
@@ -631,6 +631,7 @@ type Communicator(pipeFile) =
             offset <- offset + sizeof<int32>
             let mutable newCoveragePath = []
             for i in 1 .. newCoverageNodesCount do
+                // TODO: create deserializer for 'coverageLocation'
                 let moduleToken = BitConverter.ToInt32(dynamicBytes, offset)
                 offset <- offset + sizeof<int32>
                 let methodToken = BitConverter.ToInt32(dynamicBytes, offset)
@@ -640,6 +641,7 @@ type Communicator(pipeFile) =
                 let threadToken = BitConverter.ToInt32(dynamicBytes, offset)
                 offset <- offset + sizeof<int32>
                 let stackPush = dynamicBytes[offset]
+                assert(stackPush >= 0uy && stackPush < 3uy)
                 offset <- offset + sizeof<byte>
                 let node : coverageLocation = {moduleToken = moduleToken; methodToken = methodToken; offset = ilOffset; threadToken = threadToken; stackPush = stackPush}
                 newCoveragePath <- node::newCoveragePath
@@ -735,7 +737,7 @@ type Communicator(pipeFile) =
         | Some _ -> 1uy
         | None -> 0uy
 
-    member x.SendExecResponse (ops : (obj * Type) list option) (result : (obj * Type) option) (lastPush : byte) (framesCount : int) =
+    member x.SendExecResponse (ops : (obj * Type) list option) (result : (obj * Type) option) (lastPush : byte) =
         x.SendCommand ReadExecResponse
         let len, opsBytes =
             match ops with
@@ -745,7 +747,7 @@ type Communicator(pipeFile) =
             match result with
             | Some r -> 1uy, x.SerializeConcrete r
             | None -> 0uy, Array.empty
-        let staticPart = { framesCount = uint framesCount; lastPush = lastPush; opsLength = len; hasResult = hasInternalCallResult }
+        let staticPart = { lastPush = lastPush; opsLength = len; hasResult = hasInternalCallResult }
         let staticPartBytes = x.Serialize<execResponseStaticPart> staticPart
         let message = Array.concat [staticPartBytes; opsBytes; resultBytes]
         Logger.trace "Sending exec response! Total %d bytes" message.Length

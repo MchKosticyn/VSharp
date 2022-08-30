@@ -201,8 +201,8 @@ public:
 
     unsigned unsentPops() const;
     unsigned minTopSinceLastSent() const;
-    void resetMinTop();
-    void resetPopsTracking(int framesCount);
+    void resetLastSentTop();
+    void resetPopsTracking();
 
     bool opmemIsEmpty() const;
     OperandMem &opmem(OFFSET offset);

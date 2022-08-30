@@ -316,7 +316,7 @@ module internal Arithmetics =
 // ------------------------------- Simplification of "*" -------------------------------
 
     and private simplifyConcreteMultiplication t x y =
-        castConcrete (Calculator.Mul(x, y, t)) t
+        castConcrete (Calculator1.Mul(x, y, t)) t
 
     and private simplifyMultiplicationOfProduct t a b y matched unmatched =
         // Simplifying (a * b) * y at this step

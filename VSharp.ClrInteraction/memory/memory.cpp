@@ -183,7 +183,9 @@ bool vsharp::addCoverageStep(OFFSET offset, BYTE &lastStackPush, bool &stillExpe
         stillExpectsCoverage = true;
         if (expectedCoverageStep->moduleToken != moduleToken || expectedCoverageStep->methodToken != methodToken ||
                 expectedCoverageStep->offset != offset || expectedCoverageStep->threadToken != threadToken) {
-            LOG(tout << "Path divergence detected at offset " << offset << " of " << HEX(methodToken));
+            LOG(tout << "Path divergence detected: expected method token " << HEX(expectedCoverageStep->methodToken) <<
+                ", got method token " << HEX(methodToken) << ", expected offset " << HEX(expectedCoverageStep->offset) <<
+                ", got offset " << HEX(offset) << std::endl);
             return false;
         }
         lastStackPush = expectedCoverageStep->stackPush;

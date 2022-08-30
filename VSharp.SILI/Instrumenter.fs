@@ -1534,7 +1534,7 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
     member x.Skip (body : rawMethodBody) =
         { properties = {ilCodeSize = body.properties.ilCodeSize; maxStackSize = body.properties.maxStackSize}; il = body.il; ehs = body.ehs}
 
-    member private x.NeedToSkip = Array.empty
+    member private x.ShouldInstrument = not (Application.getMethod x.m).IsInternalCall
 
     member x.Instrument(body : rawMethodBody) =
         assert(x.rewriter = null)
@@ -1545,9 +1545,8 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
         let t = x.m.DeclaringType
         if t = typeof<System.InvalidProgramException> || t = typeof<System.TypeLoadException> || t = typeof<System.BadImageFormatException> then
             internalfailf "Incorrect instrumentation: exception %O is thrown!" t
-        let shouldInstrument = Array.contains (Reflection.methodToString x.m) x.NeedToSkip |> not
         let result =
-            if shouldInstrument && Instrumenter.instrumentedFunctions.Add x.m then
+            if x.ShouldInstrument && Instrumenter.instrumentedFunctions.Add x.m then
                 Logger.trace "Instrumenting %s (token = %X)" (Reflection.methodToString x.m) body.properties.token
                 x.rewriter.Import()
                 x.rewriter.PrintInstructions "before instrumentation" probes

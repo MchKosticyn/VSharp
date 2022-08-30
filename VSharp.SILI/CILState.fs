@@ -74,7 +74,7 @@ module internal CilStateOperations =
           concolicStatus = concolicStatus.PurelySymbolic
           suspended = false
           lastPushInfo = None
-          path = []
+          path = Coverage.empty
         }
 
     let makeInitialState m state = makeCilState (instruction m 0<offsets>) 0u state
@@ -224,6 +224,9 @@ module internal CilStateOperations =
 
     let history (cilState : cilState) =
         seq cilState.history
+
+    let clearCoveragePath (cilState : cilState) =
+        cilState.path <- Coverage.empty
 
     // ------------------------------- Helper functions for cilState and state interaction -------------------------------
 

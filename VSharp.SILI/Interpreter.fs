@@ -564,7 +564,7 @@ type internal ILInterpreter() as this =
         reportError <- reporter
 
     member private x.Raise createException (cilState : cilState) k =
-        createException cilState
+        if controlledByConcolic cilState |> not then createException cilState
         k [cilState]
 
     member private x.AccessMultidimensionalArray accessor (cilState : cilState) upperBounds indices (k : cilState list -> 'a) =
@@ -2259,7 +2259,7 @@ type internal ILInterpreter() as this =
             | OpCodeValues.Ldelem_I -> (fun _ _ _ -> __notImplemented__()) |> fallThrough m offset cilState
             | OpCodeValues.Arglist -> (fun _ _ _ -> __notImplemented__()) |> fallThrough m offset cilState
             | OpCodeValues.Jmp -> (fun _ _ _ -> __notImplemented__()) |> fallThrough m offset cilState
-            | OpCodeValues.Break -> (fun _ _ _ -> __notImplemented__()) |> fallThrough m offset cilState
+            | OpCodeValues.Break -> (fun _ _ _ -> ()) |> fallThrough m offset cilState
             | OpCodeValues.Calli -> (fun _ _ _ -> __notImplemented__()) |> fallThrough m offset cilState
             | OpCodeValues.Ckfinite -> (fun _ _ _ -> __notImplemented__()) |> fallThrough m offset cilState
             | OpCodeValues.Constrained_ -> constrained |> fallThrough m offset cilState

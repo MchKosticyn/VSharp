@@ -386,9 +386,8 @@ module internal Memory =
         | :? UIntPtr as address -> state.concreteMemory.GetVirtualAddress address
         | _ -> internalfailf "creating concrete heap address from unexpected object: %O" obj
 
-    let private referenceTypeToTerm state (obj : obj) =
+    let private referenceTypeToTerm state objType (obj : obj) =
         let address = objToConcreteHeapAddress state obj |> ConcreteHeapAddress
-        let objType = typeOfHeapLocation state address
         HeapRef address objType
 
     let rec objToTerm (state : state) (t : Type) (obj : obj) =
@@ -400,7 +399,7 @@ module internal Memory =
         // TODO: need pointer?
         | _ when isPointer t -> __notImplemented__()
         | _ when t.IsValueType -> structToTerm state obj t
-        | _ -> referenceTypeToTerm state obj
+        | _ -> referenceTypeToTerm state t obj
 
     and private structToTerm state (obj : obj) t =
         match obj with

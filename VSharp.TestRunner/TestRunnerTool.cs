@@ -95,16 +95,17 @@ namespace VSharp.TestRunner
             {
                 try
                 {
-                    UnitTest test;
+                    testInfo ti;
                     using (FileStream stream = new FileStream(fi.FullName, FileMode.Open, FileAccess.Read))
                     {
-                        testInfo ti = UnitTest.DeserializeTestInfo(stream);
-                        _extraAssemblyLoadDirs = ti.extraAssemblyLoadDirs;
-                        test = UnitTest.DeserializeFromTestInfo(ti);
-                        // _extraAssemblyLoadDirs = test.ExtraAssemblyLoadDirs;
+                        ti = UnitTest.DeserializeTestInfo(stream);
                     }
 
-                    var method = test.Method;
+                    _extraAssemblyLoadDirs = ti.extraAssemblyLoadDirs;
+                    UnitTest test = UnitTest.DeserializeFromTestInfo(ti);
+                    // _extraAssemblyLoadDirs = test.ExtraAssemblyLoadDirs;
+
+                        var method = test.Method;
 
                     Console.Out.WriteLine("Starting test reproducing for method {0}", method);
                     if (!checkResult)

@@ -123,7 +123,7 @@ namespace vsharp {
     }
 
     bool Object::readConcreteness(SIZE offset, SIZE size) const {
-        assert(size > 0);
+        assert(size > 0 && offset >= 0 && offset + size <= sizeOf());
         auto startOffset = offset % sizeofCell;
         auto startIndex = offset / sizeofCell;
         auto endOffset = (offset + size) % sizeofCell;
@@ -163,7 +163,8 @@ namespace vsharp {
     }
 
     void Object::writeConcreteness(SIZE offset, SIZE size, bool vConcreteness) {
-        assert(size > 0);
+        // TODO: Bug in Blockchain.test3: stfld must be concrete, but it isn't
+        assert(size > 0 && offset >= 0 && offset + size <= sizeOf());
         auto startOffset = offset % sizeofCell;
         auto startIndex = offset / sizeofCell;
         auto endOffset = (offset + size) % sizeofCell;

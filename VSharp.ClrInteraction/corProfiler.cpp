@@ -224,9 +224,7 @@ HRESULT STDMETHODCALLTYPE CorProfiler::JITCompilationStarted(FunctionID function
 {
     getLock();
     UNUSED(fIsSafeToBlock);
-    ThreadID threadId;
-    corProfilerInfo->GetCurrentThreadID(&threadId);
-    LOG(tout << "JITCompilationStarted, threadID = " << threadId << std::endl);
+    LOG(tout << "JITCompilationStarted, threadID = " << currentThread() << std::endl);
 
     if (jitInProcess) FAIL_LOUD("Handling JIT event, when previous was not finished!");
     jitInProcess = true;
@@ -554,7 +552,6 @@ void CorProfiler::serializeType(const std::vector<bool> &isValid, const std::vec
 
 HRESULT STDMETHODCALLTYPE CorProfiler::ObjectAllocated(ObjectID objectId, ClassID classId)
 {
-    LOG(tout << "Allocated object: " << objectId << std::endl);
     ULONG size;
     this->corProfilerInfo->GetObjectSize(objectId, &size);
 

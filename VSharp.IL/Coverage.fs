@@ -22,5 +22,6 @@ module Coverage =
             modules.Add m
             modules.Count - 1
 
+    let empty = List.empty
     let dump (path : path) =
         path |> List.rev |> List.map toString |> join " => "

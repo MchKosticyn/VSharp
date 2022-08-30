@@ -179,8 +179,6 @@ std::vector<Interval *> IntervalTree<Interval, Shift, Point>::clearUnmarked() {
 template<typename Interval, typename Shift, typename Point>
 void IntervalTree<Interval, Shift, Point>::deleteIntervals(const std::vector<Interval *> &intervals) {
     for (auto interval : intervals) {
-        delete cutFromTree(root, *interval);
-        delete cutFromTree(marked, *interval);
         delete cutFromTree(unhandledByGC, *interval);
     }
 }
@@ -229,7 +227,8 @@ IntervalTree<Interval, Shift, Point>::IntervalTree() {
 template<typename Interval>
 TreapNode<Interval>::~TreapNode() {
     delete left;
-    delete obj;
+    if (obj->isHandledByGC())
+        delete obj;
     delete right;
 }
 

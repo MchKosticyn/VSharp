@@ -86,7 +86,8 @@ type ClientMachine(entryPoint : Method, cmdArgs : string[] option, requestMakeSt
     let concolicStackKeys = Dictionary<stackKey, UIntPtr>()
     let registerStackKeyAddress stackKey (address : UIntPtr) =
         if concolicStackKeys.ContainsKey stackKey then
-            assert(concolicStackKeys[stackKey] = address)
+            // Updating address, because same function with the same stack key may be called on different objects
+            concolicStackKeys[stackKey] <- address
         else concolicStackKeys.Add(stackKey, address)
     let getStackKeyAddress stackKey =
         concolicStackKeys[stackKey]
@@ -126,6 +127,7 @@ type ClientMachine(entryPoint : Method, cmdArgs : string[] option, requestMakeSt
             x.probes <- x.communicator.ReadProbes()
             x.communicator.SendEntryPoint entryPoint.Module.FullyQualifiedName entryPoint.MetadataToken
             x.communicator.SendCoverageInformation cilState.path
+            CilStateOperations.clearCoveragePath cilState
             x.instrumenter <- Instrumenter(x.communicator, (entryPoint :> IMethod).MethodBase, x.probes)
             cilState.concolicStatus <- concolicStatus.Running
             true
@@ -134,10 +136,12 @@ type ClientMachine(entryPoint : Method, cmdArgs : string[] option, requestMakeSt
             false
 
     member x.Terminate() =
-        Logger.trace "ClientMachine.Terminate()"
-        concolicProcess.Kill()
-        concolicProcess.WaitForExit()
-        concolicProcess.Close()
+        if isRunning then
+            Logger.trace "Terminating ClientMachine with Concolic process"
+            concolicProcess.Kill()
+            concolicProcess.WaitForExit()
+            concolicProcess.Close()
+            isRunning <- false
 
     member x.IsRunning = isRunning
 
@@ -194,10 +198,11 @@ type ClientMachine(entryPoint : Method, cmdArgs : string[] option, requestMakeSt
             else argTypes
         | None -> internalfail "CalleeParamsIfPossible: could not get offset"
 
-    member private x.ResolveMethod cilState declaringType resolvedToken unresolvedToken =
+    member private x.ResolveMethod cilState this resolvedToken unresolvedToken =
         let topMethod = Memory.GetCurrentExploringFunction cilState.state :?> Method
         let resolved = topMethod.ResolveMethod unresolvedToken
-        if resolved.IsVirtual then
+        if resolved.IsVirtual && IsNullReference this <> True then
+            let declaringType = x.TypeOfConcolicThisRef this
             let methods = Reflection.getAllMethods declaringType
             let method = methods |> Array.tryFind (fun x -> x.MetadataToken = resolvedToken)
             match method with
@@ -260,8 +265,8 @@ type ClientMachine(entryPoint : Method, cmdArgs : string[] option, requestMakeSt
 
         assert(Memory.CallStackSize cilState.state > 0)
         let initFrame (resolved, unresolved) (addr, offset, k) =
-            let declaringType = x.MarshallRefFromConcolic addr offset k |> x.TypeOfConcolicThisRef
-            let resolved = x.ResolveMethod cilState declaringType resolved unresolved
+            let this = x.MarshallRefFromConcolic addr offset k
+            let resolved = x.ResolveMethod cilState this resolved unresolved
             initSymbolicFrame (Application.getMethod resolved)
         Array.iter2 initFrame c.newCallStackFrames c.thisAddresses
 
@@ -384,11 +389,7 @@ type ClientMachine(entryPoint : Method, cmdArgs : string[] option, requestMakeSt
 
     member x.StepDone (steppedStates : cilState list) =
         let methodEnded = CilStateOperations.methodEnded cilState
-        let isIIEState = CilStateOperations.isIIEState cilState
-        let stoppedByException = CilStateOperations.stoppedByException cilState
-        // NOTE: if current ip is end of entryPoint, test was already generated, so concolic can be terminated
-        if CilStateOperations.currentIp cilState = Exit entryPoint then x.Terminate()
-        elif methodEnded then
+        if methodEnded then
             let method = CilStateOperations.currentMethod cilState
             if method.IsInternalCall then callIsSkipped <- true
         else
@@ -403,34 +404,39 @@ type ClientMachine(entryPoint : Method, cmdArgs : string[] option, requestMakeSt
             let connectConcolic cilState =
                 cilState.concolicStatus <- concolicStatus.Running
             // TODO: unify stopping execution with searcher
-            if not isIIEState && not stoppedByException then connectConcolic cilState
-            // TODO: Need second bypass after searching for handler failed
-            else x.Terminate()
-            let lastPushInfo cilState =
-                match cilState.lastPushInfo with
-                | Some x when IsConcrete x ->
-                    CilStateOperations.pop cilState |> ignore
-                    Some true
-                | Some _ -> Some false
-                | None -> None
-            steppedStates |> List.iter (fun cilState ->
-                match cilState.path with
-                | head::tail ->
-                    let lastPush = lastPushInfo cilState |> x.communicator.SerializeStackPush
-                    cilState.path <- {head with stackPush = lastPush}::tail
-                | [] -> __unreachable__())
-            let internalCallResult =
-                match cilState.lastPushInfo with
-                | Some res when callIsSkipped ->
-                    x.ConcreteToObj res
-                | _ -> None
-            let framesCount = Memory.CallStackSize cilState.state
-            assert(not cilState.path.IsEmpty)
-            let currentStackPush =
-                assert(cilState.path.Length > 0)
-                cilState.path.Head.stackPush
-            x.communicator.SendExecResponse concretizedOps internalCallResult currentStackPush framesCount
-            callIsSkipped <- false
+            let isIIEState = CilStateOperations.isIIEState cilState
+            let stoppedByException = CilStateOperations.stoppedByException cilState
+            // NOTE: if current ip is end of entryPoint, test was already generated, so concolic can be terminated
+            if CilStateOperations.currentIp cilState = Exit entryPoint || isIIEState || stoppedByException then
+                // TODO: Need second bypass after searching for handler failed
+                x.Terminate()
+            else
+                connectConcolic cilState
+                let lastPushInfo cilState =
+                    match cilState.lastPushInfo with
+                    | Some x when IsConcrete x ->
+                        CilStateOperations.pop cilState |> ignore
+                        Some true
+                    | Some _ -> Some false
+                    | None -> None
+                let updatePathLastPush cilState =
+                    match cilState.path with
+                    | head::tail ->
+                        let lastPush = lastPushInfo cilState |> x.communicator.SerializeStackPush
+                        cilState.path <- {head with stackPush = lastPush}::tail
+                    | [] -> __unreachable__()
+                List.iter updatePathLastPush steppedStates
+                let internalCallResult =
+                    match cilState.lastPushInfo with
+                    | Some res when callIsSkipped ->
+                        x.ConcreteToObj res
+                    | _ -> None
+                assert(not cilState.path.IsEmpty)
+                let currentStackPush =
+                    assert(cilState.path.Length > 0)
+                    cilState.path.Head.stackPush
+                x.communicator.SendExecResponse concretizedOps internalCallResult currentStackPush
+                callIsSkipped <- false
 
 [<AllowNullLiteral>]
 type ConcolicPool(entryPoint, cmdArgs, requestMakeStep : cilState -> unit, reportIncomplete : cilState -> unit, width : int (* How many machines we can run synchronously *)) =
@@ -457,6 +463,7 @@ type ConcolicPool(entryPoint, cmdArgs, requestMakeStep : cilState -> unit, repor
         let removed = activeMachines.Remove machine.State
         assert removed
         machine.State.concolicStatus <- concolicStatus.Done
+        machine.Terminate()
         activate()
 
     member x.Schedule state =

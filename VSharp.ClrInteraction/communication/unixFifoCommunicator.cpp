@@ -19,7 +19,7 @@ bool Communicator::open() {
     fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0)
         return reportError();
-    struct sockaddr_un addr;
+    struct sockaddr_un addr{};
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
     std::string pipeEnvVar = "CONCOLIC_PIPE";

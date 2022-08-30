@@ -254,11 +254,10 @@ void initCommand(OFFSET offset, bool isBranch, unsigned opsCount, EvalStackOpera
     command.newCoverageNodes = flushNewCoverageNodes();
 }
 
-bool readExecResponse(StackFrame &top, EvalStackOperand *ops, unsigned &count, int &framesCount, EvalStackOperand &result) {
+bool readExecResponse(StackFrame &top, EvalStackOperand *ops, unsigned &count, EvalStackOperand &result) {
     char *bytes; int messageLength;
     protocol->acceptExecResult(bytes, messageLength);
     char *start = bytes;
-    framesCount = *(int*)bytes; bytes += sizeof(int);
     char lastPush = *(char*)bytes; bytes += sizeof(char);
     int opsLength = *(int*)bytes; bytes += sizeof(int);
     bool hasInternalCallResult = *(char*)bytes > 0; bytes += sizeof(char);
@@ -407,6 +406,7 @@ void sendCommand(OFFSET offset, unsigned opsCount, EvalStackOperand *ops, bool m
             StackFrame &top = vsharp::topFrame();
             top.pushPrimitive(lastStackPush == 2);
         }
+        vsharp::stack().resetPopsTracking();
         freeLock();
         return;
     }
@@ -423,10 +423,9 @@ void sendCommand(OFFSET offset, unsigned opsCount, EvalStackOperand *ops, bool m
 
     Stack &stack = vsharp::stack();
     StackFrame &top = stack.topFrame();
-    int framesCount;
     EvalStackOperand internalCallResult = EvalStackOperand {OpSymbolic, 0};
     unsigned oldOpsCount = opsCount;
-    readExecResponse(top, ops, opsCount, framesCount, internalCallResult);
+    readExecResponse(top, ops, opsCount, internalCallResult);
 //    if (mightFork && opsConcretized && opsCount > 0) {
 //        const std::vector<std::pair<unsigned, unsigned>> &poppedSymbs = top.poppedSymbolics();
 //        for (const auto &poppedSymb : poppedSymbs) {
@@ -440,7 +439,7 @@ void sendCommand(OFFSET offset, unsigned opsCount, EvalStackOperand *ops, bool m
     if (internalCallResult.typ != OpSymbolic)
         updateMemory(internalCallResult, stack.opmem(offset), oldOpsCount);
 
-    vsharp::stack().resetPopsTracking(framesCount);
+    vsharp::stack().resetPopsTracking();
     freeCommand(command);
     freeLock();
 }
@@ -537,9 +536,9 @@ int registerProbe(unsigned long long probe) {
     RETTYPE STDMETHODCALLTYPE NAME ARGS
 
 PROBE(void, Track_Coverage, (OFFSET offset)) {
-    BYTE unused1;
-    bool unused2;
-    trackCoverage(offset, unused1, unused2);
+    BYTE lastStackPush = 0;
+    bool commandsDisabled;
+    trackCoverage(offset, lastStackPush, commandsDisabled);
 }
 
 PROBE(void, EnableInstrumentation, ()) { enableInstrumentation(); }
@@ -1077,7 +1076,7 @@ PROBE(void, Track_EnterMain, (mdMethodDef token, unsigned moduleToken, UINT16 ar
     memset(args, argsConcreteness, argsCount);
     stack.pushFrame(token, token, args, argsCount, false);
     Track_Enter(token, moduleToken, maxStackSize, argsCount, localsCount, 0);
-    stack.resetPopsTracking(1);
+    stack.resetPopsTracking();
     enterMain();
 }
 
@@ -1105,6 +1104,11 @@ PROBE(void, Track_Leave, (UINT8 returnValues, OFFSET offset)) {
                     top.pop1();
                 }
                 stack.popFrame();
+                if (!returnValue) {
+                    // If return value was symbolic, command to SILI was sent, and symbolic machine popped frame
+                    // Doing this to synchronize states
+                    stack.resetLastSentTop();
+                }
                 // NOTE: changing address to unknown to prevent getting address of popped frame
                 cell.changeAddress(UNKNOWN_ADDRESS);
                 stack.topFrame().push1(cell);
@@ -1209,7 +1213,11 @@ PROBE(void, PushFrame, (mdToken unresolvedToken, mdMethodDef resolvedToken, bool
     top.setIp(offset);
     // TODO: push into new frame structs, popped in Track_Call
     stack.pushFrame(resolvedToken, unresolvedToken, argsConcreteness, argsCount, newobj);
-    if (callHasSymbolicArgs) stack.resetMinTop();
+    if (callHasSymbolicArgs) {
+        // If call had symbolic args, command was already sent to SILI, so symbolic machine pushed frame
+        // Doing this to synchronize states
+        stack.resetLastSentTop();
+    }
     delete[] argsConcreteness;
 }
 

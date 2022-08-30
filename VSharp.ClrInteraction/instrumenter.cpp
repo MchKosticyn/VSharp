@@ -586,6 +586,7 @@ HRESULT Instrumenter::instrument(FunctionID functionId) {
         if (!skippedBeforeMain.empty())
             IfFailRet(startReJitSkipped());
         if (isMainLeft()) {
+            freeLock();
             // NOTE: main left, further instrumentation is not needed, so doing nothing
             while (true) { }
 //            if (!m_reJitInstrumentedStarted)
