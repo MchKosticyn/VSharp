@@ -7,6 +7,7 @@ open System.IO
 open System.Reflection.Emit
 open System.Runtime.InteropServices
 open VSharp
+open VSharp.Reflection
 open VSharp.Core
 open VSharp.Interpreter.IL
 
@@ -190,6 +191,20 @@ type ClientMachine(entryPoint : Method, cmdArgs : string[] option, requestMakeSt
         let fieldsWithOffsets = Reflection.fieldsWithOffsets structType
         let structFields = Reflection.parseFields rawBytes fieldsWithOffsets
         ObjToTerm state structType (FieldsData structFields)
+
+    member private x.MarshallStructToConcolic (structTerm : term) offset =
+        match structTerm.term with
+        | Struct (fields, t) ->
+            let fieldsInfo = Reflection.fieldsOf false t
+            let parseField (field : fieldId, info : Reflection.FieldInfo) =
+                let term = PersistentDict.find fields field
+                let fieldOffset = memoryFieldOffset info
+                // sending only symbolic fields to save time on data transfer
+                if IsConcrete term then Array.Empty()
+                else if not (IsStruct term) then [|(fieldOffset + offset, Types.SizeOf field.typ)|]
+                else snd <| x.MarshallStructToConcolic term fieldOffset
+            Types.SizeOf t, Array.concat (Array.map parseField fieldsInfo)
+        | _ -> internalfail "MarshallStructToConcolic was called on a term that is not a struct!"
 
     member private x.CalleeArgTypesIfPossible() =
         let m = Memory.GetCurrentExploringFunction cilState.state :?> Method
@@ -425,13 +440,16 @@ type ClientMachine(entryPoint : Method, cmdArgs : string[] option, requestMakeSt
                     match cilState.lastPushInfo with
                     | Some x when IsConcrete x ->
                         CilStateOperations.pop cilState |> ignore
-                        Some true
-                    | Some _ -> Some false
-                    | None -> None
+                        ConcretePush, None
+                    | Some t when IsStruct t ->
+                        ConcreteStructPush, Some <| x.MarshallStructToConcolic t 0
+                    | Some _ -> SymbolicPush, None
+                    | None -> NoPush, None
+                let lastPushType, stackPushInfo = lastPushInfo cilState
                 let updatePathLastPush cilState =
                     match cilState.path with
                     | head::tail ->
-                        let lastPush = lastPushInfo cilState |> x.communicator.SerializeStackPush
+                        let lastPush = x.communicator.SerializeStackPush lastPushType
                         cilState.path <- {head with stackPush = lastPush}::tail
                     | [] -> __unreachable__()
                 List.iter updatePathLastPush steppedStates
@@ -444,7 +462,7 @@ type ClientMachine(entryPoint : Method, cmdArgs : string[] option, requestMakeSt
                 let currentStackPush =
                     assert(cilState.path.Length > 0)
                     cilState.path.Head.stackPush
-                x.communicator.SendExecResponse concretizedOps internalCallResult currentStackPush
+                x.communicator.SendExecResponse concretizedOps internalCallResult currentStackPush stackPushInfo
                 callIsSkipped <- false
 
 [<AllowNullLiteral>]

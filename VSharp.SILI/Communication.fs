@@ -119,6 +119,8 @@ type execCommand = {
 [<type: StructLayout(LayoutKind.Sequential, Pack=1, CharSet=CharSet.Ansi)>]
 type execResponseStaticPart = {
     lastPush : byte
+    lastPushSize : int
+    symbolicFieldsLength : int
     opsLength : int // -1 if operands were not concretized, length otherwise
     hasResult : byte
 }
@@ -146,6 +148,12 @@ type commandForConcolic =
     | ParseLocalTypeToken
     | ParseReturnTypeToken
     | ParseDeclaringTypeToken
+
+type StackPushType =
+    | NoPush
+    | SymbolicPush
+    | ConcretePush
+    | ConcreteStructPush
 
 type Communicator(pipeFile) =
 
@@ -738,13 +746,19 @@ type Communicator(pipeFile) =
             index <- index + size)
         bytes
 
-    member x.SerializeStackPush (lastStackPush : bool option) =
-        match lastStackPush with
-        | Some isConcrete when isConcrete -> 2uy
-        | Some _ -> 1uy
-        | None -> 0uy
+    member private x.SerializeLastPushInfo (info : (int * int)[]) =
+        Array.concat <| Array.map (fun (offset : int, size : int) ->
+            Array.concat [BitConverter.GetBytes offset; BitConverter.GetBytes size])
+            info
 
-    member x.SendExecResponse (ops : (obj * Type) list option) (result : (obj * Type) option) (lastPush : byte) =
+    member x.SerializeStackPush (lastStackPush : StackPushType) =
+        match lastStackPush with
+        | NoPush -> 0uy
+        | SymbolicPush -> 1uy
+        | ConcretePush -> 2uy
+        | ConcreteStructPush -> 3uy
+
+    member x.SendExecResponse (ops : (obj * Type) list option) (result : (obj * Type) option) (lastPush : byte) (lastPushInfo : (int * (int * int)[]) option) =
         x.SendCommand ReadExecResponse
         let len, opsBytes =
             match ops with
@@ -754,9 +768,13 @@ type Communicator(pipeFile) =
             match result with
             | Some r -> 1uy, x.SerializeConcrete r
             | None -> 0uy, Array.empty
-        let staticPart = { lastPush = lastPush; opsLength = len; hasResult = hasInternalCallResult }
+        let symbolicFieldsLength, symbolicFieldsBytes, lastPushSize =
+            match lastPushInfo with
+            | Some (size, info) -> info.Length, x.SerializeLastPushInfo info, size
+            | None -> 0, Array.empty, -1
+        let staticPart = { lastPush = lastPush; lastPushSize = lastPushSize; symbolicFieldsLength = symbolicFieldsLength; opsLength = len; hasResult = hasInternalCallResult }
         let staticPartBytes = x.Serialize<execResponseStaticPart> staticPart
-        let message = Array.concat [staticPartBytes; opsBytes; resultBytes]
+        let message = Array.concat [staticPartBytes; opsBytes; resultBytes; symbolicFieldsBytes]
         Logger.trace "Sending exec response! Total %d bytes" message.Length
         writeBuffer message
 

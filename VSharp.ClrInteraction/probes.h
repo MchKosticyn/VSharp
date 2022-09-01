@@ -9,6 +9,7 @@
 #define COND INT_PTR
 #define ADDRESS_SIZE sizeof(INT32) + sizeof(UINT_PTR) + sizeof(UINT_PTR) + sizeof(BYTE) + sizeof(BYTE) * 2;
 #define BOXED_OBJ_METADATA_SIZE sizeof(INT_PTR)
+#define READ_BYTES(src, type) *(type*)(src); (src) += sizeof(type)
 
 namespace vsharp {
 
@@ -273,14 +274,33 @@ bool readExecResponse(StackFrame &top, EvalStackOperand *ops, unsigned &count, E
     char *bytes; int messageLength;
     protocol->acceptExecResult(bytes, messageLength);
     char *start = bytes;
-    char lastPush = *(char*)bytes; bytes += sizeof(char);
-    int opsLength = *(int*)bytes; bytes += sizeof(int);
+    char lastPush = READ_BYTES(bytes, char);
+    int lastPushSize = READ_BYTES(bytes, int);
+    int symbolicFieldsLength = READ_BYTES(bytes, int);
+    int opsLength = READ_BYTES(bytes, int);
     bool hasInternalCallResult = *(char*)bytes > 0; bytes += sizeof(char);
     bool opsConcretized = opsLength > -1;
-    if (lastPush > 0) {
-        bool returnValueIsConcrete = (lastPush == 2);
-        // TODO: implement lastPush is struct case
-        top.pushPrimitive(returnValueIsConcrete);
+    bool returnValueIsConcrete = (lastPush == 2);
+    int offset, size;
+    LocalObject structObj;
+    switch (lastPush) {
+        case 0:
+            break;
+        case 1:
+        case 2:
+            top.pushPrimitive(returnValueIsConcrete);
+            break;
+        case 3:
+            structObj = LocalObject(lastPushSize, ObjectLocation{});
+            for (int i = 0; i < symbolicFieldsLength; i++) {
+                offset = READ_BYTES(bytes, int);
+                size = READ_BYTES(bytes, int);
+                structObj.writeConcreteness(offset, size, false);
+            }
+            top.push1(structObj);
+            break;
+        default:
+            FAIL_LOUD("unexpected lastPush value!");
     }
 
     if (opsConcretized) {
