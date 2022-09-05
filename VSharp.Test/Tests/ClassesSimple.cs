@@ -494,6 +494,12 @@ namespace IntegrationTests
             }
         }
 
+        private struct GenericPublicStruct<T>
+        {
+            public T x;
+            public int y;
+        }
+
         private static int BranchOnStruct(TestStruct s)
         {
             return s.x + s.y + s.z > 0 ? 1 : -1;
@@ -502,6 +508,19 @@ namespace IntegrationTests
         private static int BranchOnRefStruct(TestRefStruct s)
         {
             return s.x + s.y + s.z > 0 ? 1 : -1;
+        }
+
+        [TestSvm]
+        private static TestStruct RetStruct(int x)
+        {
+            return new TestStruct { x = x, y = x + 2, z = 0 };
+        }
+
+        [TestSvm]
+        private static GenericPublicStruct<TestStruct> RetNestedStruct(int x)
+        {
+            TestStruct innerStruct = new TestStruct { x = x, y = x + 2, z = 0 };
+            return new GenericPublicStruct<TestStruct> { x = innerStruct, y = 25 };
         }
 
         [TestSvm]
@@ -530,6 +549,20 @@ namespace IntegrationTests
             s3.F(null);
             s4.F(null);
             s2.F(43);
+        }
+
+        [TestSvm]
+        public static bool TestStructOnReturn(int x)
+        {
+            TestStruct res = RetStruct(x);
+            return res.y > 0;
+        }
+
+        [TestSvm]
+        public static bool TestNestedStructOnReturn(int x)
+        {
+            GenericPublicStruct<TestStruct> res = RetNestedStruct(x);
+            return res.x.x < 0;
         }
     }
 }
