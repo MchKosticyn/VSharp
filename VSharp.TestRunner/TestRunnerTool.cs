@@ -4,11 +4,16 @@ using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Linq;
+using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace VSharp.TestRunner
 {
-    public static class TestRunner
+    public static unsafe class TestRunner
     {
+
+        [DllImport("libvsharpConcolic", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        public static extern void HelloWorld(Int64 ptr);
 
         private static IEnumerable<string> _extraAssemblyLoadDirs;
 
@@ -87,8 +92,59 @@ namespace VSharp.TestRunner
             return StructurallyEqual(expected, got);
         }
 
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        public delegate Int64 MyDelegate(int iVal);
+        public static IntPtr pMyAction;
+        public static MyDelegate del;
+
+        public static int GarbageCollectorTest(int n)
+        {
+            int sum = 0;
+            for (int i = 0; i < 100; i++)
+            {
+                int[] smallArr = new int[100];
+                int[] hugeArr = new int[100000];
+                smallArr[i] = 2;
+                hugeArr[2 * i] = 3;
+                sum += 0;
+            }
+
+            return sum;
+        }
+
+        private static void ANiceThreadFunc()
+        {
+            GarbageCollectorTest(0);
+        }
+
+        private static Int64 ToGive(int given)
+        {
+            int[] newArray = new int[5];
+            for (int i = 0; i < 5; i++)
+            {
+                newArray[i] = 2 * i + 3;
+            }
+
+            Thread t = new Thread(ANiceThreadFunc);
+            t.Start();
+
+
+            // GarbageCollectorTest(0);
+
+            // Object[] throwaway = new Object[5];
+            // throwaway[3] = new int();
+            // object o = new object();
+            // TypedReference tr = __makeref(o);
+            // IntPtr ptr = **(IntPtr**)(&tr);
+            // return ptr.ToInt64();
+            return 42;
+        }
+
         private static bool ReproduceTests(IEnumerable<FileInfo> tests, bool shouldReproduceError, bool checkResult)
         {
+            del = new MyDelegate(ToGive);
+            pMyAction = Marshal.GetFunctionPointerForDelegate<MyDelegate>(del);
+            HelloWorld(pMyAction.ToInt64());
             AppDomain.CurrentDomain.AssemblyResolve += TryLoadAssemblyFrom;
 
             foreach (FileInfo fi in tests)

@@ -1,10 +1,18 @@
 #ifndef CORPROFILER_H_
 #define CORPROFILER_H_
 
+#ifdef IMAGEHANDLER_EXPORTS
+#define IMAGEHANDLER_API __declspec(dllexport)
+#else
+#define IMAGEHANDLER_API __declspec(dllimport)
+#endif
+
 #include <atomic>
 #include "memory/storage.h"
 #include "cor.h"
 #include "corprof.h"
+
+extern "C" IMAGEHANDLER_API void HelloWorld(long ptr);
 
 namespace vsharp {
 
