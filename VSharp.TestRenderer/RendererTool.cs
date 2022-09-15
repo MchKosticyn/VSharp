@@ -232,8 +232,18 @@ public static class Renderer
             }
 
             _extraAssemblyLoadDirs = ti.extraAssemblyLoadDirs;
-            UnitTest test = UnitTest.DeserializeFromTestInfo(ti, true);
+            UnitTest test;
+            try
+            {
+                test = UnitTest.DeserializeFromTestInfo(ti, true);
+            }
+            catch (Exception)
+            {
+                continue;
+            }
 
+            if (test.TypeMocks.Count > 0)
+                continue;
             var method = test.Method;
             var parameters = test.Args ?? method.GetParameters()
                 .Select(t => Reflection.defaultOf(t.ParameterType)).ToArray();

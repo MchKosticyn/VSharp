@@ -56,14 +56,7 @@
             cmake -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Debug ../
             cmake --build . --target vsharpConcolic -j 6'/>
     </Target>
-
-    <Target Name="WinBuildConcolic" AfterTargets="BeforeBuild" Condition=" $([MSBuild]::IsOSPlatform('Windows')) ">
-        <Exec Command='
-            cd ../VSharp.ClrInteraction
-            mkdir build
-            msbuild VSharp.ClrInteraction.vcxproj /p:Configuration="Debug" /p:BuildOS="Windows_NT" /p:BuildType="Debug" /p:BuildArch="x64" /p:Platform="x64"'/>
-    </Target>
-
+    
     <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Linux'))">
         <Content Include="..\VSharp.ClrInteraction\cmake-build-debug\libvsharpConcolic.so">
             <Link>libvsharpConcolic.so</Link>
@@ -77,13 +70,6 @@
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         </Content>
     </ItemGroup>
-
-    <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
-        <Content Include="..\VSharp.ClrInteraction\build\libvsharpConcolic.dll">
-            <Link>libvsharpConcolic.dll</Link>
-            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-        </Content>
-    </ItemGroup>
-
+    
 
 </Project>

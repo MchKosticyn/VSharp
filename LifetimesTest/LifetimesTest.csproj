@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net6.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.1.0" />
+        <PackageReference Include="NUnit" Version="3.13.3" />
+        <PackageReference Include="NUnit3TestAdapter" Version="4.2.1" />
+        <PackageReference Include="NUnit.Analyzers" Version="3.3.0" />
+        <PackageReference Include="coverlet.collector" Version="3.1.2" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\VSharp.API\VSharp.API.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Reference Include="JetBrains.Lifetimes, Version=777.0.0.0, Culture=neutral, PublicKeyToken=3c74c1a6a8683340">
+        <HintPath>..\..\rd\rd-net\Lifetimes\bin\Release\net461\JetBrains.Lifetimes.dll</HintPath>
+      </Reference>
+    </ItemGroup>
+
+</Project>

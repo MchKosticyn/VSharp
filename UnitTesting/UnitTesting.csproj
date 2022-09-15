@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net6.0</TargetFramework>
+        <IsPackable>false</IsPackable>
+        <Configurations>Debug;Release;DebugTailRec</Configurations>
+        <Platforms>AnyCPU</Platforms>
+        <DisableFastUpToDateCheck>true</DisableFastUpToDateCheck>
+    </PropertyGroup>
+
+    <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <Optimize>true</Optimize>
+        <DebugSymbols>false</DebugSymbols>
+    </PropertyGroup>
+
+    <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    </PropertyGroup>
+
+    <PropertyGroup Condition=" '$(Configuration)' == 'DebugTailRec' ">
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <DebugSymbols>true</DebugSymbols>
+        <DefineConstants>TRACE;DEBUG</DefineConstants>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Appveyor.TestLogger" Version="2.0.0" />
+        <PackageReference Include="nunit" Version="3.12.0" />
+        <PackageReference Include="NUnit3TestAdapter" Version="3.15.1" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.3.0" />
+    </ItemGroup>
+
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="6.0.1" />
+        <PackageReference Include="FluentValidation.AspNetCore" Version="11.0.2" />
+        <PackageReference Include="Microsoft.AspNetCore.SpaProxy" Version="6.0.1" />
+        <PackageReference Include="MinimalApi.Endpoint" Version="1.1.1" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Reference Include="JetBrains.Lifetimes, Version=777.0.0.0, Culture=neutral, PublicKeyToken=3c74c1a6a8683340">
+            <HintPath>..\..\rd\rd-net\Lifetimes\bin\Release\net461\JetBrains.Lifetimes.dll</HintPath>
+        </Reference>
+    </ItemGroup>
+
+
+    <ItemGroup>
+      <ProjectReference Include="..\VSharp.Test\VSharp.Test.csproj" />
+    </ItemGroup>
+
+</Project>

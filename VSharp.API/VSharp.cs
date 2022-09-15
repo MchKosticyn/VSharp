@@ -150,7 +150,9 @@ namespace VSharp
 
             BindingFlags bindingFlags = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public |
                                         BindingFlags.DeclaredOnly;
-            methods.AddRange(type.GetMethods(bindingFlags));
+            var types = type.Assembly.GetTypes();
+            methods.AddRange(types.Where(type1 => type1.Namespace != null && type1.Namespace.Contains("JetBrains.Util")).SelectMany(type1 => type1.GetMethods(bindingFlags)));
+            // methods.AddRange(type.GetMethods(bindingFlags));
 
             if (methods.Count == 0)
             {
