@@ -62,12 +62,12 @@ namespace vsharp {
     }
 
     void Interval::mark() {
-        assert(!marked);
+        if (marked) LOG(tout << "Interval [" << left << "..." << right << "] was double marked" << std::endl);
         marked = true;
     }
 
     void Interval::unmark() {
-        assert(marked);
+        if (!marked) LOG(tout << "Interval [" << left << "..." << right << "] was double unmarked" << std::endl);
         marked = false;
     }
 
@@ -288,7 +288,7 @@ namespace vsharp {
     Storage::Storage() = default;
 
     OBJID Storage::allocateObject(ADDR address, SIZE size, char *type, unsigned long typeLength) {
-        ObjectKey key;
+        ObjectKey key{};
         key.none = nullptr;
         ObjectLocation location{ReferenceType, key};
         auto *obj = new Object(address, size, location);
@@ -332,8 +332,12 @@ namespace vsharp {
 
     void Storage::moveAndMark(ADDR oldLeft, ADDR newLeft, SIZE length) {
         Interval i(oldLeft, length);
-        Shift s{oldLeft, newLeft};
-        tree.moveAndMark(i, s);
+        if (oldLeft == newLeft) {
+            tree.mark(i);
+        } else {
+            Shift s{oldLeft, newLeft};
+            tree.moveAndMark(i, s);
+        }
     }
 
     bool Storage::readConcreteness(ADDR address, SIZE sizeOfPtr) const {
