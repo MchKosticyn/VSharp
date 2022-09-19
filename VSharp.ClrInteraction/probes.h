@@ -553,6 +553,9 @@ EvalStackOperand* createOps(int opsCount, OFFSET offset) {
             case ELEMENT_TYPE_PTR:
                 ops[i] = mkop_p(top.unmem_p((INT8) i));
                 break;
+            case ELEMENT_TYPE_VALUETYPE:
+                ops[i] = mkop_struct(top.unmem_p((INT8) i));
+                break;
             default:
                 LOG(tout << "type = " << type);
                 LOG(tout << "current frame resolved token = " << HEX(top.stackFrame().resolvedToken()) << std::endl);
@@ -1337,6 +1340,7 @@ PROBE(void, Mem2_8_4, (INT64 arg1, INT32 arg2, OFFSET offset)) { auto &opmem = v
 //PROBE(void, Mem2_p_f4, (INT_PTR arg1, FLOAT arg2)) { clear_mem(); mem_p(arg1); mem_f4(arg2); }
 //PROBE(void, Mem2_p_f8, (INT_PTR arg1, DOUBLE arg2)) { clear_mem(); mem_p(arg1); mem_f8(arg2); }
 
+PROBE(void, Mem_Struct, (INT_PTR arg, INT8 idx, OFFSET offset)) { vsharp::stack().opmem(offset).mem_struct(arg, idx); }
 PROBE(void, Mem_RefLikeStruct, (INT_PTR arg, OFFSET offset)) { vsharp::stack().opmem(offset).mem_refLikeStruct(arg); }
 
 //PROBE(void, Mem3_p_p_p, (INT_PTR arg1, INT_PTR arg2, INT_PTR arg3)) { clear_mem(); mem_p(arg1); mem_p(arg2); mem_p(arg3); }

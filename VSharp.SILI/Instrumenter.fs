@@ -270,6 +270,10 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
     member private x.AppendMem_f8(idx, offset, instr : ilInstr) =
         x.AppendProbe(probes.mem_f8, [(OpCodes.Ldc_I4, Arg32 idx); (OpCodes.Ldc_I4, Arg32 offset)], x.tokens.void_r8_i1_offset_sig, instr) |> ignore
 
+    member private x.AppendMem_struct(idx, offset, instr : ilInstr) =
+        x.AppendProbe(probes.mem_struct, [(OpCodes.Ldc_I4, Arg32 idx); (OpCodes.Ldc_I4, Arg32 offset)], x.tokens.void_i_i1_offset_sig, instr) |> ignore
+        x.AppendInstr OpCodes.Conv_I NoArg instr
+
     member private x.PrependValidLeaveMain(instr : ilInstr byref) =
         match instr.stackState with
         | _ when Reflection.hasNonVoidResult x.m |> not ->
@@ -440,10 +444,11 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
         | evaluationStackCellType.R8 -> x.AppendMem_f8(idx, offset, instr)
         | evaluationStackCellType.I -> x.AppendMem_p(idx, offset, instr)
         | evaluationStackCellType.Ref -> x.AppendMem_p(idx, offset, instr)
-        | evaluationStackCellType.Struct
+        | evaluationStackCellType.Struct ->
+            x.AppendMem_struct(idx, offset, instr)
+            x.AppendInstr OpCodes.Box NoArg instr
         | evaluationStackCellType.RefLikeStruct ->
-            // TODO: support struct
-            internalfail "AppendMemForType: struct case is not implemented yet"
+            internalfail "AppendMemForType: refLikeStruct case is not implemented yet"
         | _ -> __unreachable__()
 
     member private x.AppendMemForSource (instructions : ilInstr[]) (t, src : ilInstr list) i opmemOffset =

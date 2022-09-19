@@ -178,6 +178,7 @@ type probes = {
     mutable mem2_f4 : uint64
     mutable mem2_f8 : uint64
     mutable mem2_8_4 : uint64
+    mutable mem_struct : uint64
     mutable mem_refLikeStruct : uint64
     mutable unmem_1 : uint64
     mutable unmem_2 : uint64
