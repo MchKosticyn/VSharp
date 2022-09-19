@@ -10,11 +10,24 @@
 
 namespace vsharp {
 
+    std::mutex memoryMutex;
+
+    void vsharp::getMemoryLock() {
+        memoryMutex.lock();
+    }
+
+    void vsharp::freeMemoryLock() {
+        memoryMutex.unlock();
+    }
+
 // --------------------------- Shift ---------------------------
 
     ADDR Shift::move(ADDR addr) const {
-        assert(oldBase <= addr);
-        return newBase + (addr - oldBase);
+//        assert(oldBase <= addr);
+        if (oldBase <= addr)
+            return newBase + (addr - oldBase);
+        else
+            return addr;
     }
 
 // --------------------------- Interval ---------------------------
@@ -292,7 +305,9 @@ namespace vsharp {
         key.none = nullptr;
         ObjectLocation location{ReferenceType, key};
         auto *obj = new Object(address, size, location);
+        getMemoryLock();
         tree.add(*obj);
+        freeMemoryLock();
         auto id = (OBJID) obj;
         newAddresses[id] = std::make_pair(type, typeLength);
         return id;
@@ -302,7 +317,9 @@ namespace vsharp {
         const Interval *i;
         if (!tree.find(local->left, i)) {
             local->disableGC();
+            getMemoryLock();
             tree.add(*local);
+            freeMemoryLock();
             return (OBJID) local;
         }
         return (OBJID) i;
@@ -316,7 +333,9 @@ namespace vsharp {
             ObjectLocation location{Statics, key};
             auto *obj = new Object(address, size, location);
             obj->disableGC();
+            getMemoryLock();
             tree.add(*obj);
+            freeMemoryLock();
             return (OBJID) obj;
         }
         return (OBJID) i;
@@ -332,12 +351,14 @@ namespace vsharp {
 
     void Storage::moveAndMark(ADDR oldLeft, ADDR newLeft, SIZE length) {
         Interval i(oldLeft, length);
+        getMemoryLock();
         if (oldLeft == newLeft) {
             tree.mark(i);
         } else {
             Shift s{oldLeft, newLeft};
             tree.moveAndMark(i, s);
         }
+        freeMemoryLock();
     }
 
     bool Storage::readConcreteness(ADDR address, SIZE sizeOfPtr) const {
@@ -465,11 +486,15 @@ namespace vsharp {
 
     void Storage::markSurvivedObjects(ADDR start, SIZE length) {
         Interval i(start, length);
+        getMemoryLock();
         tree.mark(i);
+        freeMemoryLock();
     }
 
     void Storage::clearAfterGC() {
+        getMemoryLock();
         auto deleted = tree.clearUnmarked();
+        freeMemoryLock();
         for (const Interval *address : deleted) {
             OBJID objID = (OBJID) address;
             if (newAddresses.count(objID)) {
@@ -527,6 +552,8 @@ namespace vsharp {
     }
 
     void Storage::deleteObjects(const std::vector<Interval *> &objects) {
+        getMemoryLock();
         tree.deleteIntervals(objects);
+        freeMemoryLock();
     }
 }

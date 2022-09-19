@@ -16,6 +16,9 @@ namespace vsharp {
 
 #define UNKNOWN_ADDRESS 1
 
+void getMemoryLock();
+void freeMemoryLock();
+
 class Shift {
 public:
     ADDR oldBase;
