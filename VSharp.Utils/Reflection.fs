@@ -320,28 +320,6 @@ module public Reflection =
             assert(not elemType.IsValueType)
             Array.singleton 0
 
-    let parseVectorArray bytes elemType =
-        let elemSize = TypeUtils.internalSizeOf elemType |> int
-        // NOTE: skipping array header
-        let mutable offset = VSharp.CSharpUtils.LayoutUtils.ArrayLengthOffset(true, 0)
-        let length = BitConverter.ToInt64(bytes, offset) |> int
-        offset <- offset + 8
-        let parseOneElement i =
-            let offset = offset + i * elemSize
-            bytesToObj bytes[offset .. offset + elemSize - 1] elemType
-        Array.init length parseOneElement
-
-    let parseString bytes =
-        let mutable offset = VSharp.CSharpUtils.LayoutUtils.StringLengthOffset
-        let length = BitConverter.ToInt32(bytes, offset) |> int
-        offset <- VSharp.CSharpUtils.LayoutUtils.StringElementsOffset
-        let elemSize = sizeof<char>
-        let parseOneChar i =
-            let offset = offset + i * elemSize
-            let obj = bytesToObj bytes[offset .. offset + elemSize - 1] typeof<char>
-            obj :?> char
-        Array.init length parseOneChar
-
     let rec parseFields (bytes : byte array) (fieldOffsets : FieldWithOffset array) =
         let parseOneField (field : FieldWithOffset) =
             match field with
@@ -357,6 +335,31 @@ module public Reflection =
                 let data = parseFields bytes fields |> FieldsData |> box
                 fieldInfo, data
         Array.map parseOneField fieldOffsets
+
+    let parseVectorArray bytes elemType =
+        let elemSize = TypeUtils.internalSizeOf elemType |> int
+        // NOTE: skipping array header
+        let mutable offset = VSharp.CSharpUtils.LayoutUtils.ArrayLengthOffset(true, 0)
+        let length = BitConverter.ToInt64(bytes, offset) |> int
+        offset <- offset + 8
+        let parseOneElement i =
+            let offset = offset + i * elemSize
+            match elemType with
+            | _ when TypeUtils.isStruct elemType -> parseFields bytes[offset .. offset + elemSize - 1] (fieldsWithOffsets elemType) |> FieldsData |> box
+            | _ -> bytesToObj bytes[offset .. offset + elemSize - 1] elemType
+//            bytesToObj bytes[offset .. offset + elemSize - 1] elemType
+        Array.init length parseOneElement
+
+    let parseString bytes =
+        let mutable offset = VSharp.CSharpUtils.LayoutUtils.StringLengthOffset
+        let length = BitConverter.ToInt32(bytes, offset) |> int
+        offset <- VSharp.CSharpUtils.LayoutUtils.StringElementsOffset
+        let elemSize = sizeof<char>
+        let parseOneChar i =
+            let offset = offset + i * elemSize
+            let obj = bytesToObj bytes[offset .. offset + elemSize - 1] typeof<char>
+            obj :?> char
+        Array.init length parseOneChar
 
     // --------------------------------- Substitute generics ---------------------------------
 
