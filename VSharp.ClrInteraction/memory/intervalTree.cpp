@@ -5,15 +5,23 @@
 
 template<typename Interval, typename Shift, typename Point>
 TreapNode<Interval> *IntervalTree<Interval, Shift, Point>::merge(TreapNode<Interval> *left, TreapNode<Interval> *right) {
+    if (left == right)
+        return left;
     if (left == nullptr)
         return right;
     if (right == nullptr)
         return left;
     if (left->key > right->key) {
         left->right = merge(left->right, right);
+        if (left == right) FAIL_LOUD("left == right");
+        assert(left != right);
+        assert(left != left->left && left != left->right);
         return left;
     }
+    assert(left != right);
     right->left = merge(left, right->left);
+    assert(right != right->left);
+    assert(right != right->right);
     return right;
 }
 
@@ -24,20 +32,45 @@ std::pair<TreapNode<Interval>*, TreapNode<Interval>*> IntervalTree<Interval, Shi
     if (tree->obj->left >= point) {
         auto res = split(tree->left, point);
         tree->left = res.second;
+        assert(tree == nullptr || tree->left == nullptr || tree->left != tree->right);
+        assert(tree != tree->left && tree != tree->right);
         return {res.first, tree};
     }
     auto res = split(tree->right, point);
     tree->right = res.first;
+    assert(tree == nullptr || tree->left == nullptr || tree->left != tree->right);
+    assert(tree != tree->left && tree != tree->right);
     return {tree, res.second};
+//    TreapNode<Interval> *first = tree, *second = tree, *currFirst = first, *currSecond = second, *tmp = tree;
+//    while(tmp != nullptr) {
+//        if(tmp->obj->left >= point) {
+//            currFirst = tmp;
+//            currFirst->right = nullptr;
+//            currFirst = currFirst->right;
+//            tmp = tmp->right;
+//        } else {
+//            currSecond = tmp;
+//            currSecond->left = nullptr;
+//            currSecond = currSecond->left;
+//            tmp = tmp->left;
+//        }
+//    }
+//    return {first, second};
 }
 
 // cuts nodes in the interval out of the tree and returns them, removing the cut part from the tree in the process
 template<typename Interval, typename Shift, typename Point>
 TreapNode<Interval> *IntervalTree<Interval, Shift, Point>::cutFromTree(TreapNode<Interval> *&tree, const Interval &interval) {
     auto treeLeftSplit = split(tree, interval.left);
+//    tout << "treeLeftSplit = " << treeLeftSplit.first << " " << treeLeftSplit.second << std::endl;
     // increasing by one to include the right bound of the interval to the split part
     auto treeRightSplit = split(treeLeftSplit.second, interval.right + 1);
+//    tout << "treeLeftSplit = " << treeRightSplit.first << " " << treeRightSplit.second << std::endl;
+    if (treeLeftSplit.first != nullptr && treeLeftSplit.first == treeRightSplit.second)
+        FAIL_LOUD("treeLeftSplit.first == treeRightSplit.second");
     tree = merge(treeLeftSplit.first, treeRightSplit.second);
+    assert(tree == nullptr || tree->left == nullptr || tree->left != tree->right);
+    assert(tree == nullptr || tree != tree->left && tree != tree->right);
     return treeRightSplit.first;
 }
 
@@ -52,6 +85,8 @@ void IntervalTree<Interval, Shift, Point>::addToTree(TreapNode<Interval> *&tree,
     auto newNode = new TreapNode<Interval>(&node, resultRange(rng));
     auto rootLeftAndNewNode = merge(nodeSplit.first, newNode);
     tree = merge(rootLeftAndNewNode, nodeSplit.second);
+    assert(tree == nullptr || tree->left == nullptr || tree->left != tree->right);
+    assert(tree != tree->left && tree != tree->right);
 }
 
 template<typename Interval, typename Shift, typename Point>
@@ -94,8 +129,12 @@ void IntervalTree<Interval, Shift, Point>::moveSubTree(TreapNode<Interval> *tree
     if (tree == nullptr)
         return;
     tree->obj->move(shift);
+    assert(tree == nullptr || tree->left == nullptr || tree->left != tree->right);
+    assert(tree != tree->left && tree != tree->right);
     moveSubTree(tree->left, shift);
     moveSubTree(tree->right, shift);
+    assert(tree == nullptr || tree->left == nullptr || tree->left != tree->right);
+    assert(tree != tree->left && tree != tree->right);
 }
 
 template<typename Interval, typename Shift, typename Point>
@@ -103,8 +142,12 @@ void IntervalTree<Interval, Shift, Point>::markSubTree(TreapNode<Interval> *tree
     if (tree == nullptr)
         return;
     tree->obj->mark();
+    assert(tree == nullptr || tree->left == nullptr || tree->left != tree->right);
+    assert(tree != tree->left && tree != tree->right);
     markSubTree(tree->left);
     markSubTree(tree->right);
+    assert(tree == nullptr || tree->left == nullptr || tree->left != tree->right);
+    assert(tree != tree->left && tree != tree->right);
 }
 
 template<typename Interval, typename Shift, typename Point>
@@ -112,8 +155,12 @@ void IntervalTree<Interval, Shift, Point>::unmarkSubTree(TreapNode<Interval> *tr
     if (tree == nullptr)
         return;
     tree->obj->unmark();
+    assert(tree == nullptr || tree->left == nullptr || tree->left != tree->right);
+    assert(tree != tree->left && tree != tree->right);
     unmarkSubTree(tree->left);
     unmarkSubTree(tree->right);
+    assert(tree == nullptr || tree->left == nullptr || tree->left != tree->right);
+    assert(tree != tree->left && tree != tree->right);
 }
 
 template<typename Interval, typename Shift, typename Point>
@@ -129,10 +176,12 @@ template<typename Interval, typename Shift, typename Point>
 void IntervalTree<Interval, Shift, Point>::clearUnmarkedOnSubTree(TreapNode<Interval> *tree, std::vector<Interval *> &array) {
     if (tree == nullptr)
         return;
-    clearUnmarkedOnSubTree(tree->left, array);
+//    assert(tree == nullptr || tree->left == nullptr || tree->left != tree->right);
+//    assert(tree != tree->left && tree != tree->right);
     array.push_back(tree->obj);
-    clearUnmarkedOnSubTree(tree->right, array);
+    clearUnmarkedOnSubTree(tree->left, array);
     tree->left = nullptr;
+    clearUnmarkedOnSubTree(tree->right, array);
     tree->right = nullptr;
     delete tree;
 }
