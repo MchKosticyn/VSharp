@@ -280,17 +280,18 @@ bool readExecResponse(StackFrame &top, EvalStackOperand *ops, unsigned &count, E
     int opsLength = READ_BYTES(bytes, int);
     bool hasInternalCallResult = *(char*)bytes > 0; bytes += sizeof(char);
     bool opsConcretized = opsLength > -1;
-    bool returnValueIsConcrete = (lastPush == 2);
     int offset, size;
     LocalObject structObj;
     switch (lastPush) {
-        case 0:
+        case 0: // no push
             break;
-        case 1:
-        case 2:
-            top.pushPrimitive(returnValueIsConcrete);
+        case 1: // symbolic push
+            top.pushPrimitive(false);
             break;
-        case 3:
+        case 2: // concrete push
+            top.pushPrimitive(true);
+            break;
+        case 3: // struct push
             structObj = LocalObject(lastPushSize, ObjectLocation{});
             for (int i = 0; i < symbolicFieldsLength; i++) {
                 offset = READ_BYTES(bytes, int);
