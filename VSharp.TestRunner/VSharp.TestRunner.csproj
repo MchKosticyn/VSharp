@@ -7,6 +7,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\VSharp.SILI\VSharp.SILI.fsproj" />
       <ProjectReference Include="..\VSharp.Utils\VSharp.Utils.fsproj" />
     </ItemGroup>
 

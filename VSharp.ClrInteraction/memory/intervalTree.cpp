@@ -3,6 +3,8 @@
 // --------------------------- IntervalTree ---------------------------//
 // based on cartesian tree
 
+// TODO: use mutex everywhere
+
 template<typename Interval, typename Shift, typename Point>
 TreapNode<Interval> *IntervalTree<Interval, Shift, Point>::merge(TreapNode<Interval> *left, TreapNode<Interval> *right) {
     if (left == right)

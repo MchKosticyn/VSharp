@@ -491,7 +491,6 @@ namespace vsharp {
     void Storage::clearAfterGC() {
         getMemoryLock();
         auto deleted = tree.clearUnmarked();
-        freeMemoryLock();
         for (const Interval *address : deleted) {
             OBJID objID = (OBJID) address;
             if (newAddresses.count(objID)) {
@@ -500,6 +499,7 @@ namespace vsharp {
                 deletedAddresses.push_back(objID);
             }
         }
+        freeMemoryLock();
     }
 
     std::vector<OBJID> Storage::flushDeletedByGC() {

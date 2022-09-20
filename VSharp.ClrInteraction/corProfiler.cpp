@@ -13,18 +13,6 @@
 
 #define UNUSED(x) (void)x
 
-typedef INT64 (*Func)(int);
-
-Func func1 = nullptr;
-
-void HelloWorld(long ptr) {
-    tout << "hello from " << ptr << std::endl;
-    Func func;
-    func = (Func)ptr;
-    tout << "func(0) = " << func(0) << std::endl;
-    func1 = func;
-}
-
 using namespace vsharp;
 
 CorProfiler::CorProfiler() : refCount(0), corProfilerInfo(nullptr), instrumenter(nullptr)
@@ -238,10 +226,6 @@ HRESULT STDMETHODCALLTYPE CorProfiler::JITCompilationStarted(FunctionID function
     UNUSED(fIsSafeToBlock);
     LOG(tout << "JITCompilationStarted, threadID = " << currentThread() << std::endl);
 
-    if (func1 != nullptr) {
-        tout << "starting garbage collection" << std::endl;
-        tout << "function call test: func(0) = " << func1(0) << std::endl;
-    }
     if (jitInProcess) FAIL_LOUD("Handling JIT event, when previous was not finished!");
     jitInProcess = true;
     HRESULT hr = instrumenter->instrument(functionId);

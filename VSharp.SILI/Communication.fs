@@ -256,7 +256,7 @@ type Communicator(pipeFile) =
     override x.Finalize() =
         server.Close()
 
-    member private x.Deserialize<'a> (bytes : byte array, startIndex : int) =
+    static member Deserialize<'a> (bytes : byte array, startIndex : int) =
         let result = Reflection.createObject typeof<'a> :?> 'a
         let size = Marshal.SizeOf(typeof<'a>)
         let unmanagedPtr = Marshal.AllocHGlobal(size)
@@ -265,7 +265,7 @@ type Communicator(pipeFile) =
         Marshal.FreeHGlobal(unmanagedPtr)
         result
 
-    member private x.Deserialize<'a> (bytes : byte array) = x.Deserialize<'a>(bytes, 0)
+    static member Deserialize<'a> (bytes : byte array) = Communicator.Deserialize<'a>(bytes, 0)
 
     member private x.Serialize<'a> (structure : 'a, bytes : byte array, startIndex : int) =
         let size = Marshal.SizeOf(typeof<'a>)
@@ -458,25 +458,27 @@ type Communicator(pipeFile) =
         x.Serialize<int> methodToken |> writeBuffer
         x.ReadTypeToken()
 
+    static member DeserializeMethodBody bytes =
+        let propertiesBytes, rest = Array.splitAt (Marshal.SizeOf typeof<rawMethodProperties>) bytes
+        let properties = Communicator.Deserialize<rawMethodProperties> propertiesBytes
+        let sizeOfSignatureTokens = Marshal.SizeOf typeof<signatureTokens>
+        if int properties.signatureTokensLength <> sizeOfSignatureTokens then
+            raise <| IOException "Size of received signature tokens buffer mismatch the expected! Probably you've altered the client-side signatures, but forgot to alter the server-side structure (or vice-versa)"
+        let signatureTokenBytes, rest = Array.splitAt sizeOfSignatureTokens rest
+        let assemblyNameBytes, rest = Array.splitAt (int properties.assemblyNameLength) rest
+        let moduleNameBytes, rest = Array.splitAt (int properties.moduleNameLength) rest
+        let signatureTokens = Communicator.Deserialize<signatureTokens> signatureTokenBytes
+        let assemblyName = Encoding.Unicode.GetString(assemblyNameBytes)
+        let moduleName = Encoding.Unicode.GetString(moduleNameBytes)
+        let ilBytes, ehBytes  = Array.splitAt (int properties.ilCodeSize) rest
+        let ehSize = Marshal.SizeOf typeof<rawExceptionHandler>
+        let ehCount = Array.length ehBytes / ehSize
+        let ehs = Array.init ehCount (fun i -> Communicator.Deserialize<rawExceptionHandler>(ehBytes, i * ehSize))
+        {properties = properties; tokens = signatureTokens; assembly = assemblyName; moduleName = moduleName; il = ilBytes; ehs = ehs}
+
     member x.ReadMethodBody() =
         match readBuffer() with
-        | Some bytes ->
-            let propertiesBytes, rest = Array.splitAt (Marshal.SizeOf typeof<rawMethodProperties>) bytes
-            let properties = x.Deserialize<rawMethodProperties> propertiesBytes
-            let sizeOfSignatureTokens = Marshal.SizeOf typeof<signatureTokens>
-            if int properties.signatureTokensLength <> sizeOfSignatureTokens then
-                fail "Size of received signature tokens buffer mismatch the expected! Probably you've altered the client-side signatures, but forgot to alter the server-side structure (or vice-versa)"
-            let signatureTokenBytes, rest = Array.splitAt sizeOfSignatureTokens rest
-            let assemblyNameBytes, rest = Array.splitAt (int properties.assemblyNameLength) rest
-            let moduleNameBytes, rest = Array.splitAt (int properties.moduleNameLength) rest
-            let signatureTokens = x.Deserialize<signatureTokens> signatureTokenBytes
-            let assemblyName = Encoding.Unicode.GetString(assemblyNameBytes)
-            let moduleName = Encoding.Unicode.GetString(moduleNameBytes)
-            let ilBytes, ehBytes  = Array.splitAt (int properties.ilCodeSize) rest
-            let ehSize = Marshal.SizeOf typeof<rawExceptionHandler>
-            let ehCount = Array.length ehBytes / ehSize
-            let ehs = Array.init ehCount (fun i -> x.Deserialize<rawExceptionHandler>(ehBytes, i * ehSize))
-            {properties = properties; tokens = signatureTokens; assembly = assemblyName; moduleName = moduleName; il = ilBytes; ehs = ehs}
+        | Some bytes -> Communicator.DeserializeMethodBody bytes
         | None -> unexpectedlyTerminated()
 
     member private x.corElementTypeToType (elemType : CorElementType) =

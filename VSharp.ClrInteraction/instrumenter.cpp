@@ -479,6 +479,22 @@ CommandType Instrumenter::getAndHandleCommand() {
     return command;
 }
 
+void Instrumenter::acceptInstrumentAddress(INT64 instrumentAddress) {
+    placeProbes = (InstrumentType) instrumentAddress;
+}
+
+bool exported = false;
+
+// TODO: in 'acceptInstrumentedBytes' remember bytes and export them in 'doInstrumentation'?
+void Instrumenter::acceptInstrumentedBytes(INT64 bytesPtr, UINT32 bytesCount) {
+    char *bytecode; int codeLength; unsigned maxStackSize; char *ehs; unsigned ehsLength;
+    Protocol::deserializeMethodBody((char *)bytesPtr, bytesCount, bytecode, codeLength, maxStackSize, ehs, ehsLength);
+    LOG(tout << "Exporting " << codeLength << " IL bytes!");
+    if (FAILED(exportIL(bytecode, codeLength, maxStackSize, ehs, ehsLength)))
+        FAIL_LOUD("Exporting IL bytes failed!");
+    exported = true;
+}
+
 HRESULT Instrumenter::doInstrumentation(ModuleID oldModuleId, const WCHAR *assemblyName, ULONG assemblyNameLength, const WCHAR *moduleName, ULONG moduleNameLength) {
     HRESULT hr;
     CComPtr<IMetaDataImport> metadataImport;
@@ -521,18 +537,13 @@ HRESULT Instrumenter::doInstrumentation(ModuleID oldModuleId, const WCHAR *assem
         code(),
         (char*)ehs()
     };
-    if (!m_protocol.sendSerializable(InstrumentCommand, info)) FAIL_LOUD("Instrumenting: serialization of method failed!");
-    LOG(tout << "Successfully sent method body!");
-    char *bytecode; int length; unsigned maxStackSize; char *ehs; unsigned ehsLength;
-    CommandType command;
-    do {
-        command = getAndHandleCommand();
-    } while (command != ReadMethodBody);
-    LOG(tout << "Reading method body back...");
-    if (!m_protocol.acceptMethodBody(bytecode, length, maxStackSize, ehs, ehsLength))
-        FAIL_LOUD("Instrumenting: accepting method body failed!");
-    LOG(tout << "Exporting " << length << " IL bytes!");
-    IfFailRet(exportIL(bytecode, length, maxStackSize, ehs, ehsLength));
+    char *methodBytes;
+    unsigned count;
+    info.serialize(methodBytes, count);
+    exported = false;
+    placeProbes((BYTE *)methodBytes, count);
+    delete[] methodBytes;
+    assert(exported);
 
     return S_OK;
 }

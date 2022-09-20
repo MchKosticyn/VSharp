@@ -22,12 +22,16 @@ struct MethodInfo {
     unsigned ehsLength;
 };
 
+typedef void (*InstrumentType)(BYTE*, unsigned);
+
 class Instrumenter {
 private:
     ICorProfilerInfo8 &m_profilerInfo;  // Does not have ownership
     IMethodMalloc *m_methodMalloc;  // Does not have ownership
 
     Protocol &m_protocol;
+
+    InstrumentType placeProbes = nullptr;
 
     WCHAR *m_mainModuleName;
     int m_mainModuleSize;
@@ -68,6 +72,9 @@ private:
     HRESULT importIL();
     HRESULT importEH(const COR_ILMETHOD_SECT_EH* pILEH, unsigned nEH);
     HRESULT exportIL(char *bytecode, unsigned codeLength, unsigned maxStackSize, char *ehs, unsigned ehsLength);
+
+    void acceptInstrumentAddress(INT64 instrumentAddress);
+    void acceptInstrumentedBytes(INT64 bytesPtr, UINT32 bytesCount)
 
     HRESULT startReJitSkipped();
     HRESULT undoInstrumentation(FunctionID functionId);

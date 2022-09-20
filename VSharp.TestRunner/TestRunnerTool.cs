@@ -5,7 +5,7 @@ using System.IO;
 using System.Reflection;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Threading;
+using VSharp.Concolic;
 
 namespace VSharp.TestRunner
 {
@@ -13,7 +13,10 @@ namespace VSharp.TestRunner
     {
 
         [DllImport("libvsharpConcolic", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
-        public static extern void HelloWorld(Int64 ptr);
+        public static extern void acceptInstrumentAddress(Int64 funcPtr);
+
+        [DllImport("libvsharpConcolic", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        public static extern void acceptInstrumentedBytes(Int64 bytesPtr, uint bytesCount);
 
         private static IEnumerable<string> _extraAssemblyLoadDirs;
 
@@ -93,9 +96,9 @@ namespace VSharp.TestRunner
         }
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        public delegate Int64 MyDelegate(int iVal);
-        public static IntPtr pMyAction;
-        public static MyDelegate del;
+        public delegate void InstrumentDelegate(byte *methodBytes);
+        public static IntPtr address;
+        public static InstrumentDelegate instrument;
 
         public static int GarbageCollectorTest(int n)
         {
@@ -113,39 +116,23 @@ namespace VSharp.TestRunner
             return sum;
         }
 
-        private static void ANiceThreadFunc()
+        private static void Instrument(byte *methodBytes, UInt32 bytesCount)
         {
-            GarbageCollectorTest(0);
-        }
-
-        private static Int64 ToGive(int given)
-        {
-            int[] newArray = new int[5];
-            for (int i = 0; i < 5; i++)
+            var bytes = new byte[bytesCount];
+            for (int i = 0; i < bytesCount; i++)
             {
-                newArray[i] = 2 * i + 3;
+                bytes[i] = methodBytes[i];
             }
 
-            // Thread t = new Thread(ANiceThreadFunc);
-            // t.Start();
-
-
-            GarbageCollectorTest(0);
-
-            // Object[] throwaway = new Object[5];
-            // throwaway[3] = new int();
-            // object o = new object();
-            // TypedReference tr = __makeref(o);
-            // IntPtr ptr = **(IntPtr**)(&tr);
-            // return ptr.ToInt64();
-            return 42;
+            var methodBody = Communicator.DeserializeMethodBody(bytes);
+            var instrumenter = new Instrumenter(new Communicator(), )
         }
 
         private static bool ReproduceTests(IEnumerable<FileInfo> tests, bool shouldReproduceError, bool checkResult)
         {
-            del = new MyDelegate(ToGive);
-            pMyAction = Marshal.GetFunctionPointerForDelegate<MyDelegate>(del);
-            HelloWorld(pMyAction.ToInt64());
+            instrument = new InstrumentDelegate(Instrument);
+            address = Marshal.GetFunctionPointerForDelegate<InstrumentDelegate>(instrument);
+            acceptInstrumentAddress(address.ToInt64());
             AppDomain.CurrentDomain.AssemblyResolve += TryLoadAssemblyFrom;
 
             foreach (FileInfo fi in tests)

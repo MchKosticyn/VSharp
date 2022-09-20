@@ -78,6 +78,7 @@ public:
     bool sendStringsPoolIndex(unsigned index);
     bool sendTypeInfoFromMethod(const std::vector<mdToken>& types);
     bool acceptMethodBody(char *&bytecode, int &codeLength, unsigned &maxStackSize, char *&ehs, unsigned &ehsLength);
+    static void deserializeMethodBody(char *message, int messageLength, char *&bytecode, int &codeLength, unsigned &maxStackSize, char *&ehs, unsigned &ehsLength);
     template<typename T>
     bool sendSerializable(char commandByte, const T &object) {
         if (!writeBuffer(new char[1] {commandByte}, 1)) return false;

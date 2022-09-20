@@ -341,13 +341,15 @@ bool Protocol::sendTypeInfoFromMethod(const std::vector<mdToken>& types) {
     return result;
 }
 
-bool Protocol::acceptMethodBody(char *&bytecode, int &codeLength, unsigned &maxStackSize, char *&ehs, unsigned &ehsLength) {
-    char *message;
-    int messageLength;
-    if (!readBuffer(message, messageLength)) {
-        LOG_ERROR(tout << "Reading instrumented method body failed!");
-        return false;
-    }
+void Protocol::deserializeMethodBody(
+    char *message,
+    int messageLength,
+    char *&bytecode,
+    int &codeLength,
+    unsigned &maxStackSize,
+    char *&ehs,
+    unsigned &ehsLength)
+{
     char *origMessage = message;
     LOG(tout << "Successfully accepted " << messageLength << " bytes of message, parsing it...");
     codeLength = *(int*)message;
@@ -360,6 +362,16 @@ bool Protocol::acceptMethodBody(char *&bytecode, int &codeLength, unsigned &maxS
     ehs = new char[ehsLength];
     memcpy(ehs, message + codeLength, ehsLength);
     delete[] origMessage;
+}
+
+bool Protocol::acceptMethodBody(char *&bytecode, int &codeLength, unsigned &maxStackSize, char *&ehs, unsigned &ehsLength) {
+    char *message;
+    int messageLength;
+    if (!readBuffer(message, messageLength)) {
+        LOG_ERROR(tout << "Reading instrumented method body failed!");
+        return false;
+    }
+    deserializeMethodBody(message, messageLength, bytecode, codeLength, maxStackSize, ehs, ehsLength);
     return true;
 }
 
