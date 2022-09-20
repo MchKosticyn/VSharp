@@ -23,11 +23,8 @@ namespace vsharp {
 // --------------------------- Shift ---------------------------
 
     ADDR Shift::move(ADDR addr) const {
-//        assert(oldBase <= addr);
-        if (oldBase <= addr)
-            return newBase + (addr - oldBase);
-        else
-            return addr;
+        assert(oldBase <= addr);
+        return newBase + (addr - oldBase);
     }
 
 // --------------------------- Interval ---------------------------

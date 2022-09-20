@@ -108,6 +108,7 @@ namespace VSharp.TestRunner
                 hugeArr[2 * i] = 3;
                 sum += 0;
             }
+            GC.Collect();
 
             return sum;
         }
@@ -125,11 +126,11 @@ namespace VSharp.TestRunner
                 newArray[i] = 2 * i + 3;
             }
 
-            Thread t = new Thread(ANiceThreadFunc);
-            t.Start();
+            // Thread t = new Thread(ANiceThreadFunc);
+            // t.Start();
 
 
-            // GarbageCollectorTest(0);
+            GarbageCollectorTest(0);
 
             // Object[] throwaway = new Object[5];
             // throwaway[3] = new int();
