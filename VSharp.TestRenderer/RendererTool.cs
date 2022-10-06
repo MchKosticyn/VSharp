@@ -69,18 +69,30 @@ public static class Renderer
 
         if (shouldCompareResult)
         {
-            var resultId = mainBlock.AddDecl("result", ObjectType, callMethod);
+            var retType = Reflection.getMethodReturnType(method);
+            if (retType.IsPrimitive || retType == typeof(string))
+            {
+                var expectedExpr = method.IsConstructor ? thisArgId : mainBlock.RenderObject(expected);
 
-            // Adding namespace of objects comparer to usings
-            AddObjectsComparer();
-            var expectedExpr = method.IsConstructor ? thisArgId : mainBlock.RenderObject(expected);
-            var condition = RenderCall(CompareObjects, resultId, expectedExpr);
-            mainBlock.AddAssert(condition);
+                var resultId = mainBlock.AddDecl("result", null, callMethod);
+                var condition = RenderCall(RenderMemberAccess("Assert", "AreEqual"), resultId, expectedExpr);
+                mainBlock.AddExpression(condition);
+            }
+            else
+            {
+                // Adding namespace of objects comparer to usings
+                AddObjectsComparer();
+                var expectedExpr = method.IsConstructor ? thisArgId : mainBlock.RenderObject(expected);
+
+                var resultId = mainBlock.AddDecl("result", null, callMethod);
+                var condition = RenderCall(CompareObjects, resultId, expectedExpr);
+                mainBlock.AddAssert(condition);
+            }
         }
         else if (ex == null || isError)
         {
             if (shouldUseDecl)
-                mainBlock.AddDecl("unused", ObjectType, callMethod);
+                mainBlock.AddDecl("unused", null, callMethod);
             else
                 mainBlock.AddExpression(callMethod);
         }
@@ -91,7 +103,7 @@ public static class Renderer
             if (shouldUseDecl)
             {
                 var block = mainBlock.NewBlock();
-                block.AddDecl("unused", ObjectType, callMethod);
+                block.AddDecl("unused", null, callMethod);
                 delegateExpr = ParenthesizedLambdaExpression(block.Render());
             }
             else
