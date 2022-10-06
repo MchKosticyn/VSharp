@@ -11,6 +11,17 @@ using static CodeRenderer;
 
 public static class Renderer
 {
+    public struct MethodFormat
+    {
+        public bool HasArgs = false;
+        public string? CallingTest = null;
+
+        public MethodFormat()
+        {
+        }
+    }
+    private static readonly Dictionary<string, MethodFormat> MethodsFormat = new ();
+
     private static IEnumerable<string>? _extraAssemblyLoadDirs;
 
     // TODO: create class 'Expression' with operators?
@@ -25,9 +36,10 @@ public static class Renderer
         object expected)
     {
         var mainBlock = test.Body;
+        MethodFormat f = new MethodFormat();
 
         // Declaring arguments and 'this' of testing method
-        IdentifierNameSyntax thisArgId = null!;
+        IdentifierNameSyntax? thisArgId = null;
         if (thisArg != null)
         {
             Debug.Assert(Reflection.hasThis(method));
@@ -58,10 +70,17 @@ public static class Renderer
                 var id = mainBlock.AddDecl("obj", typeExpr, value);
                 renderedArgs[i] = id;
             }
+            else
+            {
+                f.HasArgs = true;
+            }
         }
+
+        f.HasArgs = f.HasArgs || thisArgId != null;
 
         // Calling testing method
         var callMethod = RenderCall(thisArgId, method, renderedArgs);
+        f.CallingTest = callMethod.NormalizeWhitespace().ToString();
 
         var hasResult = Reflection.hasNonVoidResult(method) || method.IsConstructor;
         var shouldUseDecl = method.IsConstructor || IsGetPropertyMethod(method, out _);
@@ -117,6 +136,8 @@ public static class Renderer
                 );
             mainBlock.AddExpression(assertThrows);
         }
+
+        MethodsFormat[test.MethodId.ToString()] = f;
     }
 
     private static Assembly TryLoadAssemblyFrom(object sender, ResolveEventArgs args)
@@ -142,6 +163,8 @@ public static class Renderer
     {
         private const int TabSize = 4;
         private int _currentOffset = 0;
+        private MethodFormat _format = new MethodFormat();
+        private string? _firstExpr = null;
 
         private static SyntaxTrivia WhitespaceTrivia(int offset)
         {
@@ -160,8 +183,8 @@ public static class Renderer
                     triviaList
                         .Where(trivia => trivia.IsKind(SyntaxKind.WhitespaceTrivia))
                         .ToArray();
-                Debug.Assert(whitespaces.Length == 1);
-                _currentOffset = whitespaces[0].ToFullString().Length;
+
+                _currentOffset = whitespaces[whitespaces.Length - 1].ToFullString().Length;
             }
 
             switch (node)
@@ -202,6 +225,76 @@ public static class Renderer
                         node = objCreation.WithInitializer(init);
                     }
 
+                    return base.Visit(node);
+                }
+                case StatementSyntax statement when statement.ToString() == _firstExpr:
+                {
+                    var comment = Comment("// arrange");
+                    node = statement.WithLeadingTrivia().WithLeadingTrivia(WhitespaceTrivia(_currentOffset), comment, LineFeed,
+                        WhitespaceTrivia(_currentOffset));
+                    return base.Visit(node);
+                }
+                case LocalDeclarationStatementSyntax varDecl:
+                {
+                    var vars = varDecl.Declaration.Variables;
+                    if (vars.Count > 0)
+                    {
+                        var init = vars[0].Initializer;
+                        // Adding '// test' comment before calling test
+                        if (_format.CallingTest != null && init != null && _format.CallingTest == init.Value.ToString())
+                        {
+                            if (_format.HasArgs)
+                            {
+                                var comment = Comment("// act");
+                                node = node.WithLeadingTrivia(LineFeed, WhitespaceTrivia(_currentOffset), comment, LineFeed,
+                                    WhitespaceTrivia(_currentOffset));
+                            }
+                            else
+                            {
+                                var comment = Comment("// act");
+                                node = node.WithLeadingTrivia(WhitespaceTrivia(_currentOffset), comment, LineFeed,
+                                    WhitespaceTrivia(_currentOffset));
+                            }
+                        }
+
+                        return base.Visit(node);
+                    }
+                    break;
+                }
+                // Adding '// test' comment before calling test
+                case ExpressionStatementSyntax expr
+                    when _format.CallingTest != null && _format.CallingTest == expr.Expression.ToString():
+                {
+                    if (_format.HasArgs)
+                    {
+                        var comment = Comment("// act");
+                        node = node.WithLeadingTrivia(LineFeed, WhitespaceTrivia(_currentOffset), comment, LineFeed,
+                            WhitespaceTrivia(_currentOffset));
+                    }
+                    else
+                    {
+                        var comment = Comment("// act");
+                        node = node.WithLeadingTrivia(WhitespaceTrivia(_currentOffset), comment, LineFeed,
+                            WhitespaceTrivia(_currentOffset));
+                    }
+
+                    return base.Visit(node);
+                }
+                // Remembering current method
+                case MethodDeclarationSyntax expr:
+                {
+                    MethodsFormat.TryGetValue(expr.Identifier.ToString(), out _format);
+                    if (_format.HasArgs)
+                        _firstExpr = expr.Body?.Statements[0].ToString();
+
+                    return base.Visit(node);
+                }
+                // Adding blank line and '// assert' comment before 'Assert.Throws' and 'Assert.IsTrue'
+                case ExpressionStatementSyntax expr when expr.ToString().Contains("Assert"):
+                {
+                    var comment = Comment("// assert");
+                    node = node.WithLeadingTrivia(LineFeed, WhitespaceTrivia(_currentOffset), comment, LineFeed,
+                        WhitespaceTrivia(_currentOffset));
                     return base.Visit(node);
                 }
             }
