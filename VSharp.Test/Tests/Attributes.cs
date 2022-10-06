@@ -42,6 +42,25 @@ namespace IntegrationTests
             return 1;
         }
 
+        public interface INetwork
+        {
+            int Read();
+        }
+
+
+        [TestSvm(100, guidedMode:false, strat:SearchStrategy.ShortestDistance)]
+        public int ReadAll(byte[] buffer, INetwork network)
+        {
+            int next;
+            int count = 0;
+            while ((next = network.Read()) >= 0)
+            {
+                buffer[count++] = (byte)next;
+            }
+
+            return count;
+        }
+
         [TestSvm]
         public int NotNullTest1([NotNull] object obj)
         {
