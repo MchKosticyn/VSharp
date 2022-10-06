@@ -75,11 +75,12 @@ type memoryRepr = {
     types : typeRepr array
 }
 
+// TODO: do not store 'Array' object in 'CompactArrayRepr'
 type public CompactArrayRepr = {
     array : Array
-    defaultValue : obj
-    indices : int array array
-    values : obj array
+    mutable defaultValue : obj
+    mutable indices : int array array
+    mutable values : obj array
 }
 
 module Serialization =
@@ -122,8 +123,10 @@ and MemoryGraph(repr : memoryRepr, mocker : ITypeMockSerializer, createCompactRe
             else Array.CreateInstance(elementType, repr.lengths, repr.lowerBounds) :> obj
         | _ -> obj
 
-    let mutable sourceObjects = List<obj>(repr.objects |> Array.map allocatePlaceholder)
+    let sourceObjects = List<obj>(repr.objects |> Array.map allocatePlaceholder)
     let objReprs = List<obj>(repr.objects)
+
+    let compactReprs = Dictionary<obj, CompactArrayRepr>()
 
     let rec decodeValue (obj : obj) =
         match obj with
@@ -136,6 +139,7 @@ and MemoryGraph(repr : memoryRepr, mocker : ITypeMockSerializer, createCompactRe
                 internalfailf "Expected value type inside object, but got representation of %s!" t.FullName
             let obj = allocatePlaceholder repr
             decodeStructure repr obj
+            obj
         | :? arrayRepr -> internalfail "Unexpected array representation inside object!"
         | :? enumRepr as repr ->
             let t = sourceTypes.[repr.typ]
@@ -148,13 +152,11 @@ and MemoryGraph(repr : memoryRepr, mocker : ITypeMockSerializer, createCompactRe
         Reflection.fieldsOf false t |> Array.iteri (fun i (_, field) ->
             let value = decodeValue repr.fields.[i]
             field.SetValue(obj, value))
-        obj
 
     and decodeArray (repr : arrayRepr) (obj : obj) =
         assert(repr.lowerBounds = null || repr.lengths.Length = repr.lowerBounds.Length)
-        let arr = obj :?> Array
-        match repr with
-        | _ when repr.indices = null ->
+        match obj with
+        | :? Array as arr when repr.indices = null ->
             assert(arr.Length = repr.values.Length)
             match repr.lengths, repr.lowerBounds with
             | [|len|], null ->
@@ -166,18 +168,16 @@ and MemoryGraph(repr : memoryRepr, mocker : ITypeMockSerializer, createCompactRe
                     let value = decodeValue r
                     let indices = Array.delinearizeArrayIndex i lens lbs
                     arr.SetValue(value, indices))
-            arr :> obj
-        | _ when createCompactRepr ->
-            let values = Array.map decodeValue repr.values
+        | :? Array as arr ->
             let defaultValue = decodeValue repr.defaultValue
             Array.fill arr defaultValue
             Array.iter2 (fun (i : int[]) v -> arr.SetValue(decodeValue v, i)) repr.indices repr.values
-            {array = arr; defaultValue = repr.defaultValue; indices = repr.indices; values = values}
-        | _ ->
-            let defaultValue = decodeValue repr.defaultValue
-            Array.fill arr defaultValue
-            Array.iter2 (fun (i : int[]) v -> arr.SetValue(decodeValue v, i)) repr.indices repr.values
-            arr
+            if createCompactRepr then
+                let defaultValue = decodeValue repr.defaultValue
+                let values = Array.map decodeValue repr.values
+                let compact = {array = arr; defaultValue = defaultValue; indices = repr.indices; values = values}
+                compactReprs.Add(arr, compact)
+        | _ -> internalfailf "decodeArray: unexpected value to decode %O" obj
 
     and decodeObject (repr : obj) obj =
         match repr with
@@ -188,13 +188,11 @@ and MemoryGraph(repr : memoryRepr, mocker : ITypeMockSerializer, createCompactRe
         | _ -> ()
 
     let () =
-        if createCompactRepr then
-            let seq = Seq.map2 decodeObject objReprs sourceObjects
-            sourceObjects <- List<obj>(seq)
-        else
-            Seq.iter2 (fun repr source -> decodeObject repr source |> ignore) objReprs sourceObjects
+        Seq.iter2 (fun repr source -> decodeObject repr source) objReprs sourceObjects
 
     member x.DecodeValue (obj : obj) = decodeValue obj
+
+    member x.CompactRepresentations = compactReprs
 
     member private x.IsSerializable (t : Type) =
         // TODO: find out which types can be serialized by XMLSerializer

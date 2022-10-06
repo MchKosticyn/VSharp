@@ -317,38 +317,38 @@ internal class MethodRenderer
 
         private ExpressionSyntax RenderFields(object obj)
         {
-            if (_renderedObjects.TryGetValue(new physicalAddress(obj), out var renderedResult))
+            var phys = new physicalAddress(obj);
+            if (_renderedObjects.TryGetValue(phys, out var renderedResult))
             {
                 return renderedResult;
             }
-
 
             // Adding namespace of allocator to usings
             AddTestExtensions();
 
             var type = obj.GetType();
-            var isPublicType = type.IsPublic;
+            var isPublicType = type.IsPublic || type.IsNested && type.IsNestedPublic;
             var typeExpr = RenderType(isPublicType ? type : typeof(object));
 
-            if (_startToRender.Contains(new physicalAddress(obj)))
+            if (_startToRender.Contains(phys))
             {
                 var allocatorArgs = System.Array.Empty<ExpressionSyntax>();
                 if (!isPublicType)
                 {
                     allocatorArgs = new ExpressionSyntax[1];
                     allocatorArgs[0] = LiteralExpression(SyntaxKind.StringLiteralExpression,
-                        Literal(type.AssemblyQualifiedName));
+                        Literal(RenderType(type).ToString()));
                 }
                 var emptyInit = System.Array.Empty<(ExpressionSyntax, ExpressionSyntax)>();
                 var emptyAllocator = RenderObjectCreation(AllocatorType(typeExpr), allocatorArgs, emptyInit);
 
                 var emptyObject = RenderMemberAccess(emptyAllocator, AllocatorObject);
                 var emptyObjId = AddDecl("obj", typeExpr, emptyObject);
-                _renderedObjects[new physicalAddress(obj)] = emptyObjId;
+                _renderedObjects[phys] = emptyObjId;
 
                 return emptyObjId;
             }
-            _startToRender.Add(new physicalAddress(obj));
+            _startToRender.Add(phys);
 
             var fields = Reflection.fieldsOf(false, type);
             var fieldsWithValues = new (ExpressionSyntax, ExpressionSyntax)[fields.Length];
@@ -366,7 +366,7 @@ internal class MethodRenderer
             }
 
             ExpressionSyntax[] args = System.Array.Empty<ExpressionSyntax>();
-            if (_renderedObjects.TryGetValue(new physicalAddress(obj), out var result))
+            if (_renderedObjects.TryGetValue(phys, out var result))
             {
                 args = new ExpressionSyntax[1];
                 args[0] = result;
@@ -377,7 +377,7 @@ internal class MethodRenderer
                 {
                     args = new ExpressionSyntax[1];
                     args[0] = LiteralExpression(SyntaxKind.StringLiteralExpression,
-                        Literal(type.AssemblyQualifiedName));
+                        Literal(RenderType(type).ToString()));
                 }
             }
             var allocator =

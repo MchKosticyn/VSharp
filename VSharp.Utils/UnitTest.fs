@@ -110,6 +110,8 @@ type UnitTest private (m : MethodBase, info : testInfo, createCompactRepr : bool
 
     member x.TypeMocks with get() = typeMocks
 
+    member x.CompactRepresentations with get() = memoryGraph.CompactRepresentations
+
     member x.DefineTypeMock(name : string) =
         let mock = Mocking.Type(name)
         typeMocks.Add mock
