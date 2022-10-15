@@ -9,7 +9,6 @@
 #define COND INT_PTR
 #define ADDRESS_SIZE sizeof(INT32) + sizeof(UINT_PTR) + sizeof(UINT_PTR) + sizeof(BYTE) + sizeof(BYTE) * 2;
 #define BOXED_OBJ_METADATA_SIZE sizeof(INT_PTR)
-#define READ_BYTES(src, type) *(type*)(src); (src) += sizeof(type)
 
 namespace vsharp {
 
@@ -132,8 +131,14 @@ struct ExecCommand {
         for (int i = 0; i < newAddressesCount; ++i)
             fullTypesSize += newAddressesTypeLengths[i];
         count += fullTypesSize;
-        unsigned coverageNodesCount = newCoverageNodes ? newCoverageNodes->size() : 0;
-        count += sizeof(unsigned) + coverageNodesCount * sizeOfCoverageNode;
+        unsigned coverageNodesCount = newCoverageNodes ? newCoverageNodes->count() : 0;
+        const CoverageNode *node = newCoverageNodes;
+        while (node) {
+            count += node->size();
+            node = node->next;
+        }
+        count += sizeof(unsigned);
+
         bytes = new char[count];
         char *buffer = bytes;
         unsigned size = sizeof(unsigned);
@@ -177,7 +182,7 @@ struct ExecCommand {
         memcpy(buffer, newAddressesTypes, fullTypesSize); buffer += fullTypesSize;
 
         *(unsigned *)buffer = coverageNodesCount; buffer += sizeof(unsigned);
-        const CoverageNode *node = newCoverageNodes;
+        node = newCoverageNodes;
         while (node) {
             node->serialize(buffer);
             node = node->next;
@@ -274,35 +279,13 @@ bool readExecResponse(StackFrame &top, EvalStackOperand *ops, unsigned &count, E
     char *bytes; int messageLength;
     protocol->acceptExecResult(bytes, messageLength);
     char *start = bytes;
-    char lastPush = READ_BYTES(bytes, char);
-    int lastPushSize = READ_BYTES(bytes, int);
-    int symbolicFieldsLength = READ_BYTES(bytes, int);
     int opsLength = READ_BYTES(bytes, int);
     bool hasInternalCallResult = *(char*)bytes > 0; bytes += sizeof(char);
     bool opsConcretized = opsLength > -1;
+    StackPush lastPush;
+    lastPush.deserialize(bytes);
     int offset, size;
-    LocalObject structObj;
-    switch (lastPush) {
-        case 0: // no push
-            break;
-        case 1: // symbolic push
-            top.pushPrimitive(false);
-            break;
-        case 2: // concrete push
-            top.pushPrimitive(true);
-            break;
-        case 3: // struct push
-            structObj = LocalObject(lastPushSize, ObjectLocation{});
-            for (int i = 0; i < symbolicFieldsLength; i++) {
-                offset = READ_BYTES(bytes, int);
-                size = READ_BYTES(bytes, int);
-                structObj.writeConcreteness(offset, size, false);
-            }
-            top.push1(structObj);
-            break;
-        default:
-            FAIL_LOUD("unexpected lastPush value!");
-    }
+    lastPush.pushToTop(top);
 
     if (opsConcretized) {
         // NOTE: if internal call with symbolic arguments has concrete result, no arguments concretization is needed, so opsLength = 0
@@ -425,7 +408,7 @@ CommandType getAndHandleCommand() {
     return command;
 }
 
-void trackCoverage(OFFSET offset, BYTE &lastPushInfo, bool &stillExpectsCoverage) {
+void trackCoverage(OFFSET offset, StackPush &lastPushInfo, bool &stillExpectsCoverage) {
     if (!addCoverageStep(offset, lastPushInfo, stillExpectsCoverage)) {
         freeLock();
         FAIL_LOUD("Path divergence")
@@ -434,15 +417,13 @@ void trackCoverage(OFFSET offset, BYTE &lastPushInfo, bool &stillExpectsCoverage
 
 void sendCommand(OFFSET offset, unsigned opsCount, EvalStackOperand *ops, bool mightFork = true) {
     getLock();
-    BYTE lastStackPush = 0;
+    StackPush lastStackPush;
     bool commandsDisabled;
     trackCoverage(offset, lastStackPush, commandsDisabled);
 
     if (commandsDisabled) {
-        if (lastStackPush) {
-            StackFrame &top = vsharp::topFrame();
-            top.pushPrimitive(lastStackPush == 2);
-        }
+        StackFrame &top = vsharp::topFrame();
+        lastStackPush.pushToTop(top);
         vsharp::stack().resetPopsTracking();
         freeLock();
         return;
@@ -582,7 +563,7 @@ int registerProbe(unsigned long long probe) {
     RETTYPE STDMETHODCALLTYPE NAME ARGS
 
 PROBE(void, Track_Coverage, (OFFSET offset)) {
-    BYTE lastStackPush = 0;
+    StackPush lastStackPush;
     bool commandsDisabled;
     trackCoverage(offset, lastStackPush, commandsDisabled);
 }

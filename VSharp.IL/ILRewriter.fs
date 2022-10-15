@@ -337,6 +337,12 @@ type rawExceptionHandler = {
     mutable matcher : uint32
 }
 
+type StackPushType =
+    | NoPush
+    | SymbolicPush
+    | ConcretePush
+    | StructPush of int * (int * int)[] // struct size + array of symbolic fields with size and offset on each one
+
 type rawMethodBody = {
     properties : rawMethodProperties
     assembly : string
@@ -360,7 +366,7 @@ type coverageLocation = {
     methodToken : int
     offset : int
     threadToken : int
-    stackPush : byte // 0 = no push, 1 = symbolic push, 2 = concrete push
+    stackPush : StackPushType // 0 = no push, 1 = symbolic push, 2 = concrete push
 }
 with
     override x.ToString() =

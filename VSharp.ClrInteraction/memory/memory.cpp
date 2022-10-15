@@ -166,7 +166,7 @@ void vsharp::setExpectedCoverage(const CoverageNode *expectedCoverage) {
     expectedCoverageExpirated = !expectedCoverage;
 }
 
-bool vsharp::addCoverageStep(OFFSET offset, BYTE &lastStackPush, bool &stillExpectsCoverage) {
+bool vsharp::addCoverageStep(OFFSET offset, StackPush &lastStackPush, bool &stillExpectsCoverage) {
     int threadToken = 0; // TODO: support multithreading
     StackFrame &top = topFrame();
     int moduleToken = top.moduleToken();
@@ -206,8 +206,77 @@ bool vsharp::addCoverageStep(OFFSET offset, BYTE &lastStackPush, bool &stillExpe
     return true;
 }
 
-BYTE vsharp::expectedStackPush() {
-    return expectedCoverageStep ? expectedCoverageStep->stackPush : 0;
+StackPush vsharp::expectedStackPush() {
+    StackPush noPush;
+    return expectedCoverageStep ? expectedCoverageStep->stackPush : noPush;
+}
+
+unsigned StackPush::size() const {
+    if (pushType == 3)
+        return sizeof(BYTE) + 2 * sizeof(int) + fieldsLength * 2 * sizeof(int);
+    return sizeof(BYTE);
+}
+
+void StackPush::serialize(char *&buffer) const {
+    WRITE_BYTES(BYTE, buffer, pushType);
+    if (pushType == 3) {
+        WRITE_BYTES(int, buffer, structSize);
+        WRITE_BYTES(int, buffer, fieldsLength);
+        for (int i = 0; i < fieldsLength; i++) {
+            WRITE_BYTES(int, buffer, symbolicFields[i].first);
+            WRITE_BYTES(int, buffer, symbolicFields[i].second);
+        }
+    }
+}
+
+void StackPush::deserialize(char *&buffer) {
+    delete[] symbolicFields;
+
+    pushType = READ_BYTES(buffer, BYTE);
+    if (pushType >= 0 && pushType < 3) {
+        structSize = 0;
+        fieldsLength = 0;
+        symbolicFields = nullptr;
+        return;
+    }
+    if (pushType == 3) {
+        structSize = READ_BYTES(buffer, int);
+        fieldsLength = READ_BYTES(buffer, int);
+        symbolicFields = new std::pair<int, int>[fieldsLength];
+        for (int i = 0; i < fieldsLength; i++) {
+            symbolicFields[i].first = READ_BYTES(buffer, int);
+            symbolicFields[i].second = READ_BYTES(buffer, int);
+        }
+        return;
+    }
+    FAIL_LOUD("unexpected stack push value!");
+}
+
+void StackPush::pushToTop(StackFrame &top) const {
+    LocalObject structObj;
+    switch (pushType) {
+        case 0: // no push
+            break;
+        case 1: // symbolic push
+            top.pushPrimitive(false);
+            break;
+        case 2: // concrete push
+            top.pushPrimitive(true);
+            break;
+        case 3: // struct push
+            structObj = LocalObject(structSize, ObjectLocation{});
+            for (int i = 0; i < fieldsLength; i++) {
+                structObj.writeConcreteness(symbolicFields[i].first, symbolicFields[i].second, false);
+            }
+            top.push1(structObj);
+            break;
+        default:
+            FAIL_LOUD("unexpected lastPush value!");
+    }
+}
+
+StackPush::~StackPush() {
+    //delete[] symbolicFields;
 }
 
 const CoverageNode *vsharp::flushNewCoverageNodes() {
@@ -216,16 +285,40 @@ const CoverageNode *vsharp::flushNewCoverageNodes() {
     return result;
 }
 
-int CoverageNode::size() const {
+unsigned CoverageNode::size() const {
+    return staticSizeOfCoverageNode + stackPush.size();
+}
+
+int CoverageNode::count() const {
     if (!next)
         return 1;
-    return next->size() + 1;
+    return next->count() + 1;
 }
 
 void CoverageNode::serialize(char *&buffer) const {
-    *(int *)buffer = moduleToken; buffer += sizeof(int);
-    *(mdMethodDef *)buffer = methodToken; buffer += sizeof(mdMethodDef);
-    *(OFFSET *)buffer = offset; buffer += sizeof(OFFSET);
-    *(int *)buffer = threadToken; buffer += sizeof(int);
-    *(BYTE *)buffer = stackPush; buffer += sizeof(BYTE);
+    WRITE_BYTES(int, buffer, moduleToken);
+    WRITE_BYTES(mdMethodDef, buffer, methodToken);
+    WRITE_BYTES(OFFSET, buffer, offset);
+    WRITE_BYTES(int, buffer, threadToken);
+    stackPush.serialize(buffer);
+}
+
+void CoverageNode::deserialize(char *&buffer) {
+    moduleToken = READ_BYTES(buffer, int);
+    methodToken = READ_BYTES(buffer, mdMethodDef);
+    offset = READ_BYTES(buffer, OFFSET);
+    threadToken = READ_BYTES(buffer, int);
+    stackPush.deserialize(buffer);
+}
+
+CoverageNode::~CoverageNode() {
+    //stackPush.~StackPush();
+    //delete next;
+}
+
+void setCoverageNodeToNext(CoverageNode *&node) {
+    auto next = node->next;
+    node->next = nullptr;
+    delete node;
+    node = next;
 }

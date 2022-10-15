@@ -251,16 +251,11 @@ CoverageNode *Protocol::acceptCoverageInformation() {
     char *start = message;
     unsigned entriesCount = *((unsigned *)message);
     message += sizeof(unsigned);
-    assert(messageLength == sizeof(unsigned) + entriesCount * sizeOfCoverageNode);
     CoverageNode *result = nullptr;
     CoverageNode *current = nullptr;
     for (unsigned i = 0; i < entriesCount; ++i) {
-        int moduleToken = *((int *)message); message += sizeof(int);
-        mdMethodDef methodToken = *((mdMethodDef *)message); message += sizeof(mdMethodDef);
-        OFFSET offset = *((OFFSET *)message); message += sizeof(OFFSET);
-        int threadToken = *((int *)message); message += sizeof(int);
-        BYTE stackPush = *((BYTE *)message); message += sizeof(BYTE);
-        CoverageNode *node = new CoverageNode{moduleToken, methodToken, offset, threadToken, stackPush, nullptr};
+        auto *node = new CoverageNode{};
+        node->deserialize(message);
         if (current) {
             current->next = node;
         } else {
@@ -268,6 +263,7 @@ CoverageNode *Protocol::acceptCoverageInformation() {
         }
         current = node;
     }
+    assert(message - start == messageLength);
     delete[] start;
     LOG(tout << "Coverage path prefix accepted, " << entriesCount << " entries" << std::endl);
     return result;

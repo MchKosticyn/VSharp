@@ -440,17 +440,16 @@ type ClientMachine(entryPoint : Method, cmdArgs : string[] option, requestMakeSt
                     match cilState.lastPushInfo with
                     | Some x when IsConcrete x ->
                         CilStateOperations.pop cilState |> ignore
-                        ConcretePush, None
+                        ConcretePush
                     | Some t when IsStruct t ->
-                        ConcreteStructPush, Some <| x.MarshallStructToConcolic t 0
-                    | Some _ -> SymbolicPush, None
-                    | None -> NoPush, None
-                let lastPushType, stackPushInfo = lastPushInfo cilState
+                        StructPush <| x.MarshallStructToConcolic t 0
+                    | Some _ -> SymbolicPush
+                    | None -> NoPush
+                let lastPushType = lastPushInfo cilState
                 let updatePathLastPush cilState =
                     match cilState.path with
                     | head::tail ->
-                        let lastPush = x.communicator.SerializeStackPush lastPushType
-                        cilState.path <- {head with stackPush = lastPush}::tail
+                        cilState.path <- {head with stackPush = lastPushType}::tail
                     | [] -> __unreachable__()
                 List.iter updatePathLastPush steppedStates
                 let internalCallResult =
@@ -462,7 +461,7 @@ type ClientMachine(entryPoint : Method, cmdArgs : string[] option, requestMakeSt
                 let currentStackPush =
                     assert(cilState.path.Length > 0)
                     cilState.path.Head.stackPush
-                x.communicator.SendExecResponse concretizedOps internalCallResult currentStackPush stackPushInfo
+                x.communicator.SendExecResponse concretizedOps internalCallResult currentStackPush
                 callIsSkipped <- false
 
 [<AllowNullLiteral>]

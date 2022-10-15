@@ -7,6 +7,10 @@
 #include <functional>
 #include <map>
 
+#define staticSizeOfCoverageNode (2 * sizeof(int) + sizeof(mdMethodDef) + sizeof(OFFSET))
+#define READ_BYTES(src, type) *(type*)(src); (src) += sizeof(type)
+#define WRITE_BYTES(type, dest, src) *(type*)(dest) = (src); (dest) += sizeof(type)
+
 typedef UINT_PTR ThreadID;
 
 namespace vsharp {
@@ -65,17 +69,40 @@ INT32 getFunctionId(INT_PTR functionPtr);
 
 // Coverage collection
 
+struct StackPush {
+private:
+    BYTE pushType = 0; // 0 = no push, 1 = symbolic, 2 = concrete, 3 = struct
+
+    // struct case only info; must be equal to null else wise
+    int structSize = 0;
+    int fieldsLength = 0;
+    std::pair<int, int> *symbolicFields = nullptr;
+
+public:
+    unsigned size() const;
+    void serialize(char *&buffer) const;
+    void deserialize(char *&buffer);
+    void pushToTop(StackFrame &top) const;
+    ~StackPush();
+};
+
 struct CoverageNode {
     int moduleToken;
     mdMethodDef methodToken;
     OFFSET offset;
     int threadToken;
-    BYTE stackPush;
+    StackPush stackPush;
     CoverageNode *next;
 
-    int size() const;
+    unsigned size() const;
+    int count() const;
     void serialize(char *&buffer) const;
+    void deserialize(char *&buffer);
+    ~CoverageNode();
 };
+
+// nodes are being allocated with "new" and may have a pointer to an array; we must free it
+void setCoverageNodeToNext(CoverageNode *&node);
 
 static const CoverageNode *expectedCoverageStep = nullptr;
 static bool expectedCoverageExpirated = true;
@@ -83,8 +110,8 @@ static CoverageNode *lastCoverageStep = nullptr;
 static CoverageNode *newCoverageNodes = nullptr;
 
 void setExpectedCoverage(const CoverageNode *expectedCoverage);
-BYTE expectedStackPush();
-bool addCoverageStep(OFFSET offset, BYTE &lastStackPush, bool &stillExpectsCoverage);
+StackPush expectedStackPush();
+bool addCoverageStep(OFFSET offset, StackPush &lastStackPush, bool &stillExpectsCoverage);
 const CoverageNode *flushNewCoverageNodes();
 
 }
