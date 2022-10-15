@@ -15,7 +15,6 @@
 #include "../profiler_win.h"
 #endif
 
-//#define staticSizeOfCoverageNode (2 * sizeof(int) + sizeof(mdMethodDef) + sizeof(OFFSET))
 #define sizeOfDelegate (2 * sizeof(UINT_PTR) + sizeof(INT32))
 
 namespace vsharp {

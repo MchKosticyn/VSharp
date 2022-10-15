@@ -366,7 +366,7 @@ type coverageLocation = {
     methodToken : int
     offset : int
     threadToken : int
-    stackPush : StackPushType // 0 = no push, 1 = symbolic push, 2 = concrete push
+    stackPush : StackPushType
 }
 with
     override x.ToString() =

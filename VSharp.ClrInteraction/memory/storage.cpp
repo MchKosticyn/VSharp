@@ -164,7 +164,6 @@ namespace vsharp {
 
     void Object::writeConcreteness(SIZE offset, SIZE size, bool vConcreteness) {
         // TODO: Bug in Blockchain.test3: stfld must be concrete, but it isn't
-        tout << size << " " << offset << " " << sizeOf() << std::endl;
         assert(size > 0 && offset >= 0 && offset + size <= sizeOf());
         auto startOffset = offset % sizeofCell;
         auto startIndex = offset / sizeofCell;

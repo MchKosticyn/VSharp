@@ -69,11 +69,18 @@ INT32 getFunctionId(INT_PTR functionPtr);
 
 // Coverage collection
 
-struct StackPush {
-private:
-    BYTE pushType = 0; // 0 = no push, 1 = symbolic, 2 = concrete, 3 = struct
+enum StackPushType : BYTE {
+    NoPush = 0,
+    SymbolicPush = 1,
+    ConcretePush = 2,
+    StructPush = 3
+};
 
-    // struct case only info; must be equal to null else wise
+struct StackPush {
+    StackPushType pushType = NoPush;
+
+private:
+    // struct case only info; must be equal to null otherwise
     int structSize = 0;
     int fieldsLength = 0;
     std::pair<int, int> *symbolicFields = nullptr;
@@ -83,7 +90,6 @@ public:
     void serialize(char *&buffer) const;
     void deserialize(char *&buffer);
     void pushToTop(StackFrame &top) const;
-    ~StackPush();
 };
 
 struct CoverageNode {
@@ -98,11 +104,7 @@ struct CoverageNode {
     int count() const;
     void serialize(char *&buffer) const;
     void deserialize(char *&buffer);
-    ~CoverageNode();
 };
-
-// nodes are being allocated with "new" and may have a pointer to an array; we must free it
-void setCoverageNodeToNext(CoverageNode *&node);
 
 static const CoverageNode *expectedCoverageStep = nullptr;
 static bool expectedCoverageExpirated = true;
@@ -110,7 +112,7 @@ static CoverageNode *lastCoverageStep = nullptr;
 static CoverageNode *newCoverageNodes = nullptr;
 
 void setExpectedCoverage(const CoverageNode *expectedCoverage);
-StackPush expectedStackPush();
+void expectedStackPush(StackPush &stackPush);
 bool addCoverageStep(OFFSET offset, StackPush &lastStackPush, bool &stillExpectsCoverage);
 const CoverageNode *flushNewCoverageNodes();
 

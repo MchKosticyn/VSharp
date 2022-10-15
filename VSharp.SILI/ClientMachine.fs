@@ -445,11 +445,10 @@ type ClientMachine(entryPoint : Method, cmdArgs : string[] option, requestMakeSt
                         StructPush <| x.MarshallStructToConcolic t 0
                     | Some _ -> SymbolicPush
                     | None -> NoPush
-                let lastPushType = lastPushInfo cilState
                 let updatePathLastPush cilState =
                     match cilState.path with
                     | head::tail ->
-                        cilState.path <- {head with stackPush = lastPushType}::tail
+                        cilState.path <- {head with stackPush = lastPushInfo cilState}::tail
                     | [] -> __unreachable__()
                 List.iter updatePathLastPush steppedStates
                 let internalCallResult =

@@ -206,20 +206,22 @@ bool vsharp::addCoverageStep(OFFSET offset, StackPush &lastStackPush, bool &stil
     return true;
 }
 
-StackPush vsharp::expectedStackPush() {
-    StackPush noPush;
-    return expectedCoverageStep ? expectedCoverageStep->stackPush : noPush;
+void vsharp::expectedStackPush(StackPush &stackPush) {
+    if (expectedCoverageStep)
+        stackPush = expectedCoverageStep->stackPush;
+    else
+        stackPush = StackPush{}; // creates instance with noPush value
 }
 
 unsigned StackPush::size() const {
-    if (pushType == 3)
+    if (pushType == StructPush)
         return sizeof(BYTE) + 2 * sizeof(int) + fieldsLength * 2 * sizeof(int);
     return sizeof(BYTE);
 }
 
 void StackPush::serialize(char *&buffer) const {
     WRITE_BYTES(BYTE, buffer, pushType);
-    if (pushType == 3) {
+    if (pushType == StructPush) {
         WRITE_BYTES(int, buffer, structSize);
         WRITE_BYTES(int, buffer, fieldsLength);
         for (int i = 0; i < fieldsLength; i++) {
@@ -230,16 +232,18 @@ void StackPush::serialize(char *&buffer) const {
 }
 
 void StackPush::deserialize(char *&buffer) {
-    delete[] symbolicFields;
+    // checking symbolicFields was not allocated before
+    assert(symbolicFields == nullptr);
 
-    pushType = READ_BYTES(buffer, BYTE);
-    if (pushType >= 0 && pushType < 3) {
+    BYTE stackPushType = READ_BYTES(buffer, BYTE);
+    pushType = (StackPushType)stackPushType;
+    if (stackPushType >= 0 && stackPushType < 3) {
         structSize = 0;
         fieldsLength = 0;
         symbolicFields = nullptr;
         return;
     }
-    if (pushType == 3) {
+    if (stackPushType == 3) {
         structSize = READ_BYTES(buffer, int);
         fieldsLength = READ_BYTES(buffer, int);
         symbolicFields = new std::pair<int, int>[fieldsLength];
@@ -255,15 +259,15 @@ void StackPush::deserialize(char *&buffer) {
 void StackPush::pushToTop(StackFrame &top) const {
     LocalObject structObj;
     switch (pushType) {
-        case 0: // no push
+        case NoPush:
             break;
-        case 1: // symbolic push
+        case SymbolicPush:
             top.pushPrimitive(false);
             break;
-        case 2: // concrete push
+        case ConcretePush:
             top.pushPrimitive(true);
             break;
-        case 3: // struct push
+        case StructPush:
             structObj = LocalObject(structSize, ObjectLocation{});
             for (int i = 0; i < fieldsLength; i++) {
                 structObj.writeConcreteness(symbolicFields[i].first, symbolicFields[i].second, false);
@@ -273,10 +277,6 @@ void StackPush::pushToTop(StackFrame &top) const {
         default:
             FAIL_LOUD("unexpected lastPush value!");
     }
-}
-
-StackPush::~StackPush() {
-    //delete[] symbolicFields;
 }
 
 const CoverageNode *vsharp::flushNewCoverageNodes() {
@@ -309,16 +309,4 @@ void CoverageNode::deserialize(char *&buffer) {
     offset = READ_BYTES(buffer, OFFSET);
     threadToken = READ_BYTES(buffer, int);
     stackPush.deserialize(buffer);
-}
-
-CoverageNode::~CoverageNode() {
-    //stackPush.~StackPush();
-    //delete next;
-}
-
-void setCoverageNodeToNext(CoverageNode *&node) {
-    auto next = node->next;
-    node->next = nullptr;
-    delete node;
-    node = next;
 }

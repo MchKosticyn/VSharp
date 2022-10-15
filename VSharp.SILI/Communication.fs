@@ -302,7 +302,7 @@ type Communicator(pipeFile) =
             | ParseDeclaringTypeToken -> parseDeclaringTypeTokenByte
         Array.singleton byte
 
-    member private x.CountStackPushSize (stackPush : StackPushType) =
+    member private x.StackPushSize (stackPush : StackPushType) =
         match stackPush with
             // stackPushType + structSize + fieldsLength + fieldsLength * (fieldOffset + fieldSize)
         | StructPush (_, fields) -> sizeof<byte> + 2 * sizeof<int32> + fields.Length * 2 * sizeof<int32>
@@ -335,7 +335,7 @@ type Communicator(pipeFile) =
         | SymbolicPush -> [| 1uy |]
         | ConcretePush -> [| 2uy |]
         | StructPush (structSize, structSymbolicFields) ->
-            let bytes : byte[] = Array.zeroCreate <| x.CountStackPushSize stackPush
+            let bytes : byte[] = Array.zeroCreate <| x.StackPushSize stackPush
             x.Serialize<byte>(3uy, bytes, 0)
             x.Serialize<int>(structSize, bytes, sizeof<byte>)
             x.Serialize<int>(structSymbolicFields.Length, bytes, sizeof<byte> + sizeof<int32>)
@@ -346,8 +346,8 @@ type Communicator(pipeFile) =
                 ) structSymbolicFields
             bytes
 
-    member private x.CountCoverageLocationSize (loc : coverageLocation) =
-        (x.CountStackPushSize loc.stackPush) + 4 * sizeof<int32>
+    member private x.CoverageLocationSize (loc : coverageLocation) =
+        (x.StackPushSize loc.stackPush) + 4 * sizeof<int32>
 
     member private x.SerializeCoverageLocation (loc : coverageLocation) =
         let staticBytes : byte[] = Array.zeroCreate <| 4 * sizeof<int32>
@@ -393,7 +393,7 @@ type Communicator(pipeFile) =
     member x.SendCoverageInformation (cov : coverageLocation list) =
         Logger.trace "Sending coverage information to concolic: %O" cov
         let entriesCountBytes = BitConverter.GetBytes cov.Length
-        let entriesBytes = Array.concat <| List.map x.SerializeCoverageLocation cov
+        let entriesBytes = Array.concat <| List.map x.SerializeCoverageLocation (List.rev cov)
         writeBuffer <| Array.concat [ entriesCountBytes; entriesBytes ]
 
     member x.SendCommand (command : commandForConcolic) =

@@ -273,6 +273,7 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
     member private x.AppendMem_struct(idx, offset, instr : ilInstr) =
         x.AppendProbe(probes.mem_struct, [(OpCodes.Ldc_I4, Arg32 idx); (OpCodes.Ldc_I4, Arg32 offset)], x.tokens.void_i_i1_offset_sig, instr) |> ignore
         x.AppendInstr OpCodes.Conv_I NoArg instr
+        x.AppendInstr OpCodes.Box NoArg instr
 
     member private x.PrependValidLeaveMain(instr : ilInstr byref) =
         match instr.stackState with
@@ -444,9 +445,7 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
         | evaluationStackCellType.R8 -> x.AppendMem_f8(idx, offset, instr)
         | evaluationStackCellType.I -> x.AppendMem_p(idx, offset, instr)
         | evaluationStackCellType.Ref -> x.AppendMem_p(idx, offset, instr)
-        | evaluationStackCellType.Struct ->
-            x.AppendMem_struct(idx, offset, instr)
-            x.AppendInstr OpCodes.Box NoArg instr
+        | evaluationStackCellType.Struct -> x.AppendMem_struct(idx, offset, instr)
         | evaluationStackCellType.RefLikeStruct ->
             internalfail "AppendMemForType: refLikeStruct case is not implemented yet"
         | _ -> __unreachable__()
