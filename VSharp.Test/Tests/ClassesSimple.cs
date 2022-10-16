@@ -495,6 +495,13 @@ namespace IntegrationTests
             }
         }
 
+        private struct StructWithStructField
+        {
+            public int a;
+            public int b;
+            public TestStruct Struct;
+        }
+
         private struct GenericPublicStruct<T>
         {
             public T x;
@@ -514,12 +521,6 @@ namespace IntegrationTests
         private static TestStruct RetStruct(int x)
         {
             return new TestStruct { x = x, y = x + 2, z = 0 };
-        }
-
-        private static GenericPublicStruct<TestStruct> RetNestedStruct(int x)
-        {
-            TestStruct innerStruct = new TestStruct { x = x, y = x + 2, z = 0 };
-            return new GenericPublicStruct<TestStruct> { x = innerStruct, y = 25 };
         }
 
         [TestSvm]
@@ -565,13 +566,6 @@ namespace IntegrationTests
         }
 
         [TestSvm]
-        public static bool TestNestedStructOnReturn(int x)
-        {
-            GenericPublicStruct<TestStruct> res = RetNestedStruct(x);
-            return res.x.x < 0;
-        }
-
-        [TestSvm]
         public static int TestNewStructCreation(int x)
         {
             TestStruct res = new TestStruct { x = 1, y = 3, z = 0 };
@@ -596,6 +590,18 @@ namespace IntegrationTests
                 structArray[i] = new TestStruct{ x = i, y = i + 2, z = 0 };
             TestStruct res = structArray.ElementAt(x);
             return res.y < 4;
+        }
+
+        [TestSvm]
+        public static bool TestStructIWithinStruct(int x)
+        {
+            StructWithStructField res = new StructWithStructField();
+            StructWithStructField concrete = new StructWithStructField();
+            res.a = 5;
+            TestStruct z = new TestStruct{ x = x, y = 2 * x, z = 42 * x };
+            res.Struct = z;
+            res = concrete;
+            return res.Struct.z > 0;
         }
     }
 }
