@@ -90,6 +90,7 @@ module API =
         let MakeNumber n = makeNumber n
         // NOTE: Ref, Ptr, and nonzero numbers
         let MakeIntPtr (value : term) = value
+        let ObjToTerm (state : state) (t : Type) (obj : obj) = Memory.objToTerm state t obj
         let AddressToBaseAndOffset address = Pointers.addressToBaseAndOffset address
         // NOTE: returns type of value
         let TypeOf term = typeOf term

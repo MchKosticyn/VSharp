@@ -585,6 +585,16 @@ void Stack::OperandMem::mem_p(INT_PTR value, INT8 idx) {
     mem((char *) &value, ELEMENT_TYPE_PTR, sizeof(INT_PTR), idx);
 }
 
+void Stack::OperandMem::mem_struct(INT_PTR ref) {
+    LOG(tout << "mem_struct " << ref << std::endl);
+    mem((char *) &ref, ELEMENT_TYPE_VALUETYPE, sizeof(INT_PTR));
+}
+
+void Stack::OperandMem::mem_struct(INT_PTR ref, INT8 idx) {
+    LOG(tout << "mem_struct " << ref << (int) idx << std::endl);
+    mem((char *) &ref, ELEMENT_TYPE_VALUETYPE, sizeof(INT_PTR), idx);
+}
+
 void Stack::OperandMem::mem_refLikeStruct(INT_PTR ref) {
     LOG(tout << "mem_refLikeStruct " << (INT64) ref << " (offset = " << this->offset() << ", resolvedToken = " << HEX(this->stackFrame().resolvedToken()) << ")" << std::endl);
     m_refLikeStructRef = ref;

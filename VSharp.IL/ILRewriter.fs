@@ -178,6 +178,7 @@ type probes = {
     mutable mem2_f4 : uint64
     mutable mem2_f8 : uint64
     mutable mem2_8_4 : uint64
+    mutable mem_struct : uint64
     mutable mem_refLikeStruct : uint64
     mutable unmem_1 : uint64
     mutable unmem_2 : uint64
@@ -336,6 +337,12 @@ type rawExceptionHandler = {
     mutable matcher : uint32
 }
 
+type StackPushType =
+    | NoPush
+    | SymbolicPush
+    | ConcretePush
+    | StructPush of int * (int * int)[] // struct size + array of symbolic fields with size and offset on each one
+
 type rawMethodBody = {
     properties : rawMethodProperties
     assembly : string
@@ -359,7 +366,7 @@ type coverageLocation = {
     methodToken : int
     offset : int
     threadToken : int
-    stackPush : byte // 0 = no push, 1 = symbolic push, 2 = concrete push
+    stackPush : StackPushType
 }
 with
     override x.ToString() =

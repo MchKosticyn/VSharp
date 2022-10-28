@@ -8,6 +8,7 @@
 
 #define COND INT_PTR
 #define ADDRESS_SIZE sizeof(INT32) + sizeof(UINT_PTR) + sizeof(UINT_PTR) + sizeof(BYTE) + sizeof(BYTE) * 2;
+#define BOXED_OBJ_METADATA_SIZE sizeof(INT_PTR)
 
 namespace vsharp {
 
@@ -33,6 +34,7 @@ enum EvalStackArgType {
 union OperandContent {
     long long number;
     VirtualAddress address;
+    OBJID objStruct;
 };
 
 struct EvalStackOperand {
@@ -46,6 +48,8 @@ struct EvalStackOperand {
                 return ADDRESS_SIZE;
             case OpEmpty:
                 return sizeof(INT32);
+            case OpStruct:
+                return sizeof(INT32) + sizeof(UINT_PTR) + sizeof(INT32) + ((Object*) content.objStruct)->sizeOf() - BOXED_OBJ_METADATA_SIZE;
             default:
                 return sizeof(INT32) + sizeof(INT64);
         }
@@ -61,6 +65,14 @@ struct EvalStackOperand {
             }
             case OpEmpty:
                 break;
+            case OpStruct: {
+                *(UINT_PTR *)buffer = content.objStruct; buffer += sizeof(UINT_PTR);
+                int size = ((Object *) content.objStruct)->sizeOf() - BOXED_OBJ_METADATA_SIZE;
+                *(INT32 *)buffer = (INT32) size; buffer += sizeof(INT32);
+                memcpy(buffer, (char *) (content.objStruct + BOXED_OBJ_METADATA_SIZE), size);
+                buffer += size;
+                break;
+            }
             default:
                 *(INT64 *)buffer = (INT64) content.number; buffer += sizeof(INT64);
                 break;
@@ -70,7 +82,10 @@ struct EvalStackOperand {
     void deserialize(char *&buffer) {
         typ = *(EvalStackArgType *)buffer;
         buffer += sizeof(EvalStackArgType);
-        if (typ == OpRef) {
+        if (typ == OpStruct) {
+            FAIL_LOUD("Unexpected deserialization of struct object!");
+        }
+        else if (typ == OpRef) {
             content.address.deserialize(buffer);
             // NOTE: deserialization of object location is not needed, because updateMemory needs only address and offset
         } else {
@@ -116,8 +131,14 @@ struct ExecCommand {
         for (int i = 0; i < newAddressesCount; ++i)
             fullTypesSize += newAddressesTypeLengths[i];
         count += fullTypesSize;
-        unsigned coverageNodesCount = newCoverageNodes ? newCoverageNodes->size() : 0;
-        count += sizeof(unsigned) + coverageNodesCount * sizeOfCoverageNode;
+        unsigned coverageNodesCount = newCoverageNodes ? newCoverageNodes->count() : 0;
+        const CoverageNode *node = newCoverageNodes;
+        while (node) {
+            count += node->size();
+            node = node->next;
+        }
+        count += sizeof(unsigned);
+
         bytes = new char[count];
         char *buffer = bytes;
         unsigned size = sizeof(unsigned);
@@ -161,7 +182,7 @@ struct ExecCommand {
         memcpy(buffer, newAddressesTypes, fullTypesSize); buffer += fullTypesSize;
 
         *(unsigned *)buffer = coverageNodesCount; buffer += sizeof(unsigned);
-        const CoverageNode *node = newCoverageNodes;
+        node = newCoverageNodes;
         while (node) {
             node->serialize(buffer);
             node = node->next;
@@ -258,15 +279,13 @@ bool readExecResponse(StackFrame &top, EvalStackOperand *ops, unsigned &count, E
     char *bytes; int messageLength;
     protocol->acceptExecResult(bytes, messageLength);
     char *start = bytes;
-    char lastPush = *(char*)bytes; bytes += sizeof(char);
-    int opsLength = *(int*)bytes; bytes += sizeof(int);
+    int opsLength = READ_BYTES(bytes, int);
     bool hasInternalCallResult = *(char*)bytes > 0; bytes += sizeof(char);
     bool opsConcretized = opsLength > -1;
-    if (lastPush > 0) {
-        bool returnValueIsConcrete = (lastPush == 2);
-        // TODO: implement lastPush is struct case
-        top.pushPrimitive(returnValueIsConcrete);
-    }
+    StackPush lastPush;
+    lastPush.deserialize(bytes);
+    int offset, size;
+    lastPush.pushToTop(top);
 
     if (opsConcretized) {
         // NOTE: if internal call with symbolic arguments has concrete result, no arguments concretization is needed, so opsLength = 0
@@ -316,7 +335,8 @@ void updateMemory(EvalStackOperand &op, Stack::OperandMem &opmem, unsigned int i
             opmem.update_p((INT_PTR) Storage::virtToPhysAddress(op.content.address), (INT8) idx);
             break;
         case OpStruct:
-            FAIL_LOUD("Not implemented!");
+            LOG(tout << "updateMemory for struct object was called; skipped" << std::endl);
+            break;
         case OpEmpty:
             FAIL_LOUD("updateMemory: trying to update empty cell!");
         case OpSymbolic:
@@ -388,7 +408,7 @@ CommandType getAndHandleCommand() {
     return command;
 }
 
-void trackCoverage(OFFSET offset, BYTE &lastPushInfo, bool &stillExpectsCoverage) {
+void trackCoverage(OFFSET offset, StackPush &lastPushInfo, bool &stillExpectsCoverage) {
     if (!addCoverageStep(offset, lastPushInfo, stillExpectsCoverage)) {
         freeLock();
         FAIL_LOUD("Path divergence")
@@ -397,15 +417,13 @@ void trackCoverage(OFFSET offset, BYTE &lastPushInfo, bool &stillExpectsCoverage
 
 void sendCommand(OFFSET offset, unsigned opsCount, EvalStackOperand *ops, bool mightFork = true) {
     getLock();
-    BYTE lastStackPush = 0;
+    StackPush lastStackPush;
     bool commandsDisabled;
     trackCoverage(offset, lastStackPush, commandsDisabled);
 
     if (commandsDisabled) {
-        if (lastStackPush) {
-            StackFrame &top = vsharp::topFrame();
-            top.pushPrimitive(lastStackPush == 2);
-        }
+        StackFrame &top = vsharp::topFrame();
+        lastStackPush.pushToTop(top);
         vsharp::stack().resetPopsTracking();
         freeLock();
         return;
@@ -468,7 +486,13 @@ EvalStackOperand mkop_p(INT_PTR op) {
     resolve(op, content.address);
     return {OpRef, content};
 }
-EvalStackOperand mkop_struct(INT_PTR op) { FAIL_LOUD("not implemented"); }
+EvalStackOperand mkop_struct(INT_PTR op) {
+    OperandContent content{};
+    resolve(op, content.address);
+    assert(content.address.offset == 0);
+    content.objStruct = content.address.obj;
+    return {OpStruct, content};
+}
 EvalStackOperand mkop_refLikeStruct() {
     OperandContent content{};
     return {OpStruct, content};
@@ -511,6 +535,9 @@ EvalStackOperand* createOps(int opsCount, OFFSET offset) {
             case ELEMENT_TYPE_PTR:
                 ops[i] = mkop_p(top.unmem_p((INT8) i));
                 break;
+            case ELEMENT_TYPE_VALUETYPE:
+                ops[i] = mkop_struct(top.unmem_p((INT8) i));
+                break;
             default:
                 LOG(tout << "type = " << type);
                 LOG(tout << "current frame resolved token = " << HEX(top.stackFrame().resolvedToken()) << std::endl);
@@ -536,7 +563,7 @@ int registerProbe(unsigned long long probe) {
     RETTYPE STDMETHODCALLTYPE NAME ARGS
 
 PROBE(void, Track_Coverage, (OFFSET offset)) {
-    BYTE lastStackPush = 0;
+    StackPush lastStackPush;
     bool commandsDisabled;
     trackCoverage(offset, lastStackPush, commandsDisabled);
 }
@@ -1295,6 +1322,7 @@ PROBE(void, Mem2_8_4, (INT64 arg1, INT32 arg2, OFFSET offset)) { auto &opmem = v
 //PROBE(void, Mem2_p_f4, (INT_PTR arg1, FLOAT arg2)) { clear_mem(); mem_p(arg1); mem_f4(arg2); }
 //PROBE(void, Mem2_p_f8, (INT_PTR arg1, DOUBLE arg2)) { clear_mem(); mem_p(arg1); mem_f8(arg2); }
 
+PROBE(void, Mem_Struct, (INT_PTR arg, INT8 idx, OFFSET offset)) { vsharp::stack().opmem(offset).mem_struct(arg, idx); }
 PROBE(void, Mem_RefLikeStruct, (INT_PTR arg, OFFSET offset)) { vsharp::stack().opmem(offset).mem_refLikeStruct(arg); }
 
 //PROBE(void, Mem3_p_p_p, (INT_PTR arg1, INT_PTR arg2, INT_PTR arg3)) { clear_mem(); mem_p(arg1); mem_p(arg2); mem_p(arg3); }

@@ -2,15 +2,10 @@ namespace VSharp.Concolic
 
 open System
 open System.Collections.Generic
-open System.Reflection
 open VSharp
 open VSharp.Core
 open VSharp.CSharpUtils
-
-type private FieldWithOffset =
-    | Struct of FieldInfo * int * FieldWithOffset array
-    | Primitive of FieldInfo * int
-    | Ref of FieldInfo * int
+open Reflection
 
 type ConcolicMemory(communicator : Communicator) =
     let mutable physicalAddresses = Dictionary<UIntPtr, concreteHeapAddress Lazy>()
@@ -19,87 +14,11 @@ type ConcolicMemory(communicator : Communicator) =
 
     let zeroHeapAddress = VectorTime.zero
 
-    // ------------------------- Parsing objects from concolic memory -------------------------
-
-    let parseVectorArray bytes elemType =
-        let elemSize = TypeUtils.internalSizeOf elemType |> int
-        // NOTE: skipping array header
-        let mutable offset = LayoutUtils.ArrayLengthOffset(true, 0)
-        let length = BitConverter.ToInt64(bytes, offset) |> int
-        offset <- offset + 8
-        let parseOneElement i =
-            let offset = offset + i * elemSize
-            Reflection.bytesToObj bytes[offset .. offset + elemSize - 1] elemType
-        Array.init length parseOneElement
-
-    let parseString bytes =
-        let mutable offset = LayoutUtils.StringLengthOffset
-        let length = BitConverter.ToInt32(bytes, offset) |> int
-        offset <- LayoutUtils.StringElementsOffset
-        let elemSize = sizeof<char>
-        let parseOneChar i =
-            let offset = offset + i * elemSize
-            let obj = Reflection.bytesToObj bytes[offset .. offset + elemSize - 1] typeof<char>
-            obj :?> char
-        Array.init length parseOneChar
-
-    let rec parseFields (bytes : byte array) (fieldOffsets : FieldWithOffset array) =
-        let parseOneField (field : FieldWithOffset) =
-            match field with
-            | Primitive(fieldInfo, offset)
-            | Ref(fieldInfo, offset) ->
-                let fieldType = fieldInfo.FieldType
-                let fieldSize = TypeUtils.internalSizeOf fieldType |> int
-                fieldInfo, Reflection.bytesToObj bytes[offset .. offset + fieldSize - 1] fieldType
-            | Struct(fieldInfo, offset, fields) ->
-                let fieldType = fieldInfo.FieldType
-                let fieldSize = TypeUtils.internalSizeOf fieldType |> int
-                let bytes = bytes[offset .. offset + fieldSize - 1]
-                let data = parseFields bytes fields |> FieldsData |> box
-                fieldInfo, data
-        Array.map parseOneField fieldOffsets
-
-    // ------------------------- Basic helper functions -------------------------
-
-    let rec fieldsWithOffsets (t : Type) : FieldWithOffset array =
-        assert(not t.IsPrimitive && not t.IsArray)
-        let fields = Reflection.fieldsOf false t
-        let getFieldOffset (_, info : FieldInfo) =
-            let fieldType = info.FieldType
-            match fieldType with
-            | _ when fieldType.IsPrimitive || fieldType.IsEnum ->
-                Primitive(info, Reflection.memoryFieldOffset info)
-            | _ when TypeUtils.isStruct fieldType ->
-                let fields = fieldsWithOffsets fieldType
-                Struct(info, Reflection.memoryFieldOffset info, fields)
-            | _ ->
-                assert(not fieldType.IsValueType)
-                Ref(info, Reflection.memoryFieldOffset info)
-        Array.map getFieldOffset fields
-
-    let chooseRefOffsets (fieldsWithOffsets : FieldWithOffset array) =
-        let rec handleOffset (position, offsets) field =
-            match field with
-            | Ref(_, offset) -> position, position + offset :: offsets
-            | Struct(_, offset, fields) ->
-                let fieldsOffsets = Array.fold handleOffset (position + offset, offsets) fields |> snd
-                position, fieldsOffsets
-            | Primitive _ -> position, offsets
-        Array.fold handleOffset (0, List.empty) fieldsWithOffsets |> snd |> List.toArray
-
-    let arrayRefOffsets (elemType : Type) =
-        match elemType with
-        | _ when elemType.IsPrimitive || elemType.IsEnum -> Array.empty
-        | _ when elemType.IsValueType -> fieldsWithOffsets elemType |> chooseRefOffsets
-        | _ ->
-            assert(not elemType.IsValueType)
-            Array.singleton 0
-
     let readHeapBytes address offset size (t : Type) =
         match t with
         | _ when t.IsPrimitive || t.IsEnum ->
             let bytes = communicator.ReadHeapBytes address offset size Array.empty
-            Reflection.bytesToObj bytes t
+            bytesToObj bytes t
         | _ when TypeUtils.isStruct t ->
             let fieldOffsets = fieldsWithOffsets t
             let refOffsets = chooseRefOffsets fieldOffsets
@@ -108,7 +27,7 @@ type ConcolicMemory(communicator : Communicator) =
         | _ ->
             assert(not t.IsValueType)
             let bytes = communicator.ReadHeapBytes address offset size (Array.singleton 0)
-            Reflection.bytesToObj bytes t
+            bytesToObj bytes t
 
     member private x.PhysicalAddresses
         with get() = physicalAddresses
@@ -171,9 +90,9 @@ type ConcolicMemory(communicator : Communicator) =
 
         member x.ReadClassField address fieldId =
             let address = (x :> IConcreteMemory).GetPhysicalAddress address
-            let fieldInfo = Reflection.getFieldInfo fieldId
+            let fieldInfo = getFieldInfo fieldId
             let t = fieldInfo.FieldType
-            let offset = Reflection.memoryFieldOffset fieldInfo
+            let offset = memoryFieldOffset fieldInfo
             let size = TypeUtils.internalSizeOf t |> int
             readHeapBytes address offset size t
 
@@ -184,7 +103,7 @@ type ConcolicMemory(communicator : Communicator) =
                 let size = TypeUtils.internalSizeOf actualType |> int
                 let metadataSize = LayoutUtils.MetadataSize typeof<Object>
                 let bytes = communicator.ReadHeapBytes address metadataSize size Array.empty
-                Reflection.bytesToObj bytes actualType
+                bytesToObj bytes actualType
             | _ ->
                 assert(actualType.IsValueType)
                 let fieldOffsets = fieldsWithOffsets actualType

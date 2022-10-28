@@ -592,7 +592,7 @@ namespace IntegrationTests
                 a2 = x / 51;
             }
         }
-    
+
         private class MemoryTestClassSmall
         {
             private int a0 = Int32.MaxValue;
@@ -601,10 +601,10 @@ namespace IntegrationTests
 
             public MemoryTestClassSmall(int x)
             {
-            
+
             }
         }
-    
+
         private class MemoryTestClassLarge
         {
             private int a0 = Int32.MaxValue;
@@ -629,10 +629,10 @@ namespace IntegrationTests
 
             public MemoryTestClassLarge(int x)
             {
-            
+
             }
         }
-        
+
         [TestSvm(concolicMode:true)]
         public static bool SmallMemoryInteractionTest(int n)
         {
@@ -644,7 +644,7 @@ namespace IntegrationTests
             int sum = 0;
             return n == sum;
         }
-        
+
         [TestSvm(concolicMode:true)]
         public static bool BigMemoryInteractionTest(int n)
         {
@@ -678,7 +678,7 @@ namespace IntegrationTests
 
             return n == 35;
         }
-        
+
         [Ignore("GarbageCollection fails on random occasions")]
         //[TestSvm(concolicMode: true)]
         public static int GarbageCollectorTest(int n)
@@ -688,7 +688,7 @@ namespace IntegrationTests
             {
                 int[] smallArr = new int[100];
                 int[] hugeArr = new int[100000];
-                smallArr[i] = 2;    
+                smallArr[i] = 2;
                 hugeArr[2 * i] = 3;
                 sum += 0;
             }

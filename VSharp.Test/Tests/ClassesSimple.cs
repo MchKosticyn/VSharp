@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using VSharp.Test;
 #pragma warning disable CS0414
@@ -494,6 +495,19 @@ namespace IntegrationTests
             }
         }
 
+        private struct StructWithStructField
+        {
+            public int a;
+            public int b;
+            public TestStruct Struct;
+        }
+
+        private struct GenericPublicStruct<T>
+        {
+            public T x;
+            public int y;
+        }
+
         private static int BranchOnStruct(TestStruct s)
         {
             return s.x + s.y + s.z > 0 ? 1 : -1;
@@ -502,6 +516,11 @@ namespace IntegrationTests
         private static int BranchOnRefStruct(TestRefStruct s)
         {
             return s.x + s.y + s.z > 0 ? 1 : -1;
+        }
+
+        private static TestStruct RetStruct(int x)
+        {
+            return new TestStruct { x = x, y = x + 2, z = 0 };
         }
 
         [TestSvm]
@@ -530,6 +549,59 @@ namespace IntegrationTests
             s3.F(null);
             s4.F(null);
             s2.F(43);
+        }
+
+        [TestSvm]
+        public static bool TestStructOnReturn(int x)
+        {
+            TestStruct res = RetStruct(x);
+            return res.y > 0;
+        }
+
+        [TestSvm]
+        public static bool TestConcreteStructOnReturn(int x)
+        {
+            TestStruct res = RetStruct(0);
+            return res.y > x;
+        }
+
+        [TestSvm]
+        public static int TestNewStructCreation(int x)
+        {
+            TestStruct res = new TestStruct { x = 1, y = 3, z = 0 };
+            return res.y;
+        }
+
+        [TestSvm]
+        public static int TestChangeFieldConcreteness(int x)
+        {
+            TestStruct res = new TestStruct { x = 1, y = 3, z = 0 };
+            res.x += x;
+            return res.y;
+        }
+
+        [TestSvm]
+        public static bool TestGetItemFromStructArray(int x)
+        {
+            if (x < 0) x = 0;
+            if (x > 4) x = 4;
+            TestStruct[] structArray = new TestStruct[5];
+            for (int i = 0; i < 5; i++)
+                structArray[i] = new TestStruct{ x = i, y = i + 2, z = 0 };
+            TestStruct res = structArray.ElementAt(x);
+            return res.y < 4;
+        }
+
+        [TestSvm]
+        public static bool TestStructIWithinStruct(int x)
+        {
+            StructWithStructField res = new StructWithStructField();
+            StructWithStructField concrete = new StructWithStructField();
+            res.a = 5;
+            TestStruct z = new TestStruct{ x = x, y = 2 * x, z = 42 * x };
+            res.Struct = z;
+            res = concrete;
+            return res.Struct.z > 0;
         }
     }
 }

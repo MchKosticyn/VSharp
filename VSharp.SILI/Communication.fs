@@ -75,6 +75,7 @@ type evalStackOperand =
     | EmptyOp
     | NumericOp of evalStackArgType * int64
     | PointerOp of concolicAddress
+    | StructOp of UIntPtr * byte array
 
 type concolicExceptionRegister =
     | UnhandledConcolic of UIntPtr * bool
@@ -117,7 +118,6 @@ type execCommand = {
 
 [<type: StructLayout(LayoutKind.Sequential, Pack=1, CharSet=CharSet.Ansi)>]
 type execResponseStaticPart = {
-    lastPush : byte
     opsLength : int // -1 if operands were not concretized, length otherwise
     hasResult : byte
 }
@@ -302,6 +302,73 @@ type Communicator(pipeFile) =
             | ParseDeclaringTypeToken -> parseDeclaringTypeTokenByte
         Array.singleton byte
 
+    member private x.StackPushSize (stackPush : StackPushType) =
+        match stackPush with
+            // stackPushType + structSize + fieldsLength + fieldsLength * (fieldOffset + fieldSize)
+        | StructPush (_, fields) -> sizeof<byte> + 2 * sizeof<int32> + fields.Length * 2 * sizeof<int32>
+        | _ -> sizeof<byte>
+
+    member private x.DeserializeStackPush (bytes : byte array, offset : int byref) =
+        let stackPushType = bytes[offset]
+        offset <- offset + sizeof<byte>
+        match stackPushType with
+        | 0uy -> NoPush
+        | 1uy -> SymbolicPush
+        | 2uy -> ConcretePush
+        | 3uy ->
+            let structSize = BitConverter.ToInt32(bytes, offset)
+            offset <- offset + sizeof<int32>
+            let symbolicFieldsLength = BitConverter.ToInt32(bytes, offset)
+            offset <- offset + sizeof<int32>
+            let startingIndex = offset
+            let symbolicFields = Array.init symbolicFieldsLength (fun i ->
+                let fieldOffset = BitConverter.ToInt32(bytes, startingIndex + i * 2 * sizeof<int32>)
+                let fieldSize = BitConverter.ToInt32(bytes, startingIndex + sizeof<int32> + i * 2 * sizeof<int32>)
+                (fieldOffset, fieldSize))
+            offset <- offset + symbolicFieldsLength * 2 * sizeof<int32>
+            StructPush (structSize, symbolicFields)
+        | _ -> internalfail "Unexpected stack push type received"
+
+    member private x.SerializeStackPush (stackPush : StackPushType) =
+        match stackPush with
+        | NoPush -> [| 0uy |]
+        | SymbolicPush -> [| 1uy |]
+        | ConcretePush -> [| 2uy |]
+        | StructPush (structSize, structSymbolicFields) ->
+            let bytes : byte[] = Array.zeroCreate <| x.StackPushSize stackPush
+            x.Serialize<byte>(3uy, bytes, 0)
+            x.Serialize<int>(structSize, bytes, sizeof<byte>)
+            x.Serialize<int>(structSymbolicFields.Length, bytes, sizeof<byte> + sizeof<int32>)
+            Array.iteri (fun i (offset, size) ->
+                let idx = sizeof<byte> + sizeof<int32> * 2 + i * sizeof<int32> * 2
+                x.Serialize<int>(offset, bytes, idx)
+                x.Serialize<int>(size, bytes, idx + sizeof<int32>)
+                ) structSymbolicFields
+            bytes
+
+    member private x.CoverageLocationSize (loc : coverageLocation) =
+        (x.StackPushSize loc.stackPush) + 4 * sizeof<int32>
+
+    member private x.SerializeCoverageLocation (loc : coverageLocation) =
+        let staticBytes : byte[] = Array.zeroCreate <| 4 * sizeof<int32>
+        x.Serialize<int>(loc.moduleToken, staticBytes, 0)
+        x.Serialize<int>(loc.methodToken, staticBytes, sizeof<int32>)
+        x.Serialize<int>(loc.offset, staticBytes, 2 * sizeof<int32>)
+        x.Serialize<int>(loc.threadToken, staticBytes, 3 * sizeof<int32>)
+        Array.concat [ staticBytes; x.SerializeStackPush loc.stackPush ]
+
+    member private x.DeserializeCoverageLocation (bytes : byte array, offset : int byref) =
+        let moduleToken = BitConverter.ToInt32(bytes, offset)
+        offset <- offset + sizeof<int32>
+        let methodToken = BitConverter.ToInt32(bytes, offset)
+        offset <- offset + sizeof<int32>
+        let ilOffset = BitConverter.ToInt32(bytes, offset)
+        offset <- offset + sizeof<int32>
+        let threadToken = BitConverter.ToInt32(bytes, offset)
+        offset <- offset + sizeof<int32>
+        let stackPush = x.DeserializeStackPush(bytes, &offset)
+        {moduleToken = moduleToken; methodToken = methodToken; offset = ilOffset; threadToken = threadToken; stackPush = stackPush}
+
     member x.Connect() =
         try
             waitClient()
@@ -324,20 +391,10 @@ type Communicator(pipeFile) =
         Array.concat [moduleSize; methodDef; moduleNameBytes] |> writeBuffer
 
     member x.SendCoverageInformation (cov : coverageLocation list) =
-        // TODO: create serializer for 'coverageLocation'
         Logger.trace "Sending coverage information to concolic: %O" cov
-        let sizeOfLocation = Marshal.SizeOf(typeof<coverageLocation>)
-        let entriesCount = List.length cov
-        let bytes : byte[] = Array.zeroCreate (sizeof<int32> + entriesCount * sizeOfLocation)
-        x.Serialize<int>(entriesCount, bytes, 0)
-        List.iteri (fun i loc ->
-            let idx = sizeof<int32> + (entriesCount - i - 1) * sizeOfLocation
-            x.Serialize<int>(loc.moduleToken, bytes, idx)
-            x.Serialize<int>(loc.methodToken, bytes, idx + sizeof<int32>)
-            x.Serialize<int>(loc.offset, bytes, idx + 2 * sizeof<int32>)
-            x.Serialize<int>(loc.threadToken, bytes, idx + 3 * sizeof<int32>)
-            x.Serialize<byte>(loc.stackPush, bytes, idx + 4 * sizeof<int32>)) cov
-        writeBuffer bytes
+        let entriesCountBytes = BitConverter.GetBytes cov.Length
+        let entriesBytes = Array.concat <| List.map x.SerializeCoverageLocation (List.rev cov)
+        writeBuffer <| Array.concat [ entriesCountBytes; entriesBytes ]
 
     member x.SendCommand (command : commandForConcolic) =
         let bytes = x.SerializeCommand command
@@ -610,7 +667,13 @@ type Communicator(pipeFile) =
                     NumericOp(evalStackArgType, content)
                 | evalStackArgType.OpEmpty -> EmptyOp
                 | evalStackArgType.OpStruct ->
-                    internalfail "ReadExecuteCommand: struct case is not implemented"
+                    let structRef = Reflection.BitConverterToUIntPtr dynamicBytes offset
+                    offset <- offset + UIntPtr.Size
+                    let structSize = BitConverter.ToInt32(dynamicBytes, offset)
+                    offset <- offset + sizeof<int32>
+                    let structBytes = dynamicBytes[offset..offset + structSize - 1]
+                    offset <- offset + structSize
+                    StructOp(structRef, structBytes)
                 | _ -> internalfailf "unexpected evaluation stack argument type %O" evalStackArgType)
             let newAddresses = Array.init (int staticPart.newAddressesCount) (fun _ ->
                 let res = Reflection.BitConverterToUIntPtr dynamicBytes offset in offset <- offset + UIntPtr.Size; res)
@@ -631,19 +694,7 @@ type Communicator(pipeFile) =
             offset <- offset + sizeof<int32>
             let mutable newCoveragePath = []
             for i in 1 .. newCoverageNodesCount do
-                // TODO: create deserializer for 'coverageLocation'
-                let moduleToken = BitConverter.ToInt32(dynamicBytes, offset)
-                offset <- offset + sizeof<int32>
-                let methodToken = BitConverter.ToInt32(dynamicBytes, offset)
-                offset <- offset + sizeof<int32>
-                let ilOffset = BitConverter.ToInt32(dynamicBytes, offset)
-                offset <- offset + sizeof<int32>
-                let threadToken = BitConverter.ToInt32(dynamicBytes, offset)
-                offset <- offset + sizeof<int32>
-                let stackPush = dynamicBytes[offset]
-                assert(stackPush >= 0uy && stackPush < 3uy)
-                offset <- offset + sizeof<byte>
-                let node : coverageLocation = {moduleToken = moduleToken; methodToken = methodToken; offset = ilOffset; threadToken = threadToken; stackPush = stackPush}
+                let node = x.DeserializeCoverageLocation(dynamicBytes, &offset)
                 newCoveragePath <- node::newCoveragePath
             { isBranch = staticPart.isBranch
               callStackFramesPops = staticPart.callStackFramesPops
@@ -731,13 +782,7 @@ type Communicator(pipeFile) =
             index <- index + size)
         bytes
 
-    member x.SerializeStackPush (lastStackPush : bool option) =
-        match lastStackPush with
-        | Some isConcrete when isConcrete -> 2uy
-        | Some _ -> 1uy
-        | None -> 0uy
-
-    member x.SendExecResponse (ops : (obj * Type) list option) (result : (obj * Type) option) (lastPush : byte) =
+    member x.SendExecResponse (ops : (obj * Type) list option) (result : (obj * Type) option) (lastPush : StackPushType) =
         x.SendCommand ReadExecResponse
         let len, opsBytes =
             match ops with
@@ -747,9 +792,10 @@ type Communicator(pipeFile) =
             match result with
             | Some r -> 1uy, x.SerializeConcrete r
             | None -> 0uy, Array.empty
-        let staticPart = { lastPush = lastPush; opsLength = len; hasResult = hasInternalCallResult }
+        let lastPushBytes = x.SerializeStackPush lastPush
+        let staticPart = { opsLength = len; hasResult = hasInternalCallResult }
         let staticPartBytes = x.Serialize<execResponseStaticPart> staticPart
-        let message = Array.concat [staticPartBytes; opsBytes; resultBytes]
+        let message = Array.concat [ staticPartBytes; lastPushBytes; opsBytes; resultBytes ]
         Logger.trace "Sending exec response! Total %d bytes" message.Length
         writeBuffer message
 
