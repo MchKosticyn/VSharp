@@ -26,6 +26,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VSharp.TestRenderer", "VSha
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VSharp.TestExtensions", "VSharp.TestExtensions\VSharp.TestExtensions.csproj", "{4C5B924D-8934-44F2-847A-BE91416DB557}"
 EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "VSharp.Fuzzer", "VSharp.Fuzzer\VSharp.Fuzzer.fsproj", "{0EF96558-8849-4617-BBA3-FEDADD242FC1}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -161,6 +163,12 @@ Global
 		{4C5B924D-8934-44F2-847A-BE91416DB557}.Release|Any CPU.Build.0 = Release|Any CPU
 		{4C5B924D-8934-44F2-847A-BE91416DB557}.DebugTailRec|Any CPU.ActiveCfg = Debug|Any CPU
 		{4C5B924D-8934-44F2-847A-BE91416DB557}.DebugTailRec|Any CPU.Build.0 = Debug|Any CPU
+		{0EF96558-8849-4617-BBA3-FEDADD242FC1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0EF96558-8849-4617-BBA3-FEDADD242FC1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0EF96558-8849-4617-BBA3-FEDADD242FC1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0EF96558-8849-4617-BBA3-FEDADD242FC1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0EF96558-8849-4617-BBA3-FEDADD242FC1}.DebugTailRec|Any CPU.ActiveCfg = Debug|Any CPU
+		{0EF96558-8849-4617-BBA3-FEDADD242FC1}.DebugTailRec|Any CPU.Build.0 = Debug|Any CPU
 		{4C5B924D-8934-44F2-847A-BE91416DB557}.ReleaseConcolic|Any CPU.ActiveCfg = Release|Any CPU
 		{4C5B924D-8934-44F2-847A-BE91416DB557}.DebugConcolic|Any CPU.ActiveCfg = Debug|Any CPU
 		{4C5B924D-8934-44F2-847A-BE91416DB557}.DebugConcolic|Any CPU.Build.0 = Debug|Any CPU
