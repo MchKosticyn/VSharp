@@ -971,7 +971,8 @@ PROBE(void, Exec_Ldelem, (INT_PTR ptr, INT_PTR index, OFFSET offset)) {
     sendCommand(offset, 2, new EvalStackOperand[2] {mkop_p(ptr), mkop_4(index)});
 }
 
-PROBE(COND, Track_Stelem, (INT_PTR ptr, INT_PTR index, INT32 elemSize)) {
+//PROBE(COND, Track_Stelem, (INT_PTR ptr, INT_PTR index, INT32 elemSize)) {
+bool checkStelemConcreteness(INT_PTR ptr, INT_PTR index, INT32 elemSize) {
     StackFrame &top = vsharp::topFrame();
     bool vConcrete = top.peek0();
     bool iConcrete = top.peek1();
@@ -984,32 +985,41 @@ PROBE(COND, Track_Stelem, (INT_PTR ptr, INT_PTR index, INT32 elemSize)) {
     top.pop(3);
     return vConcrete && iConcrete && ptrConcrete && memory;
 }
-PROBE(void, Exec_Stelem_I, (INT_PTR ptr, INT_PTR index, INT_PTR value, OFFSET offset)) {
-    sendCommand(offset, 3, new EvalStackOperand[3] {mkop_p(ptr), mkop_4(index), mkop_p(value)});
+PROBE(void, Exec_Stelem_I, (INT_PTR ptr, INT_PTR index, INT_PTR value, INT32 elemSize, OFFSET offset)) {
+    if (!checkStelemConcreteness(ptr, index, elemSize))
+        sendCommand(offset, 3, new EvalStackOperand[3] {mkop_p(ptr), mkop_4(index), mkop_p(value)});
 }
-PROBE(void, Exec_Stelem_I1, (INT_PTR ptr, INT_PTR index, INT8 value, OFFSET offset)) {
-    sendCommand(offset, 3, new EvalStackOperand[3] {mkop_p(ptr), mkop_4(index), mkop_4(value)});
+PROBE(void, Exec_Stelem_I1, (INT_PTR ptr, INT_PTR index, INT8 value, INT32 elemSize, OFFSET offset)) {
+    if (!checkStelemConcreteness(ptr, index, elemSize))
+        sendCommand(offset, 3, new EvalStackOperand[3] {mkop_p(ptr), mkop_4(index), mkop_4(value)});
 }
-PROBE(void, Exec_Stelem_I2, (INT_PTR ptr, INT_PTR index, INT16 value, OFFSET offset)) {
-    sendCommand(offset, 3, new EvalStackOperand[3] {mkop_p(ptr), mkop_4(index), mkop_4(value)});
+PROBE(void, Exec_Stelem_I2, (INT_PTR ptr, INT_PTR index, INT16 value, INT32 elemSize, OFFSET offset)) {
+    if (!checkStelemConcreteness(ptr, index, elemSize))
+        sendCommand(offset, 3, new EvalStackOperand[3] {mkop_p(ptr), mkop_4(index), mkop_4(value)});
 }
-PROBE(void, Exec_Stelem_I4, (INT_PTR ptr, INT_PTR index, INT32 value, OFFSET offset)) {
-    sendCommand(offset, 3, new EvalStackOperand[3] {mkop_p(ptr), mkop_4(index), mkop_4(value)});
+PROBE(void, Exec_Stelem_I4, (INT_PTR ptr, INT_PTR index, INT32 value, INT32 elemSize, OFFSET offset)) {
+    if (!checkStelemConcreteness(ptr, index, elemSize))
+        sendCommand(offset, 3, new EvalStackOperand[3] {mkop_p(ptr), mkop_4(index), mkop_4(value)});
 }
-PROBE(void, Exec_Stelem_I8, (INT_PTR ptr, INT_PTR index, INT64 value, OFFSET offset)) {
-    sendCommand(offset, 3, new EvalStackOperand[3] {mkop_p(ptr), mkop_4(index), mkop_8(value)});
+PROBE(void, Exec_Stelem_I8, (INT_PTR ptr, INT_PTR index, INT64 value, INT32 elemSize, OFFSET offset)) {
+    if (!checkStelemConcreteness(ptr, index, elemSize))
+        sendCommand(offset, 3, new EvalStackOperand[3] {mkop_p(ptr), mkop_4(index), mkop_8(value)});
 }
-PROBE(void, Exec_Stelem_R4, (INT_PTR ptr, INT_PTR index, FLOAT value, OFFSET offset)) {
-    sendCommand(offset, 3, new EvalStackOperand[3] {mkop_p(ptr), mkop_4(index), mkop_f4(value)});
+PROBE(void, Exec_Stelem_R4, (INT_PTR ptr, INT_PTR index, FLOAT value, INT32 elemSize, OFFSET offset)) {
+    if (!checkStelemConcreteness(ptr, index, elemSize))
+        sendCommand(offset, 3, new EvalStackOperand[3] {mkop_p(ptr), mkop_4(index), mkop_f4(value)});
 }
-PROBE(void, Exec_Stelem_R8, (INT_PTR ptr, INT_PTR index, DOUBLE value, OFFSET offset)) {
-    sendCommand(offset, 3, new EvalStackOperand[3] {mkop_p(ptr), mkop_4(index), mkop_f8(value)});
+PROBE(void, Exec_Stelem_R8, (INT_PTR ptr, INT_PTR index, DOUBLE value, INT32 elemSize, OFFSET offset)) {
+    if (!checkStelemConcreteness(ptr, index, elemSize))
+        sendCommand(offset, 3, new EvalStackOperand[3] {mkop_p(ptr), mkop_4(index), mkop_f8(value)});
 }
-PROBE(void, Exec_Stelem_Ref, (INT_PTR ptr, INT_PTR index, INT_PTR value, OFFSET offset)) {
-    sendCommand(offset, 3, new EvalStackOperand[3] {mkop_p(ptr), mkop_4(index), mkop_p(value)});
+PROBE(void, Exec_Stelem_Ref, (INT_PTR ptr, INT_PTR index, INT_PTR value, INT32 elemSize, OFFSET offset)) {
+    if (!checkStelemConcreteness(ptr, index, elemSize))
+        sendCommand(offset, 3, new EvalStackOperand[3] {mkop_p(ptr), mkop_4(index), mkop_p(value)});
 }
-PROBE(void, Exec_Stelem_Struct, (INT_PTR ptr, INT_PTR index, INT_PTR boxedValue, OFFSET offset)) {
-    sendCommand(offset, 3, new EvalStackOperand[3] {mkop_p(ptr), mkop_4(index), mkop_struct(boxedValue)});
+PROBE(void, Exec_Stelem_Struct, (INT_PTR ptr, INT_PTR index, INT_PTR boxedValue, INT32 elemSize, OFFSET offset)) {
+    if (!checkStelemConcreteness(ptr, index, elemSize))
+        sendCommand(offset, 3, new EvalStackOperand[3] {mkop_p(ptr), mkop_4(index), mkop_struct(boxedValue)});
 }
 
 PROBE(void, Track_Ckfinite, ()) {

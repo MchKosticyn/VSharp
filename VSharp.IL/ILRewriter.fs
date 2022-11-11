@@ -121,7 +121,7 @@ type probes = {
     mutable execLdelema : uint64
     mutable execLdelem : uint64
 
-    mutable stelem : uint64
+    //mutable stelem : uint64
     mutable execStelem_I : uint64
     mutable execStelem_I1 : uint64
     mutable execStelem_I2 : uint64
@@ -293,6 +293,13 @@ type signatureTokens = {
     mutable void_i4_i_r8_offset_sig : uint32
     mutable void_i4_i_i_offset_sig : uint32
     mutable void_token_i_i_offset_sig : uint32
+    mutable void_i_i_i_i4_offset_sig : uint32
+    mutable void_i_i_i1_i4_offset_sig : uint32
+    mutable void_i_i_i2_i4_offset_sig : uint32
+    mutable void_i_i_i4_i4_offset_sig : uint32
+    mutable void_i_i_i8_i4_offset_sig : uint32
+    mutable void_i_i_r4_i4_offset_sig : uint32
+    mutable void_i_i_r8_i4_offset_sig : uint32
     mutable void_i4_i4_i_i_offset_sig : uint32
     mutable void_i_i4_i_i_offset_sig : uint32
     mutable void_token_token_bool_u2_offset_sig : uint32

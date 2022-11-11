@@ -1235,52 +1235,55 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                         | OpCodeValues.Stelem_I, _
                         | OpCodeValues.Stelem, TernOp(evaluationStackCellType.I, _, evaluationStackCellType.Ref) ->
                             x.PrependMem_p(2, &prependTarget)
-                            probes.execStelem_Ref, x.tokens.void_i_i_i_offset_sig, probes.unmem_p, x.tokens.i_i1_sig, OpCodes.Ldc_I4, Arg32 sizeof<System.IntPtr>
+                            probes.execStelem_Ref, x.tokens.void_i_i_i_i4_offset_sig, probes.unmem_p, x.tokens.i_i1_sig, OpCodes.Ldc_I4, Arg32 sizeof<System.IntPtr>
                         | OpCodeValues.Stelem_Ref, _
                         | OpCodeValues.Stelem, TernOp(evaluationStackCellType.Ref, _, evaluationStackCellType.Ref) ->
                             x.PrependMem_p(2, &prependTarget)
-                            probes.execStelem_Ref, x.tokens.void_i_i_i_offset_sig, probes.unmem_p, x.tokens.i_i1_sig, OpCodes.Ldc_I4, Arg32 sizeof<System.IntPtr>
+                            probes.execStelem_Ref, x.tokens.void_i_i_i_i4_offset_sig, probes.unmem_p, x.tokens.i_i1_sig, OpCodes.Ldc_I4, Arg32 sizeof<System.IntPtr>
                         | OpCodeValues.Stelem_I1, _
                         | OpCodeValues.Stelem, TernOp(evaluationStackCellType.I1, _, evaluationStackCellType.Ref) ->
                             x.PrependMem_i1(2, &prependTarget)
-                            probes.execStelem_I1, x.tokens.void_i_i_i1_offset_sig, probes.unmem_1, x.tokens.i1_i1_sig, OpCodes.Ldc_I4, Arg32 sizeof<int8>
+                            probes.execStelem_I1, x.tokens.void_i_i_i1_i4_offset_sig, probes.unmem_1, x.tokens.i1_i1_sig, OpCodes.Ldc_I4, Arg32 sizeof<int8>
                         | OpCodeValues.Stelem_I2, _
                         | OpCodeValues.Stelem, TernOp(evaluationStackCellType.I2, _, evaluationStackCellType.Ref) ->
                             x.PrependMem_i2(2, &prependTarget)
-                            probes.execStelem_I2, x.tokens.void_i_i_i2_offset_sig, probes.unmem_2, x.tokens.i2_i1_sig, OpCodes.Ldc_I4, Arg32 sizeof<int16>
+                            probes.execStelem_I2, x.tokens.void_i_i_i2_i4_offset_sig, probes.unmem_2, x.tokens.i2_i1_sig, OpCodes.Ldc_I4, Arg32 sizeof<int16>
                         | OpCodeValues.Stelem_I4, _
                         | OpCodeValues.Stelem, TernOp(evaluationStackCellType.I4, _, evaluationStackCellType.Ref) ->
                             x.PrependMem_i4(2, &prependTarget)
-                            probes.execStelem_I4, x.tokens.void_i_i_i4_offset_sig, probes.unmem_4, x.tokens.i4_i1_sig, OpCodes.Ldc_I4, Arg32 sizeof<int32>
+                            probes.execStelem_I4, x.tokens.void_i_i_i4_i4_offset_sig, probes.unmem_4, x.tokens.i4_i1_sig, OpCodes.Ldc_I4, Arg32 sizeof<int32>
                         | OpCodeValues.Stelem_I8, _
                         | OpCodeValues.Stelem, TernOp(evaluationStackCellType.I8, _, evaluationStackCellType.Ref) ->
                             x.PrependMem_i8(2, &prependTarget)
-                            probes.execStelem_I8, x.tokens.void_i_i_i8_offset_sig, probes.unmem_8, x.tokens.i8_i1_sig, OpCodes.Ldc_I4, Arg32 sizeof<int64>
+                            probes.execStelem_I8, x.tokens.void_i_i_i8_i4_offset_sig, probes.unmem_8, x.tokens.i8_i1_sig, OpCodes.Ldc_I4, Arg32 sizeof<int64>
                         | OpCodeValues.Stelem_R4, _
                         | OpCodeValues.Stelem, TernOp(evaluationStackCellType.R4, _, evaluationStackCellType.Ref) ->
                             x.PrependMem_f4(2, &prependTarget)
-                            probes.execStelem_R4, x.tokens.void_i_i_r4_offset_sig, probes.unmem_f4, x.tokens.r4_i1_sig, OpCodes.Ldc_I4, Arg32 sizeof<float>
+                            probes.execStelem_R4, x.tokens.void_i_i_r4_i4_offset_sig, probes.unmem_f4, x.tokens.r4_i1_sig, OpCodes.Ldc_I4, Arg32 sizeof<float>
                         | OpCodeValues.Stelem_R8, _
                         | OpCodeValues.Stelem, TernOp(evaluationStackCellType.R8, _, evaluationStackCellType.Ref) ->
                             x.PrependMem_f8(2, &prependTarget)
-                            probes.execStelem_R8, x.tokens.void_i_i_r8_offset_sig, probes.unmem_f8, x.tokens.r8_i1_sig, OpCodes.Ldc_I4, Arg32 sizeof<double>
+                            probes.execStelem_R8, x.tokens.void_i_i_r8_i4_offset_sig, probes.unmem_f8, x.tokens.r8_i1_sig, OpCodes.Ldc_I4, Arg32 sizeof<double>
                         | OpCodeValues.Stelem, TernOp(evaluationStackCellType.Struct, _, evaluationStackCellType.Ref)
                         | OpCodeValues.Stelem, TernOp(evaluationStackCellType.RefLikeStruct, _, evaluationStackCellType.Ref) ->
                             x.PrependMem_p(2, &prependTarget)
-                            probes.execStelem_Struct, x.tokens.void_i_i_i_offset_sig, probes.unmem_p, x.tokens.i_i1_sig, OpCodes.Sizeof, instr.arg
+                            probes.execStelem_Struct, x.tokens.void_i_i_i_i4_offset_sig, probes.unmem_p, x.tokens.i_i1_sig, OpCodes.Sizeof, instr.arg
                         | _ -> __unreachable__()
 
                     x.PrependMem_p(1, &prependTarget)
                     x.PrependMem_p(0, &prependTarget)
 
-                    x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 0)], x.tokens.i_i1_sig, &prependTarget) |> ignore
-                    x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 1)], x.tokens.i_i1_sig, &prependTarget) |> ignore
-                    x.PrependInstr(elemSizeOpcode, elemSizeArg, &prependTarget) |> ignore
-                    x.PrependProbe(probes.stelem, [], x.tokens.bool_i_i_i4_sig, &prependTarget) |> ignore
-                    let brtrue = x.PrependBranch(OpCodes.Brtrue_S, &prependTarget)
+                    // changing instrumentation type to only call the exec probe
+                    // x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 0)], x.tokens.i_i1_sig, &prependTarget) |> ignore
+                    // x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 1)], x.tokens.i_i1_sig, &prependTarget) |> ignore
+                    // x.PrependInstr(elemSizeOpcode, elemSizeArg, &prependTarget) |> ignore
+                    // x.PrependProbe(probes.stelem, [], x.tokens.bool_i_i_i4_sig, &prependTarget) |> ignore
+                    //let brtrue = x.PrependBranch(OpCodes.Brtrue_S, &prependTarget)
+                    
                     x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 0)], x.tokens.i_i1_sig, &prependTarget) |> ignore
                     x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 1)], x.tokens.i_i1_sig, &prependTarget) |> ignore
                     x.PrependProbe(unmem3Probe, [(OpCodes.Ldc_I4, Arg32 2)], unmem3Sig, &prependTarget) |> ignore
+                    x.PrependInstr(elemSizeOpcode, elemSizeArg, &prependTarget) |> ignore
                     x.PrependProbeWithOffset(execProbe, [], execSig, &prependTarget) |> ignore
                     let tgt = x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 0)], x.tokens.i_i1_sig, &prependTarget)
                     x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 1)], x.tokens.i_i1_sig, &prependTarget) |> ignore
@@ -1289,7 +1292,7 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                         x.PrependProbe(probes.disableInstrumentation, [], x.tokens.void_sig, &prependTarget) |> ignore
                         x.PrependInstr(OpCodes.Unbox_Any, typeTokenArg, &prependTarget) |> ignore
                         x.PrependProbe(probes.enableInstrumentation, [], x.tokens.void_sig, &prependTarget) |> ignore
-                    brtrue.arg <- Target tgt
+                    //brtrue.arg <- Target tgt
                     x.PrependPopOpmem &prependTarget |> ignore
 
                 | OpCodeValues.Ckfinite ->  x.AppendProbe(probes.ckfinite, [], x.tokens.void_sig, instr) |> ignore
