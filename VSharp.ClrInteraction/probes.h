@@ -971,7 +971,6 @@ PROBE(void, Exec_Ldelem, (INT_PTR ptr, INT_PTR index, OFFSET offset)) {
     sendCommand(offset, 2, new EvalStackOperand[2] {mkop_p(ptr), mkop_4(index)});
 }
 
-//PROBE(COND, Track_Stelem, (INT_PTR ptr, INT_PTR index, INT32 elemSize)) {
 bool checkStelemConcreteness(INT_PTR ptr, INT_PTR index, INT32 elemSize) {
     StackFrame &top = vsharp::topFrame();
     bool vConcrete = top.peek0();

@@ -121,7 +121,6 @@ type probes = {
     mutable execLdelema : uint64
     mutable execLdelem : uint64
 
-    //mutable stelem : uint64
     mutable execStelem_I : uint64
     mutable execStelem_I1 : uint64
     mutable execStelem_I2 : uint64

@@ -1272,27 +1272,19 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
 
                     x.PrependMem_p(1, &prependTarget)
                     x.PrependMem_p(0, &prependTarget)
-
-                    // changing instrumentation type to only call the exec probe
-                    // x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 0)], x.tokens.i_i1_sig, &prependTarget) |> ignore
-                    // x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 1)], x.tokens.i_i1_sig, &prependTarget) |> ignore
-                    // x.PrependInstr(elemSizeOpcode, elemSizeArg, &prependTarget) |> ignore
-                    // x.PrependProbe(probes.stelem, [], x.tokens.bool_i_i_i4_sig, &prependTarget) |> ignore
-                    //let brtrue = x.PrependBranch(OpCodes.Brtrue_S, &prependTarget)
                     
                     x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 0)], x.tokens.i_i1_sig, &prependTarget) |> ignore
                     x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 1)], x.tokens.i_i1_sig, &prependTarget) |> ignore
                     x.PrependProbe(unmem3Probe, [(OpCodes.Ldc_I4, Arg32 2)], unmem3Sig, &prependTarget) |> ignore
                     x.PrependInstr(elemSizeOpcode, elemSizeArg, &prependTarget) |> ignore
                     x.PrependProbeWithOffset(execProbe, [], execSig, &prependTarget) |> ignore
-                    let tgt = x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 0)], x.tokens.i_i1_sig, &prependTarget)
+                    x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 0)], x.tokens.i_i1_sig, &prependTarget) |> ignore
                     x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 1)], x.tokens.i_i1_sig, &prependTarget) |> ignore
                     x.PrependProbe(unmem3Probe, [(OpCodes.Ldc_I4, Arg32 2)], unmem3Sig, &prependTarget) |> ignore
                     if isStruct then
                         x.PrependProbe(probes.disableInstrumentation, [], x.tokens.void_sig, &prependTarget) |> ignore
                         x.PrependInstr(OpCodes.Unbox_Any, typeTokenArg, &prependTarget) |> ignore
                         x.PrependProbe(probes.enableInstrumentation, [], x.tokens.void_sig, &prependTarget) |> ignore
-                    //brtrue.arg <- Target tgt
                     x.PrependPopOpmem &prependTarget |> ignore
 
                 | OpCodeValues.Ckfinite ->  x.AppendProbe(probes.ckfinite, [], x.tokens.void_sig, instr) |> ignore
