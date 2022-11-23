@@ -227,6 +227,8 @@ module API =
         val ReadDelegate : state -> term -> term
 
         val InitializeArray : state -> term -> term -> unit
+        
+        val UnmarshallVector : state -> heapAddress -> obj[] -> Type -> unit
 
         val Write : state -> term -> term -> state list
         val WriteLocalVariable : state -> stackKey -> term -> unit

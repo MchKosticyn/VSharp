@@ -332,6 +332,18 @@ type ClientMachine(entryPoint : Method, cmdArgs : string[] option, requestMakeSt
         cilState.state.evaluationStack <- evalStack
         cilState.lastPushInfo <- None
         cilState.path <- c.newCoveragePath @ cilState.path
+        
+        match c.unmarshalledData with
+        | NoData -> ()
+        | Array (ref, arrayBytes) ->
+            let arrayAddress = concreteMemory.GetVirtualAddress ref |> ConcreteHeapAddress
+            let arrayTyp = TypeOfAddress cilState.state arrayAddress
+            let elemTyp =
+                match arrayTyp with
+                    | _ when arrayTyp.IsSZArray -> arrayTyp.GetElementType()
+                    | _ -> internalfailf "received unmarshalled array ref, but its type is not SZArray!"
+            let array = parseVectorArray arrayBytes elemTyp
+            Memory.UnmarshallVector cilState.state arrayAddress array elemTyp
 
     member x.State with get() = cilState
 

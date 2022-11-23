@@ -304,6 +304,10 @@ bool Protocol::acceptReadObjectParameters(OBJID &objID, int &refOffsetsLength, i
     return true;
 }
 
+bool Protocol::getArrayInfo(INT_PTR arrayPtr, OBJID &objID, int &refOffsetsLength, int *&refOffsets) {
+    return false;
+}
+
 bool Protocol::sendStringsPoolIndex(const unsigned index) {
     unsigned messageLength = sizeof(unsigned);
     char *buffer = new char[messageLength];

@@ -61,6 +61,10 @@ type evalStackArgType =
     | OpRef = 6
     | OpStruct = 7
     | OpEmpty = 8
+    
+type unmarshalledData =
+    | NoData
+    | Array of UIntPtr * byte[]
 
 type concolicAddressKey =
     | ReferenceType
@@ -112,8 +116,8 @@ type execCommand = {
     deletedAddresses : UIntPtr array
     delegates : array<UIntPtr * Int32 * UIntPtr>
     newAddressesTypes : Type array
-    // TODO: add deleted addresses
     newCoveragePath : coverageLocation list
+    unmarshalledData : unmarshalledData
 }
 
 [<type: StructLayout(LayoutKind.Sequential, Pack=1, CharSet=CharSet.Ansi)>]
@@ -696,6 +700,18 @@ type Communicator(pipeFile) =
             for i in 1 .. newCoverageNodesCount do
                 let node = x.DeserializeCoverageLocation(dynamicBytes, &offset)
                 newCoveragePath <- node::newCoveragePath
+            let unmarshalledDataType = BitConverter.ToInt32(dynamicBytes, offset)
+            offset <- offset + sizeof<int32>
+            let unmarshalledDataSize = BitConverter.ToInt32(dynamicBytes, offset)
+            offset <- offset + sizeof<int32>
+            let unmarshalledData =
+                match unmarshalledDataType with
+                | 0 -> NoData
+                | 1 ->
+                    let ref = Reflection.BitConverterToUIntPtr dynamicBytes offset in offset <- offset + UIntPtr.Size
+                    Array (ref, dynamicBytes[offset .. offset + unmarshalledDataSize - 1])
+                | _ -> internalfailf "unexpected unmarshalledDataType value %O" unmarshalledDataType
+            offset <- offset + unmarshalledDataSize
             { isBranch = staticPart.isBranch
               callStackFramesPops = staticPart.callStackFramesPops
               evaluationStackPops = staticPart.evaluationStackPops
@@ -709,7 +725,8 @@ type Communicator(pipeFile) =
               deletedAddresses = deletedAddresses
               delegates = delegates
               newAddressesTypes = newAddressesTypes
-              newCoveragePath = newCoveragePath }
+              newCoveragePath = newCoveragePath
+              unmarshalledData = unmarshalledData }
         | None -> unexpectedlyTerminated()
 
     member private x.SizeOfConcrete (typ : Type) =

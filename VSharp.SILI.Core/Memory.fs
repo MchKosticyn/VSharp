@@ -897,7 +897,7 @@ module internal Memory =
         let termLens = List.map (objToTerm state typeof<int>) lens
         fillArrayBoundsSymbolic state address termLens termLBs arrayType
 
-    let private unmarshallVector (state : state) address (array : obj[]) typ =
+    let unmarshallVector (state : state) address (array : obj[]) typ =
         let elemType, _, isVector as arrayType = symbolicTypeToArrayType typ
         assert(isVector)
         let writeIndex state (idx : int) value =

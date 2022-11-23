@@ -20,6 +20,56 @@ void setProtocol(Protocol *p) {
     protocol = p;
 }
 
+enum UnmarshalledDataType {
+    None = 0,
+    Array = 1
+};
+
+struct UnmarshalledData {
+    UnmarshalledDataType type;
+    UINT_PTR ptr;
+    char* bytes;
+    SIZE sizeBytes;
+
+    UnmarshalledData() {
+        type = None;
+        bytes = nullptr;
+        sizeBytes = 0;
+        ptr = 0;
+    }
+
+    size_t size() const {
+        switch (type) {
+            case Array:
+                return sizeBytes + 2 * sizeof(INT32) + sizeof(UINT_PTR);
+            case None:
+                return 2 * sizeof(INT32);
+            default: FAIL_LOUD("unexpected unmarshalledDataType value!");
+        }
+    }
+
+    void serialize(char *&buffer) const {
+        WRITE_BYTES(INT32, buffer, (INT32)type);
+        WRITE_BYTES(INT32, buffer, (INT32)sizeBytes);
+        switch (type) {
+            case Array:
+                WRITE_BYTES(UINT_PTR, buffer, ptr);
+                memcpy(buffer, bytes, sizeBytes);
+                buffer += sizeBytes;
+                break;
+            case None:
+                break;
+            default: FAIL_LOUD("unexpected unmarshalledDataType value!");
+        }
+    }
+
+    ~UnmarshalledData() {
+        delete[] bytes;
+        bytes = nullptr;
+        sizeBytes = 0;
+    }
+};
+
 enum EvalStackArgType {
     OpSymbolic = 1,
     OpI4 = 2,
@@ -116,6 +166,7 @@ struct ExecCommand {
     OBJID *deletedAddresses;
     std::tuple<OBJID, INT32, OBJID> *delegates;
     const CoverageNode *newCoverageNodes;
+    UnmarshalledData *unmarshalledData;
 
     void serialize(char *&bytes, unsigned &count) const {
         count = 9 * sizeof(unsigned) + 3 * sizeof(BYTE) + sizeof(UINT_PTR) + 2 * sizeof(unsigned) * newCallStackFramesCount + sizeof(unsigned) * ipStackCount;
@@ -138,6 +189,7 @@ struct ExecCommand {
             node = node->next;
         }
         count += sizeof(unsigned);
+        count += unmarshalledData->size();
 
         bytes = new char[count];
         char *buffer = bytes;
@@ -187,10 +239,12 @@ struct ExecCommand {
             node->serialize(buffer);
             node = node->next;
         }
+
+        unmarshalledData->serialize(buffer);
     }
 };
 
-void initCommand(OFFSET offset, bool isBranch, unsigned opsCount, EvalStackOperand *ops, ExecCommand &command) {
+void initCommand(OFFSET offset, bool isBranch, unsigned opsCount, EvalStackOperand *ops, ExecCommand &command, UnmarshalledData &unmarshalled) {
     Stack &stack = vsharp::stack();
     StackFrame &top = stack.topFrame();
     command.isBranch = isBranch ? 1 : 0;
@@ -273,6 +327,8 @@ void initCommand(OFFSET offset, bool isBranch, unsigned opsCount, EvalStackOpera
     }
 
     command.newCoverageNodes = flushNewCoverageNodes();
+
+    command.unmarshalledData = &unmarshalled;
 }
 
 bool readExecResponse(StackFrame &top, EvalStackOperand *ops, unsigned &count, EvalStackOperand &result) {
@@ -415,7 +471,7 @@ void trackCoverage(OFFSET offset, StackPush &lastPushInfo, bool &stillExpectsCov
     }
 }
 
-void sendCommand(OFFSET offset, unsigned opsCount, EvalStackOperand *ops, bool mightFork = true) {
+void sendCommandUnmarshall(OFFSET offset, unsigned opsCount, EvalStackOperand *ops, UnmarshalledData &unmarshalled, bool mightFork = true) {
     getLock();
     StackPush lastStackPush;
     bool commandsDisabled;
@@ -430,7 +486,7 @@ void sendCommand(OFFSET offset, unsigned opsCount, EvalStackOperand *ops, bool m
     }
 
     ExecCommand command{};
-    initCommand(offset, false, opsCount, ops, command);
+    initCommand(offset, false, opsCount, ops, command, unmarshalled);
     protocol->sendSerializable(ExecuteCommand, command);
 
     // NOTE: handling commands from SILI (ReadBytes, ...)
@@ -460,6 +516,11 @@ void sendCommand(OFFSET offset, unsigned opsCount, EvalStackOperand *ops, bool m
     vsharp::stack().resetPopsTracking();
     freeCommand(command);
     freeLock();
+}
+
+void sendCommand(OFFSET offset, unsigned opsCount, EvalStackOperand *ops, bool mightFork = true) {
+    UnmarshalledData unmarshalled = UnmarshalledData();
+    sendCommandUnmarshall(offset, opsCount, ops, unmarshalled, mightFork);
 }
 
 void sendCommand0(OFFSET offset, bool mightFork = true) { sendCommand(offset, 0, nullptr, mightFork); }
@@ -971,7 +1032,7 @@ PROBE(void, Exec_Ldelem, (INT_PTR ptr, INT_PTR index, OFFSET offset)) {
     sendCommand(offset, 2, new EvalStackOperand[2] {mkop_p(ptr), mkop_4(index)});
 }
 
-bool checkStelemConcreteness(INT_PTR ptr, INT_PTR index, INT32 elemSize) {
+bool checkStelemConcreteness(INT_PTR ptr, INT_PTR index, INT32 elemSize, UnmarshalledData &unmarshalledData) {
     StackFrame &top = vsharp::topFrame();
     bool vConcrete = top.peek0();
     bool iConcrete = top.peek1();
@@ -979,46 +1040,58 @@ bool checkStelemConcreteness(INT_PTR ptr, INT_PTR index, INT32 elemSize) {
     int metadataSize = sizeof(INT_PTR) + sizeof(INT64);
     INT_PTR elemPtr = ptr + index * elemSize + metadataSize;
     bool memory = false;
+
+    // unmarshalling the array to SILI if needed
+    OBJID objID;
+    int offsetsLength;
+    int *offsets;
+    if (!protocol->getArrayInfo(ptr, objID, offsetsLength, offsets)) FAIL_LOUD("Could not get array parameters from SILI!");
+    Object *obj = (Object *)objID;
+    if (obj->isFullyConcrete() && (!iConcrete || !vConcrete)) {
+        unmarshalledData.type = Array;
+        unmarshalledData.ptr = ptr;
+        heap.unmarshallArray(objID, unmarshalledData.bytes, unmarshalledData.sizeBytes, elemSize, offsetsLength, offsets);
+    }
+
     if (ptrConcrete) memory = heap.readConcreteness(elemPtr, elemSize);
     if (memory) heap.writeConcreteness(elemPtr, elemSize, vConcrete);
     top.pop(3);
+
     return vConcrete && iConcrete && ptrConcrete && memory;
 }
+
+void Exec_Stelem_Common(INT_PTR ptr, INT_PTR index, EvalStackOperand op, INT32 elemSize, OFFSET offset) {
+    UnmarshalledData unmarshalledData = UnmarshalledData();
+    if (!checkStelemConcreteness(ptr, index, elemSize, unmarshalledData))
+        sendCommandUnmarshall(offset, 3, new EvalStackOperand[3] {mkop_p(ptr), mkop_4(index), op}, unmarshalledData);
+}
+
 PROBE(void, Exec_Stelem_I, (INT_PTR ptr, INT_PTR index, INT_PTR value, INT32 elemSize, OFFSET offset)) {
-    if (!checkStelemConcreteness(ptr, index, elemSize))
-        sendCommand(offset, 3, new EvalStackOperand[3] {mkop_p(ptr), mkop_4(index), mkop_p(value)});
+    Exec_Stelem_Common(ptr, index, mkop_p(value), elemSize, offset);
 }
 PROBE(void, Exec_Stelem_I1, (INT_PTR ptr, INT_PTR index, INT8 value, INT32 elemSize, OFFSET offset)) {
-    if (!checkStelemConcreteness(ptr, index, elemSize))
-        sendCommand(offset, 3, new EvalStackOperand[3] {mkop_p(ptr), mkop_4(index), mkop_4(value)});
+    Exec_Stelem_Common(ptr, index, mkop_4(value), elemSize, offset);
 }
 PROBE(void, Exec_Stelem_I2, (INT_PTR ptr, INT_PTR index, INT16 value, INT32 elemSize, OFFSET offset)) {
-    if (!checkStelemConcreteness(ptr, index, elemSize))
-        sendCommand(offset, 3, new EvalStackOperand[3] {mkop_p(ptr), mkop_4(index), mkop_4(value)});
+    Exec_Stelem_Common(ptr, index, mkop_4(value), elemSize, offset);
 }
 PROBE(void, Exec_Stelem_I4, (INT_PTR ptr, INT_PTR index, INT32 value, INT32 elemSize, OFFSET offset)) {
-    if (!checkStelemConcreteness(ptr, index, elemSize))
-        sendCommand(offset, 3, new EvalStackOperand[3] {mkop_p(ptr), mkop_4(index), mkop_4(value)});
+    Exec_Stelem_Common(ptr, index, mkop_4(value), elemSize, offset);
 }
 PROBE(void, Exec_Stelem_I8, (INT_PTR ptr, INT_PTR index, INT64 value, INT32 elemSize, OFFSET offset)) {
-    if (!checkStelemConcreteness(ptr, index, elemSize))
-        sendCommand(offset, 3, new EvalStackOperand[3] {mkop_p(ptr), mkop_4(index), mkop_8(value)});
+    Exec_Stelem_Common(ptr, index, mkop_8(value), elemSize, offset);
 }
 PROBE(void, Exec_Stelem_R4, (INT_PTR ptr, INT_PTR index, FLOAT value, INT32 elemSize, OFFSET offset)) {
-    if (!checkStelemConcreteness(ptr, index, elemSize))
-        sendCommand(offset, 3, new EvalStackOperand[3] {mkop_p(ptr), mkop_4(index), mkop_f4(value)});
+    Exec_Stelem_Common(ptr, index, mkop_f4(value), elemSize, offset);
 }
 PROBE(void, Exec_Stelem_R8, (INT_PTR ptr, INT_PTR index, DOUBLE value, INT32 elemSize, OFFSET offset)) {
-    if (!checkStelemConcreteness(ptr, index, elemSize))
-        sendCommand(offset, 3, new EvalStackOperand[3] {mkop_p(ptr), mkop_4(index), mkop_f8(value)});
+    Exec_Stelem_Common(ptr, index, mkop_f8(value), elemSize, offset);
 }
 PROBE(void, Exec_Stelem_Ref, (INT_PTR ptr, INT_PTR index, INT_PTR value, INT32 elemSize, OFFSET offset)) {
-    if (!checkStelemConcreteness(ptr, index, elemSize))
-        sendCommand(offset, 3, new EvalStackOperand[3] {mkop_p(ptr), mkop_4(index), mkop_p(value)});
+    Exec_Stelem_Common(ptr, index, mkop_p(value), elemSize, offset);
 }
 PROBE(void, Exec_Stelem_Struct, (INT_PTR ptr, INT_PTR index, INT_PTR boxedValue, INT32 elemSize, OFFSET offset)) {
-    if (!checkStelemConcreteness(ptr, index, elemSize))
-        sendCommand(offset, 3, new EvalStackOperand[3] {mkop_p(ptr), mkop_4(index), mkop_struct(boxedValue)});
+    Exec_Stelem_Common(ptr, index, mkop_struct(boxedValue), elemSize, offset);
 }
 
 PROBE(void, Track_Ckfinite, ()) {

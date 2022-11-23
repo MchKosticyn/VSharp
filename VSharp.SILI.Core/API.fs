@@ -364,6 +364,8 @@ module API =
         let ReadDelegate state reference = Memory.readDelegate state reference
 
         let InitializeArray state arrayRef handleTerm = ArrayInitialization.initializeArray state arrayRef handleTerm
+        
+        let UnmarshallVector state address array typ = Memory.unmarshallVector state address array typ
 
         let WriteLocalVariable state location value = Memory.writeStackLocation state location value
         let Write state reference value =
