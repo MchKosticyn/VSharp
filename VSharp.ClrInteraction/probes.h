@@ -22,7 +22,8 @@ void setProtocol(Protocol *p) {
 
 enum UnmarshalledDataType {
     None = 0,
-    Array = 1
+    UArray = 1,
+    UObject = 2
 };
 
 struct UnmarshalledData {
@@ -40,7 +41,8 @@ struct UnmarshalledData {
 
     size_t size() const {
         switch (type) {
-            case Array:
+            case UObject:
+            case UArray:
                 return sizeBytes + 2 * sizeof(INT32) + sizeof(UINT_PTR);
             case None:
                 return 2 * sizeof(INT32);
@@ -52,7 +54,8 @@ struct UnmarshalledData {
         WRITE_BYTES(INT32, buffer, (INT32)type);
         WRITE_BYTES(INT32, buffer, (INT32)sizeBytes);
         switch (type) {
-            case Array:
+            case UObject:
+            case UArray:
                 WRITE_BYTES(UINT_PTR, buffer, ptr);
                 memcpy(buffer, bytes, sizeBytes);
                 buffer += sizeBytes;
@@ -609,6 +612,30 @@ EvalStackOperand* createOps(int opsCount, OFFSET offset) {
     return ops;
 }
 
+void unmarshallData(INT_PTR ptr, UnmarshalledData &unmarshalledData) {
+    // TODO: remember the ptr used and check if it was unmarshalled before proceeding
+    VirtualAddress vAddr{};
+    resolve(ptr, vAddr);
+    Object *obj = (Object*)vAddr.obj;
+    if (!obj->isFullyConcrete()) return;
+
+    OBJID objID;
+    int offsetsLength;
+    int *offsets;
+    int elemSize;
+    unmarshalledData.ptr = ptr;
+    if (obj->isArrayData()) {
+        unmarshalledData.type = UArray;
+        if (!protocol->getArrayInfo(ptr, objID, elemSize, offsetsLength, offsets)) FAIL_LOUD("Could not get array parameters from SILI!");
+        heap.unmarshallArray(objID, unmarshalledData.bytes, unmarshalledData.sizeBytes, elemSize, offsetsLength, offsets);
+    }
+    else {
+        unmarshalledData.type = UObject;
+        if (!protocol->getObjectInfo(ptr, objID, offsetsLength, offsets)) FAIL_LOUD("Could not get object parameters from SILI!");
+        heap.unmarshall(objID, unmarshalledData.bytes, unmarshalledData.sizeBytes, offsetsLength, offsets);
+    }
+}
+
 /// ------------------------------ Probes declarations ---------------------------
 
 std::vector<unsigned long long> ProbesAddresses;
@@ -806,21 +833,47 @@ PROBE(void, Track_Ldind, (INT_PTR ptr, INT32 sizeOfPtr, OFFSET offset)) {
     else sendCommand(offset, 1, new EvalStackOperand[1] { mkop_p(ptr) });
 }
 
-PROBE(COND, Track_Stind, (INT_PTR ptr, INT32 sizeOfPtr)) {
+//PROBE(COND, Track_Stind, (INT_PTR ptr, INT32 sizeOfPtr)) {
+bool checkStindConcreteness(INT_PTR ptr, INT32 sizeOfPtr, UnmarshalledData &unmarshalledData) {
     StackFrame &top = topFrame();
     auto valueIsConcrete = top.peek0();
     auto addressIsConcrete = top.peek1();
+    // probable change of the object from fully concrete to partially symbolic
+    if (addressIsConcrete && !valueIsConcrete) {
+        unmarshallData(ptr, unmarshalledData);
+    }
     if (addressIsConcrete) heap.writeConcreteness(ptr, sizeOfPtr, valueIsConcrete);
     return top.pop(2);
 }
 
-PROBE(void, Exec_Stind_I1, (INT_PTR ptr, INT8 value, OFFSET offset)) { sendCommand(offset, 2, new EvalStackOperand[2] { mkop_p(ptr), mkop_4(value) }); }
-PROBE(void, Exec_Stind_I2, (INT_PTR ptr, INT16 value, OFFSET offset)) { sendCommand(offset, 2, new EvalStackOperand[2] { mkop_p(ptr), mkop_4(value) }); }
-PROBE(void, Exec_Stind_I4, (INT_PTR ptr, INT32 value, OFFSET offset)) { sendCommand(offset, 2, new EvalStackOperand[2] { mkop_p(ptr), mkop_4(value) }); }
-PROBE(void, Exec_Stind_I8, (INT_PTR ptr, INT64 value, OFFSET offset)) { sendCommand(offset, 2, new EvalStackOperand[2] { mkop_p(ptr), mkop_8(value) }); }
-PROBE(void, Exec_Stind_R4, (INT_PTR ptr, FLOAT value, OFFSET offset)) { sendCommand(offset, 2, new EvalStackOperand[2] { mkop_p(ptr), mkop_f4(value) }); }
-PROBE(void, Exec_Stind_R8, (INT_PTR ptr, DOUBLE value, OFFSET offset)) { sendCommand(offset, 2, new EvalStackOperand[2] { mkop_p(ptr), mkop_f8(value) }); }
-PROBE(void, Exec_Stind_ref, (INT_PTR ptr, INT_PTR value, OFFSET offset)) { sendCommand(offset, 2, new EvalStackOperand[2] { mkop_p(ptr), mkop_p(value) }); }
+inline void Exec_Stind_Common(INT_PTR ptr, INT32 sizeOfPtr, EvalStackOperand op, OFFSET offset) {
+    UnmarshalledData unmarshalledData = UnmarshalledData();
+    if (!checkStindConcreteness(ptr, sizeOfPtr, unmarshalledData)) {
+        sendCommandUnmarshall(offset, 2, new EvalStackOperand[2] { mkop_p(ptr), op }, unmarshalledData);
+    }
+}
+
+PROBE(void, Exec_Stind_I1, (INT_PTR ptr, INT32 sizeOfPtr, INT8 value, OFFSET offset)) {
+    Exec_Stind_Common(ptr, sizeOfPtr, mkop_4(value), offset);
+}
+PROBE(void, Exec_Stind_I2, (INT_PTR ptr, INT32 sizeOfPtr, INT16 value, OFFSET offset)) {
+    Exec_Stind_Common(ptr, sizeOfPtr, mkop_4(value), offset);
+}
+PROBE(void, Exec_Stind_I4, (INT_PTR ptr, INT32 sizeOfPtr, INT32 value, OFFSET offset)) {
+    Exec_Stind_Common(ptr, sizeOfPtr, mkop_4(value), offset);
+}
+PROBE(void, Exec_Stind_I8, (INT_PTR ptr, INT32 sizeOfPtr, INT64 value, OFFSET offset)) {
+    Exec_Stind_Common(ptr, sizeOfPtr, mkop_8(value), offset);
+}
+PROBE(void, Exec_Stind_R4, (INT_PTR ptr, INT32 sizeOfPtr, FLOAT value, OFFSET offset)) {
+    Exec_Stind_Common(ptr, sizeOfPtr, mkop_f4(value), offset);
+}
+PROBE(void, Exec_Stind_R8, (INT_PTR ptr, INT32 sizeOfPtr, DOUBLE value, OFFSET offset)) {
+    Exec_Stind_Common(ptr, sizeOfPtr, mkop_f8(value), offset);
+}
+PROBE(void, Exec_Stind_ref, (INT_PTR ptr, INT32 sizeOfPtr, INT_PTR value, OFFSET offset)) {
+    Exec_Stind_Common(ptr, sizeOfPtr, mkop_p(value), offset);
+}
 
 inline void conv(OFFSET offset) {
     StackFrame &top = vsharp::topFrame();
@@ -947,11 +1000,15 @@ PROBE(void, Track_Ldfld_Struct, (INT32 fieldOffset, INT32 fieldSize, OFFSET offs
 }
 PROBE(void, Track_Ldflda, (INT_PTR objPtr, mdToken fieldToken, OFFSET offset)) { /*TODO*/ }
 
-inline bool stfld(INT_PTR fieldPtr, INT32 fieldSize) {
+inline bool stfld(INT_PTR ptr, INT_PTR fieldPtr, INT32 fieldSize, UnmarshalledData &unmarshalledData) {
     StackFrame &top = vsharp::topFrame();
     bool value = top.peek0();
     bool obj = top.peek1();
     bool memory = false;
+    // probable change of the object from fully concrete to partially symbolic
+    if (obj && !value) {
+        unmarshallData(ptr, unmarshalledData);
+    }
     if (obj) memory = heap.readConcreteness(fieldPtr, fieldSize);
     if (memory) {
         heap.writeConcreteness(fieldPtr, fieldSize, value);
@@ -960,41 +1017,33 @@ inline bool stfld(INT_PTR fieldPtr, INT32 fieldSize) {
     return value && obj && memory;
 }
 
+inline void Track_Stfld_Common(INT_PTR fieldPtr, INT_PTR ptr, EvalStackOperand op, INT32 fieldSize, OFFSET offset) {
+    UnmarshalledData unmarshalledData = UnmarshalledData();
+    if (!stfld(ptr, fieldPtr, fieldSize, unmarshalledData))
+        sendCommandUnmarshall(offset, 2, new EvalStackOperand[2] {mkop_p(ptr), op}, unmarshalledData);
+}
+
 PROBE(void, Track_Stfld_4, (INT_PTR fieldPtr, INT_PTR ptr, INT32 value, OFFSET offset)) {
-    if (!stfld(fieldPtr, 4)) {
-        sendCommand(offset, 2, new EvalStackOperand[2] { mkop_p(ptr), mkop_4(value) });
-    }
+    Track_Stfld_Common(fieldPtr, ptr, mkop_4(value), 4, offset);
 }
 PROBE(void, Track_Stfld_8, (INT_PTR fieldPtr, INT_PTR ptr, INT64 value, OFFSET offset)) {
-    if (!stfld(fieldPtr, 8)) {
-        sendCommand(offset, 2, new EvalStackOperand[2] { mkop_p(ptr), mkop_8(value) });
-    }
+    Track_Stfld_Common(fieldPtr, ptr, mkop_8(value), 8, offset);
 }
 PROBE(void, Track_Stfld_f4, (INT_PTR fieldPtr, INT_PTR ptr, FLOAT value, OFFSET offset)) {
-    if (!stfld(fieldPtr, sizeof(FLOAT))) {
-        sendCommand(offset, 2, new EvalStackOperand[2] { mkop_p(ptr), mkop_f4(value) });
-    }
+    Track_Stfld_Common(fieldPtr, ptr, mkop_f4(value), sizeof(FLOAT), offset);
 }
 PROBE(void, Track_Stfld_f8, (INT_PTR fieldPtr, INT_PTR ptr, DOUBLE value, OFFSET offset)) {
-    if (!stfld(fieldPtr, sizeof(DOUBLE))) {
-        sendCommand(offset, 2, new EvalStackOperand[2] { mkop_p(ptr), mkop_f8(value) });
-    }
+    Track_Stfld_Common(fieldPtr, ptr, mkop_f8(value), sizeof(DOUBLE), offset);
 }
 PROBE(void, Track_Stfld_p, (INT_PTR fieldPtr, INT_PTR ptr, INT_PTR value, OFFSET offset)) {
-    if (!stfld(fieldPtr, sizeof(INT_PTR))) {
-        sendCommand(offset, 2, new EvalStackOperand[2] { mkop_p(ptr), mkop_p(value) });
-    }
+    Track_Stfld_Common(fieldPtr, ptr, mkop_p(value), sizeof(INT_PTR), offset);
 }
 PROBE(void, Track_Stfld_struct, (INT_PTR fieldPtr, INT32 fieldSize, INT_PTR ptr, INT_PTR value, OFFSET offset)) {
-    if (!stfld(fieldPtr, fieldSize)) {
-        sendCommand(offset, 2, new EvalStackOperand[2] { mkop_p(ptr), mkop_struct(value) });
-    }
+    Track_Stfld_Common(fieldPtr, ptr, mkop_struct(value), fieldSize, offset);
 }
 PROBE(void, Track_Stfld_RefLikeStruct, (INT32 fieldOffset, INT32 fieldSize, OFFSET offset)) {
     INT_PTR ptr = vsharp::stack().opmem(offset).unmem_refLikeStruct();
-    if (!stfld(ptr + fieldOffset, fieldSize)) {
-        sendCommand(offset, 2, new EvalStackOperand[2] { mkop_p(ptr), mkop_refLikeStruct() });
-    }
+    Track_Stfld_Common(ptr + fieldOffset, ptr, mkop_refLikeStruct(), fieldSize, offset);
 }
 
 PROBE(void, Track_Ldsfld, (mdToken fieldToken, OFFSET offset)) {
@@ -1032,7 +1081,7 @@ PROBE(void, Exec_Ldelem, (INT_PTR ptr, INT_PTR index, OFFSET offset)) {
     sendCommand(offset, 2, new EvalStackOperand[2] {mkop_p(ptr), mkop_4(index)});
 }
 
-bool checkStelemConcreteness(INT_PTR ptr, INT_PTR index, INT32 elemSize, UnmarshalledData &unmarshalledData) {
+inline bool checkStelemConcreteness(INT_PTR ptr, INT_PTR index, INT32 elemSize, UnmarshalledData &unmarshalledData) {
     StackFrame &top = vsharp::topFrame();
     bool vConcrete = top.peek0();
     bool iConcrete = top.peek1();
@@ -1040,19 +1089,10 @@ bool checkStelemConcreteness(INT_PTR ptr, INT_PTR index, INT32 elemSize, Unmarsh
     int metadataSize = sizeof(INT_PTR) + sizeof(INT64);
     INT_PTR elemPtr = ptr + index * elemSize + metadataSize;
     bool memory = false;
-
-    // unmarshalling the array to SILI if needed
-    OBJID objID;
-    int offsetsLength;
-    int *offsets;
-    if (!protocol->getArrayInfo(ptr, objID, offsetsLength, offsets)) FAIL_LOUD("Could not get array parameters from SILI!");
-    Object *obj = (Object *)objID;
-    if (obj->isFullyConcrete() && (!iConcrete || !vConcrete)) {
-        unmarshalledData.type = Array;
-        unmarshalledData.ptr = ptr;
-        heap.unmarshallArray(objID, unmarshalledData.bytes, unmarshalledData.sizeBytes, elemSize, offsetsLength, offsets);
+    // probable change of the object from fully concrete to partially symbolic
+    if (!iConcrete || !vConcrete) {
+        unmarshallData(ptr, unmarshalledData);
     }
-
     if (ptrConcrete) memory = heap.readConcreteness(elemPtr, elemSize);
     if (memory) heap.writeConcreteness(elemPtr, elemSize, vConcrete);
     top.pop(3);
@@ -1060,7 +1100,7 @@ bool checkStelemConcreteness(INT_PTR ptr, INT_PTR index, INT32 elemSize, Unmarsh
     return vConcrete && iConcrete && ptrConcrete && memory;
 }
 
-void Exec_Stelem_Common(INT_PTR ptr, INT_PTR index, EvalStackOperand op, INT32 elemSize, OFFSET offset) {
+inline void Exec_Stelem_Common(INT_PTR ptr, INT_PTR index, EvalStackOperand op, INT32 elemSize, OFFSET offset) {
     UnmarshalledData unmarshalledData = UnmarshalledData();
     if (!checkStelemConcreteness(ptr, index, elemSize, unmarshalledData))
         sendCommandUnmarshall(offset, 3, new EvalStackOperand[3] {mkop_p(ptr), mkop_4(index), op}, unmarshalledData);

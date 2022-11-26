@@ -876,7 +876,7 @@ module internal Memory =
 
 // ----------------- Unmarshalling: from concrete to symbolic memory -----------------
 
-    let private unmarshallClass (state : state) address fields =
+    let unmarshallClass (state : state) address (fields : (Reflection.FieldInfo * obj)[]) =
         let writeField state (fieldInfo : Reflection.FieldInfo, valueObj : obj) =
             let value = objToTerm state fieldInfo.FieldType valueObj
             let fieldId = Reflection.wrapField fieldInfo
@@ -908,7 +908,7 @@ module internal Memory =
         let lens = [Array.length array |> makeNumber]
         fillArrayBoundsSymbolic state address lens lbs arrayType
 
-    let private unmarshallString (state : state) address (chars : char[]) =
+    let unmarshallString (state : state) address (chars : char[]) =
         let concreteStringLength = Array.length chars
         let stringLength = makeNumber concreteStringLength
         let arrayLength = makeNumber (concreteStringLength + 1)

@@ -365,7 +365,9 @@ module API =
 
         let InitializeArray state arrayRef handleTerm = ArrayInitialization.initializeArray state arrayRef handleTerm
         
+        let UnmarshallClass state address fields = Memory.unmarshallClass state address fields
         let UnmarshallVector state address array typ = Memory.unmarshallVector state address array typ
+        let UnmarshallString state address str = Memory.unmarshallString state address str
 
         let WriteLocalVariable state location value = Memory.writeStackLocation state location value
         let Write state reference value =

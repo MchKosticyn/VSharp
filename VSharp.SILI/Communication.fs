@@ -64,7 +64,7 @@ type evalStackArgType =
     
 type unmarshalledData =
     | NoData
-    | Array of UIntPtr * byte[]
+    | UData of UIntPtr * byte[]
 
 type concolicAddressKey =
     | ReferenceType
@@ -707,9 +707,10 @@ type Communicator(pipeFile) =
             let unmarshalledData =
                 match unmarshalledDataType with
                 | 0 -> NoData
-                | 1 ->
+                | 1
+                | 2 ->
                     let ref = Reflection.BitConverterToUIntPtr dynamicBytes offset in offset <- offset + UIntPtr.Size
-                    Array (ref, dynamicBytes[offset .. offset + unmarshalledDataSize - 1])
+                    UData (ref, dynamicBytes[offset .. offset + unmarshalledDataSize - 1])
                 | _ -> internalfailf "unexpected unmarshalledDataType value %O" unmarshalledDataType
             offset <- offset + unmarshalledDataSize
             { isBranch = staticPart.isBranch

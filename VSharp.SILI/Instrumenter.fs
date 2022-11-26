@@ -830,14 +830,14 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                             | BinOp(evaluationStackCellType.I, evaluationStackCellType.Ref) -> ()
                             | _ -> internalfail "Stack validation failed"
                             x.PrependMem2_p &prependTarget
-                            probes.execStind_ref, x.tokens.void_i_i_offset_sig, probes.unmem_p, x.tokens.i_i1_sig
+                            probes.execStind_ref, x.tokens.void_i_i4_i_offset_sig, probes.unmem_p, x.tokens.i_i1_sig
                         | OpCodeValues.Stind_Ref ->
                             match instr.stackState with
                             | BinOp(evaluationStackCellType.Ref, evaluationStackCellType.I)
                             | BinOp(evaluationStackCellType.Ref, evaluationStackCellType.Ref) -> ()
                             | _ -> internalfail "Stack validation failed"
                             x.PrependMem2_p &prependTarget
-                            probes.execStind_ref, x.tokens.void_i_i_offset_sig, probes.unmem_p, x.tokens.i_i1_sig
+                            probes.execStind_ref, x.tokens.void_i_i4_i_offset_sig, probes.unmem_p, x.tokens.i_i1_sig
                         | OpCodeValues.Stind_I1 ->
                             match instr.stackState with
                             | BinOp(evaluationStackCellType.I1, evaluationStackCellType.I)
@@ -848,7 +848,7 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                             | BinOp(evaluationStackCellType.I4, evaluationStackCellType.Ref) -> ()
                             | _ -> internalfail "Stack validation failed"
                             x.PrependMem2_p_1 &prependTarget
-                            probes.execStind_I1, x.tokens.void_i_i1_offset_sig, probes.unmem_1, x.tokens.i1_i1_sig
+                            probes.execStind_I1, x.tokens.void_i_i4_i1_offset_sig, probes.unmem_1, x.tokens.i1_i1_sig
                         | OpCodeValues.Stind_I2 ->
                             match instr.stackState with
                             | BinOp(evaluationStackCellType.I2, evaluationStackCellType.I)
@@ -857,46 +857,47 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                             | BinOp(evaluationStackCellType.I4, evaluationStackCellType.Ref) -> ()
                             | _ -> internalfail "Stack validation failed"
                             x.PrependMem2_p_2 &prependTarget
-                            probes.execStind_I2, x.tokens.void_i_i2_offset_sig, probes.unmem_2, x.tokens.i2_i1_sig
+                            probes.execStind_I2, x.tokens.void_i_i4_i2_offset_sig, probes.unmem_2, x.tokens.i2_i1_sig
                         | OpCodeValues.Stind_I4 ->
                             match instr.stackState with
                             | BinOp(evaluationStackCellType.I4, evaluationStackCellType.I)
                             | BinOp(evaluationStackCellType.I4, evaluationStackCellType.Ref) -> ()
                             | _ -> internalfail "Stack validation failed"
                             x.PrependMem2_p_4 &prependTarget
-                            probes.execStind_I4, x.tokens.void_i_i4_offset_sig, probes.unmem_4, x.tokens.i4_i1_sig
+                            probes.execStind_I4, x.tokens.void_i_i4_i4_offset_sig, probes.unmem_4, x.tokens.i4_i1_sig
                         | OpCodeValues.Stind_I8 ->
                             match instr.stackState with
                             | BinOp(evaluationStackCellType.I8, evaluationStackCellType.I)
                             | BinOp(evaluationStackCellType.I8, evaluationStackCellType.Ref) -> ()
                             | _ -> internalfail "Stack validation failed"
                             x.PrependMem2_p_8 &prependTarget
-                            probes.execStind_I8, x.tokens.void_i_i8_offset_sig, probes.unmem_8, x.tokens.i8_i1_sig
+                            probes.execStind_I8, x.tokens.void_i_i4_i8_offset_sig, probes.unmem_8, x.tokens.i8_i1_sig
                         | OpCodeValues.Stind_R4 ->
                             match instr.stackState with
                             | BinOp(evaluationStackCellType.R4, evaluationStackCellType.I)
                             | BinOp(evaluationStackCellType.R4, evaluationStackCellType.Ref) -> ()
                             | _ -> internalfail "Stack validation failed"
                             x.PrependMem2_p_f4 &prependTarget
-                            probes.execStind_R4, x.tokens.void_i_r4_offset_sig, probes.unmem_f4, x.tokens.r4_i1_sig
+                            probes.execStind_R4, x.tokens.void_i_i4_r4_offset_sig, probes.unmem_f4, x.tokens.r4_i1_sig
                         | OpCodeValues.Stind_R8 ->
                             match instr.stackState with
                             | BinOp(evaluationStackCellType.R8, evaluationStackCellType.I)
                             | BinOp(evaluationStackCellType.R8, evaluationStackCellType.Ref) -> ()
                             | _ -> internalfail "Stack validation failed"
                             x.PrependMem2_p_f8 &prependTarget
-                            probes.execStind_R8, x.tokens.void_i_r8_offset_sig, probes.unmem_f8, x.tokens.r8_i1_sig
+                            probes.execStind_R8, x.tokens.void_i_i4_r8_offset_sig, probes.unmem_f8, x.tokens.r8_i1_sig
                         | _ -> __unreachable__()
 
+                    // x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 0)], x.tokens.i_i1_sig, &prependTarget) |> ignore
+                    // x.PrependInstr(OpCodes.Ldc_I4, Arg32 (x.SizeOfIndirection opcodeValue), &prependTarget) |> ignore
+                    // x.PrependProbe(probes.stind, [], x.tokens.bool_i_i4_sig, &prependTarget) |> ignore
+                    // let br_true = x.PrependBranch(OpCodes.Brtrue_S, &prependTarget)
                     x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 0)], x.tokens.i_i1_sig, &prependTarget) |> ignore
                     x.PrependInstr(OpCodes.Ldc_I4, Arg32 (x.SizeOfIndirection opcodeValue), &prependTarget) |> ignore
-                    x.PrependProbe(probes.stind, [], x.tokens.bool_i_i4_sig, &prependTarget) |> ignore
-                    let br_true = x.PrependBranch(OpCodes.Brtrue_S, &prependTarget)
-                    x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 0)], x.tokens.i_i1_sig, &prependTarget) |> ignore
                     x.PrependProbe(unmem2Probe, [(OpCodes.Ldc_I4, Arg32 1)], unmem2Sig, &prependTarget) |> ignore
                     x.PrependProbeWithOffset(execProbe, [], execSig, &prependTarget) |> ignore
-                    let unmem_p = x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 0)], x.tokens.i_i1_sig, &prependTarget)
-                    br_true.arg <- Target unmem_p
+                    // let unmem_p = x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 0)], x.tokens.i_i1_sig, &prependTarget)
+                    // br_true.arg <- Target unmem_p
                     x.PrependProbe(unmem2Probe, [(OpCodes.Ldc_I4, Arg32 1)], unmem2Sig, &prependTarget) |> ignore
                     x.PrependPopOpmem &prependTarget |> ignore
 

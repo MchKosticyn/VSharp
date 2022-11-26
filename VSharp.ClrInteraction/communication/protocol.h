@@ -72,7 +72,8 @@ public:
     bool acceptReadArrayParameters(OBJID &objID, INT32 &elemSize, int &refOffsetsLength, int *&refOffsets);
     bool acceptHeapReadingParameters(VirtualAddress &address, INT32 &size, int &refOffsetsLength, int *&refOffsets);
     CoverageNode *acceptCoverageInformation();
-    bool getArrayInfo(INT_PTR arrayPtr, OBJID &objID, int &refOffsetsLength, int *&refOffsets);
+    bool getArrayInfo(INT_PTR arrayPtr, OBJID &objID, int &elemSize, int &refOffsetsLength, int *&refOffsets);
+    bool getObjectInfo(INT_PTR objectPtr, OBJID &objID, int &refOffsetsLength, int *&refOffsets);
     bool sendToken(mdToken token);
     bool sendBytes(char *bytes, int size);
     bool sendStringsPoolIndex(unsigned index);

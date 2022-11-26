@@ -570,7 +570,7 @@ HRESULT STDMETHODCALLTYPE CorProfiler::ObjectAllocated(ObjectID objectId, ClassI
     resolveType(classId, isValid, isArray, arrayTypes, tokens, typeArgsCount, moduleNames, nameLengths, assemblyNames, assemblySizes);
     serializeType(isValid, isArray, arrayTypes, tokens, typeArgsCount, moduleNames, nameLengths, type, typeLength, assemblyNames, assemblySizes);
 
-    heap.allocateObject(objectId, size, type, typeLength);
+    heap.allocateObject(objectId, size, type, typeLength, isArray[0]);
     return S_OK;
 }
 

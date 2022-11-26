@@ -92,12 +92,14 @@ protected:
     cell *concreteness = nullptr;
     bool fullConcreteness = true;
     ObjectLocation m_location;
+    bool isArray;
 public:
-    Object(ADDR address, SIZE size, const ObjectLocation &location);
+    Object(ADDR address, SIZE size, const ObjectLocation &location, bool isArray);
     ~Object() override;
     std::string toString() const override;
     bool readConcreteness(SIZE offset, SIZE size) const;
     bool isFullyConcrete() const;
+    bool isArrayData() const;
     void writeConcretenessWholeObject(bool vConcreteness);
     void writeConcreteness(SIZE offset, SIZE size, bool vConcreteness);
     char *readBytes(SIZE offset, SIZE size) const;
@@ -176,7 +178,7 @@ private:
 public:
     Storage();
 
-    OBJID allocateObject(ADDR address, SIZE size, char *type, unsigned long typeLength);
+    OBJID allocateObject(ADDR address, SIZE size, char *type, unsigned long typeLength, bool isArray);
     // Allocate block of memory controlled by stack
     OBJID allocateLocal(LocalObject *s);
     // Allocate block of static memory

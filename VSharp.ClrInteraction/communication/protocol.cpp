@@ -304,7 +304,11 @@ bool Protocol::acceptReadObjectParameters(OBJID &objID, int &refOffsetsLength, i
     return true;
 }
 
-bool Protocol::getArrayInfo(INT_PTR arrayPtr, OBJID &objID, int &refOffsetsLength, int *&refOffsets) {
+bool Protocol::getArrayInfo(INT_PTR arrayPtr, OBJID &objID, int &elemSize, int &refOffsetsLength, int *&refOffsets) {
+    return false;
+}
+
+bool Protocol::getObjectInfo(INT_PTR objectPtr, OBJID &objID, int &refOffsetsLength, int *&refOffsets) {
     return false;
 }
 

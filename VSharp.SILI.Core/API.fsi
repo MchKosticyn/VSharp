@@ -228,7 +228,9 @@ module API =
 
         val InitializeArray : state -> term -> term -> unit
         
+        val UnmarshallClass : state -> heapAddress -> (FieldInfo * obj)[] -> unit
         val UnmarshallVector : state -> heapAddress -> obj[] -> Type -> unit
+        val UnmarshallString : state -> heapAddress -> char[] -> unit
 
         val Write : state -> term -> term -> state list
         val WriteLocalVariable : state -> stackKey -> term -> unit

@@ -335,15 +335,26 @@ type ClientMachine(entryPoint : Method, cmdArgs : string[] option, requestMakeSt
         
         match c.unmarshalledData with
         | NoData -> ()
-        | Array (ref, arrayBytes) ->
-            let arrayAddress = concreteMemory.GetVirtualAddress ref |> ConcreteHeapAddress
-            let arrayTyp = TypeOfAddress cilState.state arrayAddress
-            let elemTyp =
-                match arrayTyp with
-                    | _ when arrayTyp.IsSZArray -> arrayTyp.GetElementType()
-                    | _ -> internalfailf "received unmarshalled array ref, but its type is not SZArray!"
-            let array = parseVectorArray arrayBytes elemTyp
-            Memory.UnmarshallVector cilState.state arrayAddress array elemTyp
+        | UData (ref, dataBytes) ->
+            let dataAddress = concreteMemory.GetVirtualAddress ref |> ConcreteHeapAddress
+            let dataTyp = TypeOfAddress cilState.state dataAddress
+            match dataTyp with
+            | _ when dataTyp.IsSZArray ->
+                let elemTyp = dataTyp.GetElementType()
+                let array = parseVectorArray dataBytes elemTyp
+                Memory.UnmarshallVector cilState.state dataAddress array elemTyp
+            | _ when dataTyp.IsArray ->
+                let rank = dataTyp.GetArrayRank()
+                internalfailf "Unmarshalling non-vector array (rank = %O) is not implemented!" rank
+            | _ when dataTyp = typeof<String> ->
+                let chars = parseString dataBytes
+                Memory.UnmarshallString cilState.state dataAddress chars
+            | _ when dataTyp.IsValueType ->
+                let fieldOffsets = fieldsWithOffsets dataTyp
+                let fields = parseFields dataBytes fieldOffsets
+                Memory.UnmarshallClass cilState.state dataAddress fields
+            | _ ->
+                internalfailf "received unmarshalled object ref, but its type is not String, SZArray nor ValueType!"
 
     member x.State with get() = cilState
 

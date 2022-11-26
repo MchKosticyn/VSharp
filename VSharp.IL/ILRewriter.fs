@@ -66,7 +66,6 @@ type probes = {
     mutable execBinOp_p_4_ovf : uint64
 
     mutable ldind : uint64
-    mutable stind : uint64
     mutable execStind_I1 : uint64
     mutable execStind_I2 : uint64
     mutable execStind_I4 : uint64
@@ -269,7 +268,13 @@ type signatureTokens = {
     mutable void_i_i_offset_sig : uint32
     mutable void_i_token_offset_sig : uint32
     mutable void_i_u2_size_sig : uint32
+    mutable void_i_i4_i1_offset_sig : uint32
+    mutable void_i_i4_i2_offset_sig : uint32
     mutable void_i_i4_i4_offset_sig : uint32
+    mutable void_i_i4_i8_offset_sig : uint32
+    mutable void_i_i4_r4_offset_sig : uint32
+    mutable void_i_i4_r8_offset_sig : uint32
+    mutable void_i_i4_i_offset_sig : uint32
     mutable void_u2_i4_i4_offset_sig : uint32
     mutable void_u2_i4_i_offset_sig : uint32
     mutable void_u2_i8_i4_offset_sig : uint32
