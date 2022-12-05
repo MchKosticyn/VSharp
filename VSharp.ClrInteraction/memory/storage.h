@@ -3,6 +3,7 @@
 
 #include <map>
 #include <vector>
+#include <unordered_set>
 #include "intervalTree.h"
 #include "cor.h"
 #include "corprof.h"
@@ -170,6 +171,7 @@ private:
     std::map<OBJID, std::pair<char*, unsigned long>> newAddresses;
     std::vector<OBJID> deletedAddresses;
     std::map<OBJID, std::pair<INT32, OBJID>> delegates;
+    std::unordered_set<OBJID> unmarshalledObjects;
 
     bool resolve(ADDR address, VirtualAddress &vAddress) const;
     void resolveRefInHeapBytes(char *bytes) const;
@@ -203,8 +205,9 @@ public:
     char *readBytes(const VirtualAddress &address, SIZE sizeOfPtr, int refOffsetsLength, int *refOffsets);
     void readWholeObject(OBJID objID, char *&buffer, SIZE &size, int refOffsetsLength, int *refOffsets) const;
     void readArray(OBJID objID, char *&buffer, SIZE &size, INT32 elemSize, int refOffsetsLength, int *refOffsets) const;
-    void unmarshall(OBJID objID, char *&buffer, SIZE &size, int refOffsetsLength, int *refOffsets) const;
-    void unmarshallArray(OBJID objID, char *&buffer, SIZE &size, INT32 elemSize, int refOffsetsLength, int *refOffsets) const;
+    void unmarshall(OBJID objID, char *&buffer, SIZE &size, int refOffsetsLength, int *refOffsets);
+    void unmarshallArray(OBJID objID, char *&buffer, SIZE &size, INT32 elemSize, int refOffsetsLength, int *refOffsets);
+    bool checkUnmarshalled(OBJID objID) const;
 
     void dump() const;
 };

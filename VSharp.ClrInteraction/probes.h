@@ -599,11 +599,10 @@ EvalStackOperand* createOps(int opsCount, OFFSET offset) {
 }
 
 void unmarshallData(INT_PTR ptr, UnmarshalledData &unmarshalledData) {
-    // TODO: remember the ptr used and check if it was unmarshalled before proceeding
     VirtualAddress vAddr{};
     resolve(ptr, vAddr);
     Object *obj = (Object*)vAddr.obj;
-    if (!obj->isFullyConcrete()) return;
+    if (!obj->isFullyConcrete() || heap.checkUnmarshalled(vAddr.obj)) return;
 
     OBJID objID;
     int offsetsLength;

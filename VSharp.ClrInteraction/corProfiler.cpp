@@ -555,6 +555,7 @@ HRESULT STDMETHODCALLTYPE CorProfiler::ObjectAllocated(ObjectID objectId, ClassI
     ULONG size;
     this->corProfilerInfo->GetObjectSize(objectId, &size);
 
+    // TODO: type caching to reuse already allocated types
     char *type = new char[0];
     unsigned long typeLength = 0;
 

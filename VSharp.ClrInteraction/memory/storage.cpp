@@ -435,16 +435,23 @@ namespace vsharp {
         }
     }
 
-    void Storage::unmarshall(OBJID objID, char *&buffer, SIZE &size, int refOffsetsLength, int *refOffsets) const {
+    void Storage::unmarshall(OBJID objID, char *&buffer, SIZE &size, int refOffsetsLength, int *refOffsets) {
+        unmarshalledObjects.insert(objID);
         Object *obj = (Object *) objID;
         readWholeObject(objID, buffer, size, refOffsetsLength, refOffsets);
         obj->writeConcreteness(0, size, false);
     }
 
-    void Storage::unmarshallArray(OBJID objID, char *&buffer, SIZE &size, INT32 elemSize, int refOffsetsLength, int *refOffsets) const {
+    void Storage::unmarshallArray(OBJID objID, char *&buffer, SIZE &size, INT32 elemSize, int refOffsetsLength, int *refOffsets) {
+        unmarshalledObjects.insert(objID);
         Object *obj = (Object *) objID;
         readArray(objID, buffer, size, elemSize, refOffsetsLength, refOffsets);
         obj->writeConcreteness(0, size, false);
+    }
+
+    // returns true if the object was unmarshalled before
+    bool Storage::checkUnmarshalled(UINT_PTR objID) const {
+        return unmarshalledObjects.find(objID) != unmarshalledObjects.end();
     }
 
     bool Storage::resolve(ADDR address, VirtualAddress &vAddress) const {
