@@ -812,13 +812,11 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                 | OpCodeValues.Stind_I ->
                     // calli mem2
                     // calli unmem 0
-                    // ldc sizeOfPtr
-                    // calli track_stind
-                    // branch_true A
                     // calli unmem 0
+                    // ldc sizeOfPtr
                     // calli unmem 1
                     // calli exec
-                    // A: calli unmem 0
+                    // calli unmem 0
                     // calli unmem 1
                     // stind
 
@@ -888,16 +886,10 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                             probes.execStind_R8, x.tokens.void_i_i4_r8_offset_sig, probes.unmem_f8, x.tokens.r8_i1_sig
                         | _ -> __unreachable__()
 
-                    // x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 0)], x.tokens.i_i1_sig, &prependTarget) |> ignore
-                    // x.PrependInstr(OpCodes.Ldc_I4, Arg32 (x.SizeOfIndirection opcodeValue), &prependTarget) |> ignore
-                    // x.PrependProbe(probes.stind, [], x.tokens.bool_i_i4_sig, &prependTarget) |> ignore
-                    // let br_true = x.PrependBranch(OpCodes.Brtrue_S, &prependTarget)
                     x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 0)], x.tokens.i_i1_sig, &prependTarget) |> ignore
                     x.PrependInstr(OpCodes.Ldc_I4, Arg32 (x.SizeOfIndirection opcodeValue), &prependTarget) |> ignore
                     x.PrependProbe(unmem2Probe, [(OpCodes.Ldc_I4, Arg32 1)], unmem2Sig, &prependTarget) |> ignore
                     x.PrependProbeWithOffset(execProbe, [], execSig, &prependTarget) |> ignore
-                    // let unmem_p = x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 0)], x.tokens.i_i1_sig, &prependTarget)
-                    // br_true.arg <- Target unmem_p
                     x.PrependProbe(unmem2Probe, [(OpCodes.Ldc_I4, Arg32 1)], unmem2Sig, &prependTarget) |> ignore
                     x.PrependPopOpmem &prependTarget |> ignore
 
@@ -1152,12 +1144,8 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                     // calli unmem 0
                     // calli unmem 1
                     // ldc size of elem
-                    // calli track_ldelem(a)
-                    // branch_true A
-                    // calli unmem 0
-                    // calli unmem 1
                     // calli exec
-                    // A: ldelem(a)
+                    // ldelem(a)
 
                     let elemSizeOpcode, elemSizeArg =
                         match opcodeValue with
@@ -1196,16 +1184,12 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                     // TODO: remove unmem before exec, take it from storage!
                     // box [if struct]
                     // calli mem3
-                    // calli unmem 0
-                    // calli unmem 1
                     // ldc size of elem
-                    // calli track_stelem
-                    // brtrue A
                     // calli unmem 0
                     // calli unmem 1
                     // calli unmem 2
                     // calli exec
-                    // A: calli unmem 0
+                    // calli unmem 0
                     // calli unmem 1
                     // calli unmem 2
                     // unbox [if struct]
