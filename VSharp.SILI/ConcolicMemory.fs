@@ -125,29 +125,7 @@ type ConcolicMemory(communicator : Communicator) =
 
         // NOTE: 'Unmarshall' function gets all bytes from concolic memory and gives control of 'address' to SILI
         member x.Unmarshall address typ =
-            let success = unmarshalledAddresses.Add address
-            assert(success)
-            let address = (x :> IConcreteMemory).GetPhysicalAddress address
-            match typ with
-            // NOTE: sending references offsets to resolve references' bytes inside concolic
-            | _ when typ.IsSZArray ->
-                let elemType = typ.GetElementType()
-                let refOffsets = arrayRefOffsets elemType
-                let elemSize = TypeUtils.internalSizeOf elemType |> int
-                let bytes = communicator.UnmarshallArray address elemSize refOffsets
-                parseVectorArray bytes elemType |> VectorData
-            | _ when typ.IsArray ->
-                let rank = typ.GetArrayRank()
-                internalfailf "Unmarshalling non-vector array (rank = %O) is not implemented!" rank
-            | _ when typ = typeof<String> ->
-                let bytes = communicator.Unmarshall address Array.empty
-                parseString bytes |> StringData
-            | _ ->
-                assert(not typ.IsValueType)
-                let fieldOffsets = fieldsWithOffsets typ
-                let refOffsets = chooseRefOffsets fieldOffsets
-                let bytes = communicator.Unmarshall address refOffsets
-                parseFields bytes fieldOffsets |> FieldsData
+            internalfailf "Unmarshalling should be done from concolic now! unexpected call on address: %O" address
 
         member x.Allocate physAddress virtAddress =
             physicalAddresses.Add(physAddress, virtAddress)

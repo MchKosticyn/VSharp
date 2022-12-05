@@ -418,25 +418,11 @@ CommandType getAndHandleCommand() {
             break;
         }
         case Unmarshall: {
-            OBJID objID;
-            bool isArray;
-            int refOffsetsLength, *refOffsets;
-            if (!protocol->acceptReadObjectParameters(objID, refOffsetsLength, refOffsets)) FAIL_LOUD("Accepting object ID failed!");
-            char *buffer;
-            SIZE size;
-            heap.unmarshall(objID, buffer, size, refOffsetsLength, refOffsets);
-            if (!protocol->sendBytes(buffer, (int) size)) FAIL_LOUD("Sending bytes from heap reading failed!");
+            FAIL_LOUD("Unmarshalling should be done during SendCommand event now!");
             break;
         }
         case UnmarshallArray: {
-            OBJID objID;
-            bool isArray;
-            int elemSize, refOffsetsLength, *refOffsets;
-            if (!protocol->acceptReadArrayParameters(objID, elemSize, refOffsetsLength, refOffsets)) FAIL_LOUD("Accepting object ID failed!");
-            char *buffer;
-            SIZE size;
-            heap.unmarshallArray(objID, buffer, size, elemSize, refOffsetsLength, refOffsets);
-            if (!protocol->sendBytes(buffer, (int) size)) FAIL_LOUD("Sending bytes from heap reading failed!");
+            FAIL_LOUD("Unmarshalling should be done during SendCommand event now!");
             break;
         }
         case ReadWholeObject: {
