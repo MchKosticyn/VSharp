@@ -241,6 +241,30 @@ type ClientMachine(entryPoint : Method, cmdArgs : string[] option, requestMakeSt
         | HeapRef(_, typ) -> typ
         | Ptr _ -> internalfailf "TypeOfConcolicThisRef: non-zero offset pointer case is not implemented %O" thisRef
         | _ -> internalfailf "TypeOfConcolicThisRef: unexpected 'this' %O" thisRef
+        
+    member private x.Unmarshall data = 
+        match data with
+        | NoData -> ()
+        | UData (ref, dataBytes) ->
+            let dataAddress = cilState.state.concreteMemory.GetVirtualAddress ref |> ConcreteHeapAddress
+            let dataTyp = TypeOfAddress cilState.state dataAddress
+            match dataTyp with
+            | _ when dataTyp.IsSZArray ->
+                let elemTyp = dataTyp.GetElementType()
+                let array = parseVectorArray dataBytes elemTyp
+                Memory.UnmarshallVector cilState.state dataAddress array elemTyp
+            | _ when dataTyp.IsArray ->
+                let rank = dataTyp.GetArrayRank()
+                internalfailf "Unmarshalling non-vector array (rank = %O) is not implemented!" rank
+            | _ when dataTyp = typeof<String> ->
+                let chars = parseString dataBytes
+                Memory.UnmarshallString cilState.state dataAddress chars
+            | _ when dataTyp.IsValueType ->
+                let fieldOffsets = fieldsWithOffsets dataTyp
+                let fields = parseFields dataBytes fieldOffsets
+                Memory.UnmarshallClass cilState.state dataAddress fields
+            | _ ->
+                internalfailf "received unmarshalled object ref, but its type is not String, SZArray nor ValueType!"
 
     member x.SynchronizeStates (c : execCommand) =
         Logger.trace "Synchronizing states with Concolic"
@@ -333,28 +357,7 @@ type ClientMachine(entryPoint : Method, cmdArgs : string[] option, requestMakeSt
         cilState.lastPushInfo <- None
         cilState.path <- c.newCoveragePath @ cilState.path
         
-        match c.unmarshalledData with
-        | NoData -> ()
-        | UData (ref, dataBytes) ->
-            let dataAddress = concreteMemory.GetVirtualAddress ref |> ConcreteHeapAddress
-            let dataTyp = TypeOfAddress cilState.state dataAddress
-            match dataTyp with
-            | _ when dataTyp.IsSZArray ->
-                let elemTyp = dataTyp.GetElementType()
-                let array = parseVectorArray dataBytes elemTyp
-                Memory.UnmarshallVector cilState.state dataAddress array elemTyp
-            | _ when dataTyp.IsArray ->
-                let rank = dataTyp.GetArrayRank()
-                internalfailf "Unmarshalling non-vector array (rank = %O) is not implemented!" rank
-            | _ when dataTyp = typeof<String> ->
-                let chars = parseString dataBytes
-                Memory.UnmarshallString cilState.state dataAddress chars
-            | _ when dataTyp.IsValueType ->
-                let fieldOffsets = fieldsWithOffsets dataTyp
-                let fields = parseFields dataBytes fieldOffsets
-                Memory.UnmarshallClass cilState.state dataAddress fields
-            | _ ->
-                internalfailf "received unmarshalled object ref, but its type is not String, SZArray nor ValueType!"
+        x.Unmarshall c.unmarshalledData
 
     member x.State with get() = cilState
 
