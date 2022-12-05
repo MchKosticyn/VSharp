@@ -115,8 +115,6 @@ type probes = {
     mutable ldsflda : uint64
     mutable stsfld : uint64
 
-    mutable ldelema : uint64
-    mutable ldelem : uint64
     mutable execLdelema : uint64
     mutable execLdelem : uint64
 

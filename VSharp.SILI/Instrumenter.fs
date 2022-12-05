@@ -1145,7 +1145,6 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                 | OpCodeValues.Ldelem_R8
                 | OpCodeValues.Ldelem_Ref
                 | OpCodeValues.Ldelem ->
-                    let track = if opcodeValue = OpCodeValues.Ldelema then probes.ldelema else probes.ldelem
                     let exec = if opcodeValue = OpCodeValues.Ldelema then probes.execLdelema else probes.execLdelem
                     // calli mem2
                     // calli unmem 0
@@ -1183,13 +1182,8 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
                     x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 0)], x.tokens.i_i1_sig, &prependTarget) |> ignore
                     x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 1)], x.tokens.i_i1_sig, &prependTarget) |> ignore
                     x.PrependInstr(elemSizeOpcode, elemSizeArg, &prependTarget) |> ignore
-                    x.PrependProbe(track, [], x.tokens.bool_i_i_i4_sig, &prependTarget) |> ignore
-                    let br = x.PrependBranch(OpCodes.Brtrue_S, &prependTarget)
-                    x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 0)], x.tokens.i_i1_sig, &prependTarget) |> ignore
-                    x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 1)], x.tokens.i_i1_sig, &prependTarget) |> ignore
-                    x.PrependProbeWithOffset(exec, [], x.tokens.void_i_i_offset_sig, &prependTarget) |> ignore
-                    let popOpmem = x.PrependPopOpmem &prependTarget
-                    br.arg <- Target popOpmem
+                    x.PrependProbeWithOffset(exec, [], x.tokens.void_i_i_i4_offset_sig, &prependTarget) |> ignore
+                    x.PrependPopOpmem &prependTarget |> ignore
                 | OpCodeValues.Stelem_I
                 | OpCodeValues.Stelem_I1
                 | OpCodeValues.Stelem_I2

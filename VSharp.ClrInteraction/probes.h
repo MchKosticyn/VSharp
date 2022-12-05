@@ -1044,12 +1044,12 @@ PROBE(void, Track_Stsfld, (mdToken fieldToken, OFFSET offset)) {
     topFrame().pop1();
 }
 
-PROBE(COND, Track_Ldelema, (INT_PTR ptr, INT_PTR index)) {
+bool ldelema(INT_PTR ptr, INT_PTR index) {
     // TODO
     StackFrame &top = vsharp::topFrame();
     return top.pop1() && top.peek0();
 }
-PROBE(COND, Track_Ldelem, (INT_PTR ptr, INT_PTR index, INT32 elemSize)) {
+bool checkLdelemConcreteness(INT_PTR ptr, INT_PTR index, INT32 elemSize) {
     StackFrame &top = vsharp::topFrame();
     bool iConcrete = top.peek0();
     bool ptrConcrete = top.peek1();
@@ -1061,9 +1061,10 @@ PROBE(COND, Track_Ldelem, (INT_PTR ptr, INT_PTR index, INT32 elemSize)) {
     if (memory) top.push1Concrete();
     return memory;
 }
-PROBE(void, Exec_Ldelema, (INT_PTR ptr, INT_PTR index, OFFSET offset)) { /*send command*/ }
-PROBE(void, Exec_Ldelem, (INT_PTR ptr, INT_PTR index, OFFSET offset)) {
-    sendCommand(offset, 2, new EvalStackOperand[2] {mkop_p(ptr), mkop_4(index)});
+PROBE(void, Exec_Ldelema, (INT_PTR ptr, INT_PTR index, INT32 elemSize, OFFSET offset)) { /*send command if ldelema returns false*/ }
+PROBE(void, Exec_Ldelem, (INT_PTR ptr, INT_PTR index, INT32 elemSize, OFFSET offset)) {
+    if (!checkLdelemConcreteness(ptr, index, elemSize))
+        sendCommand(offset, 2, new EvalStackOperand[2] {mkop_p(ptr), mkop_4(index)});
 }
 
 inline bool checkStelemConcreteness(INT_PTR ptr, INT_PTR index, INT32 elemSize, UnmarshalledData &unmarshalledData) {
