@@ -126,6 +126,10 @@ module internal CallStack =
         let frame, _ = Stack.pop stack.frames
         Option.get frame.func
 
+    let getFirstFunc stack =
+        let frame, _ = Stack.bottomAndRest stack.frames
+        Option.get frame.func
+
     let size stack = Stack.size stack.frames
 
     let toString (stack : callStack) =
