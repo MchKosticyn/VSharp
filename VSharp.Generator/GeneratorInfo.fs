@@ -26,5 +26,3 @@ let mutable internal commonGenerator: CommonGenerator = Unchecked.defaultof<Comm
 
 let ConfigureCommonGenerator (generators: Generator list) =
     commonGenerator <- mkCommonGenerator generators
-
-let GetGenerator () = commonGenerator
