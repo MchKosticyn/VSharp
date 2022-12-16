@@ -836,7 +836,7 @@ type internal ILInterpreter(isConcolicMode : bool) as this =
             | None, false -> internalfail "Calling non-static concrete implementation for static method"
             | _ -> thisOption, args
         Memory.PopFrame cilState.state
-        ILInterpreter.InitFunctionFrame cilState.state method thisOption (args |> List.map Some |> Some)
+        Memory.InitFunctionFrame cilState.state method thisOption (args |> List.map Some |> Some)
         x.InitializeStatics cilState method.DeclaringType (fun cilState ->
             setCurrentIp (instruction method 0<offsets>) cilState
             [cilState])
@@ -845,42 +845,8 @@ type internal ILInterpreter(isConcolicMode : bool) as this =
         let name = method.Name
         (name = "Set" || name = "Get") && typeof<Array>.IsAssignableFrom(method.DeclaringType)
 
-    static member InitFunctionFrame state (method : Method) this paramValues =
-        let parameters = method.Parameters
-        let values, areParametersSpecified =
-            match paramValues with
-            | Some values -> values, true
-            | None -> [], false
-        let localVarsDecl (lvi : LocalVariableInfo) =
-            let stackKey = LocalVariableKey(lvi, method)
-            (stackKey, lvi.LocalType |> Memory.DefaultOf |> Some, lvi.LocalType)
-        let locals =
-            match method.LocalVariables with
-            | null -> []
-            | lvs -> lvs |> Seq.map localVarsDecl |> Seq.toList
-        let valueOrFreshConst (param : ParameterInfo option) value =
-            match param, value with
-            | None, _ -> internalfail "parameters list is longer than expected!"
-            | Some param, None ->
-                let stackKey = ParameterKey param
-                match areParametersSpecified with
-                | true when param.HasDefaultValue ->
-                    let typ = param.ParameterType
-                    (stackKey, Some(Concrete param.DefaultValue typ), typ)
-                | true -> internalfail "parameters list is shorter than expected!"
-                | _ -> (stackKey, None, param.ParameterType)
-            | Some param, Some value -> (ParameterKey param, value, param.ParameterType)
-        let parameters = List.map2Different valueOrFreshConst parameters values
-        let parametersAndThis =
-            match this with
-            | Some thisValue ->
-                let thisKey = ThisKey method
-                (thisKey, Some thisValue, TypeOfLocation thisValue) :: parameters // TODO: incorrect type when ``this'' is Ref to stack
-            | None -> parameters
-        Memory.NewStackFrame state (Some method) (parametersAndThis @ locals)
-
     member x.InitFunctionFrameCIL (cilState : cilState) (method : Method) this paramValues =
-        ILInterpreter.InitFunctionFrame cilState.state method this (paramValues |> Option.bind (List.map Some >> Some))
+        Memory.InitFunctionFrame cilState.state method this (paramValues |> Option.bind (List.map Some >> Some))
         pushToIp (instruction method 0<offsets>) cilState
 
     static member CheckAttributeAssumptions (cilState : cilState) (method : Method) (assumptions : cilState -> Method -> term) message isError =
