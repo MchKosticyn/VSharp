@@ -58,6 +58,7 @@
     </ItemGroup>
 
     <ItemGroup>
+        <ProjectReference Include="..\VSharp.Fuzzer\VSharp.Fuzzer.fsproj" />
         <ProjectReference Include="..\VSharp.IL\VSharp.IL.fsproj" />
         <ProjectReference Include="..\VSharp.InternalCalls\VSharp.InternalCalls.fsproj" />
         <ProjectReference Include="..\VSharp.SILI.Core\VSharp.SILI.Core.fsproj" />

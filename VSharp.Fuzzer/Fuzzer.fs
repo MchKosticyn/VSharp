@@ -25,7 +25,7 @@ type Fuzzer(method : Method) =
     let typeMocks = Dictionary<Type list, ITypeMock>()
 
     member val private Config = defaultFuzzerConfig with get, set
-    member val private Generator = Generator.GeneratorInfo.GetGenerator() with get
+    member val private Generator = Generator.Generator.GetGenerator() with get
 
     // TODO: refactor
     member private this.SolveGenerics (method: IMethod) (model: model option): MethodBase option =
@@ -116,12 +116,13 @@ type Fuzzer(method : Method) =
         let state = Memory.EmptyState()
         state.model <- Memory.EmptyModel method (typeModel.CreateEmpty())
         // Creating first frame and filling stack
+        let args = Array.tail args
         let this =
             if method.HasThis then
                 Some (Memory.ObjectToTerm state (fst (Array.head args)) method.DeclaringType)
             else None
-        let writeArg (arg, argType) = Memory.ObjectToTerm state arg argType |> Some
-        let parameters = Array.map writeArg args |> List.ofArray
+        let createTerm (arg, argType) = Memory.ObjectToTerm state arg argType |> Some
+        let parameters = Array.map createTerm args |> List.ofArray
         Memory.InitFunctionFrame state method this (Some parameters)
         // Filling used type mocks
         for mock in typeMocks do state.typeMocks.Add mock
