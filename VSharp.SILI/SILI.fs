@@ -213,7 +213,7 @@ type public SILI(options : SiliOptions) =
                     !!(IsNullReference this) |> AddConstraint initialState
                     Some this
             let parameters = SILI.AllocateByRefParameters initialState method
-            ILInterpreter.InitFunctionFrame initialState method this (Some parameters)
+            Memory.InitFunctionFrame initialState method this (Some parameters)
             let cilStates = ILInterpreter.CheckDisallowNullAssumptions cilState method false
             assert (List.length cilStates = 1)
             let [cilState] = cilStates
@@ -237,7 +237,7 @@ type public SILI(options : SiliOptions) =
                 let argsNumber = MakeNumber mainArguments.Length
                 Memory.AllocateConcreteVectorArray state argsNumber stringType argTerms
             let arguments = Option.map (argsToState >> Some >> List.singleton) optionArgs
-            ILInterpreter.InitFunctionFrame state method None arguments
+            Memory.InitFunctionFrame state method None arguments
             if Option.isNone optionArgs then
                 // NOTE: if args are symbolic, constraint 'args != null' is added
                 let parameters = method.Parameters
@@ -376,6 +376,20 @@ type public SILI(options : SiliOptions) =
         | StackTraceReproductionMode _ -> __notImplemented__()
         Application.resetMethodStatistics()
 
+    member x.Fuzz (methods : Method seq) =
+        try
+            let fuzzOne method =
+                Fuzzer.FuzzerInfo.SetFuzzer (Fuzzer.Fuzzer.Fuzzer(method))
+                let states = Fuzzer.FuzzerInfo.Fuzz()
+                Seq.map (withFst method) states
+            let states = Seq.collect fuzzOne methods
+            Logger.info "Fuzzer finished with %O states" (Seq.length states)
+            let cilStates = Seq.map (fun (m, s) -> makeInitialState m s) states |> Seq.toList
+            x.AnswerPobs cilStates
+            methods |> Seq.iter (fun m -> Logger.info "Statistics: %O coverage is %O" m (statistics.GetApproximateCoverage(m)))
+        with
+        | e -> Logger.error "Fuzzing before symbolic execution failed with %O" e
+
     member x.Interpret (isolated : MethodBase seq) (entryPoints : (MethodBase * string[]) seq) (onFinished : Action<UnitTest>)
                        (onException : Action<UnitTest>) (onIIE : Action<InsufficientInformationException>)
                        (onInternalFail : Action<Method option, Exception>) : unit =
@@ -401,13 +415,15 @@ type public SILI(options : SiliOptions) =
                         let m, tm = trySubstituteTypeParameters m
                         (Application.getMethod m, a, tm))
                     |> Seq.toList
-                x.Reset ((isolated |> List.map fst) @ (entryPoints |> List.map (fun (m, _, _) -> m)))
+                let isolatedStates = List.map fst isolated
+                x.Reset (isolatedStates @ (entryPoints |> List.map (fun (m, _, _) -> m)))
                 let isolatedInitialStates = isolated |> List.collect x.FormIsolatedInitialStates
                 let entryPointsInitialStates = entryPoints |> List.collect x.FormEntryPointInitialStates
                 let iieStates, initialStates = isolatedInitialStates @ entryPointsInitialStates |> List.partition (fun state -> state.iie.IsSome)
                 iieStates |> List.iter reportStateIncomplete
                 statistics.SetStatesGetter(fun () -> searcher.States())
                 statistics.SetStatesCountGetter(fun () -> searcher.StatesCount)
+                x.Fuzz isolatedStates
                 if not initialStates.IsEmpty then
                     x.AnswerPobs initialStates
             with

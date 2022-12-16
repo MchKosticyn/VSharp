@@ -1,5 +1,7 @@
 module VSharp.Fuzzer.Fuzzer
 
+open System
+open System.Collections.Generic
 open System.Reflection
 
 open VSharp
@@ -8,28 +10,34 @@ open VSharp.Fuzzer.FuzzerInfo
 
 type FuzzingMethodInfo = {
     Method: MethodBase
-    ArgsInfo: (Generator.Config.GeneratorConfig * System.Type) array
-    ThisInfo: (Generator.Config.GeneratorConfig * System.Type) option
+    ArgsInfo: (Generator.Config.GeneratorConfig * Type) array
+    ThisInfo: (Generator.Config.GeneratorConfig * Type) option
 }
 
 type FuzzingResult =
-    | Thrown of (obj * System.Type) array * exn
-    | Returned of (obj * System.Type) array * obj
+    | Thrown of (obj * Type) array * exn
+    | Returned of (obj * Type) array * obj
 
-type Fuzzer() =
+// TODO: refactor module: 'Fuzzer' class has method parameter
+type Fuzzer(method : Method) =
+
+    let methodBase = (method :> IMethod).MethodBase
+    let typeMocks = Dictionary<Type list, ITypeMock>()
 
     member val private Config = defaultFuzzerConfig with get, set
-    member val private Generator = Generator.GeneratorInfo.GetGenerator() with get
+    member val private Generator = Generator.Generator.GetGenerator() with get
 
-    member private this.SolveGenerics (method: IMethod) (state: state): MethodBase option =
+    // TODO: refactor
+    member private this.SolveGenerics (method: IMethod) (model: model option): MethodBase option =
 
         let getConcreteType = function
         | ConcreteType t -> Some t
         | _ -> None // TODO: add support for mock
 
         let typeModel =
-            match state.model with
-            | StateModel (_, typeModel) -> typeModel
+            match model with
+            | Some (StateModel (_, typeModel)) -> typeModel
+            | None -> typeModel.CreateEmpty()
             | _ -> __unreachable__()
 
         let methodBase = method.MethodBase
@@ -49,23 +57,23 @@ type Fuzzer() =
             | _ -> None
         with :? InsufficientInformationException -> None
 
-    member private this.GetInfo (state: state) =
-        let method = API.Memory.GetEntryPoint state
+    member private this.GetInfo (state: state option) =
+        let model = Option.map (fun s -> s.model) state
         let methodBase =
-            match this.SolveGenerics method state with
+            match this.SolveGenerics method model with
             | Some methodBase -> methodBase
             | None -> failwith "Can't solve generic parameters"
         let argsInfo =
             method.Parameters
-            |> Array.map (fun x -> Generator.Config.generateConfigForArg state x, x.ParameterType)
+            |> Array.map (fun x -> Generator.Config.defaultGeneratorConfig, x.ParameterType)
         let thisInfo =
             if method.HasThis then
-                Some (Generator.Config.generateConfigForType state method.DeclaringType, method.DeclaringType)
+                Some (Generator.Config.defaultGeneratorConfig, method.DeclaringType)
             else
                 None
         { Method = methodBase; ArgsInfo = argsInfo; ThisInfo = thisInfo }
 
-    member private this.FuzzOnce (methodInfo: FuzzingMethodInfo) (rnd: System.Random) =
+    member private this.FuzzOnce (methodInfo: FuzzingMethodInfo) (rnd: Random) =
         let method = methodInfo.Method
         let args = methodInfo.ArgsInfo |> Array.map (fun (config, t) -> this.Generator rnd config t, t)
         let mutable obj = null
@@ -81,27 +89,88 @@ type Fuzzer() =
         with
         | e -> Thrown (argsWithThis, e)
 
+//    pc -- Empty
+//    evaluationStack -- Result (in case of generation), Empty (in case of seed)
+//    stack -- First frame = method
+//    stackBuffers -- Empty
+//    classFields -- Empty
+//    arrays -- Empty
+//    lengths -- Empty
+//    lowerBounds -- Empty
+//    staticFields -- Empty
+//    boxedLocations -- Empty
+//    initializedTypes -- Empty
+//    concreteMemory -- All heap objects
+//    allocatedTypes -- All heap objects
+//    typeVariables -- Empty
+//    delegates -- Empty (?)
+//    currentTime -- startingTime
+//    startingTime -- default
+//    exceptionsRegister -- Empty (in case of Returned), HeapRef exn (in case of Thrown)
+//    model -- Empty StateModel (in case of generation), Filled StateModel? (in case of seed)
+//    complete -- true?
+//    typeMocks -- created mocks
 
-    member private this.FuzzingResultToState (state: state) (result: FuzzingResult) =
-        while Memory.CallStackSize state > 1 do
-            API.Memory.PopFrame state
-        assert (Memory.CallStackSize state = 1)
+    member private this.FillState (args : array<obj * Type>) =
+        // Creating state
+        let state = Memory.EmptyState()
+        state.model <- Memory.EmptyModel method (typeModel.CreateEmpty())
+        // Creating first frame and filling stack
+        let args = Array.tail args
+        let this =
+            if method.HasThis then
+                Some (Memory.ObjectToTerm state (fst (Array.head args)) method.DeclaringType)
+            else None
+        let createTerm (arg, argType) = Memory.ObjectToTerm state arg argType |> Some
+        let parameters = Array.map createTerm args |> List.ofArray
+        Memory.InitFunctionFrame state method this (Some parameters)
+        // Filling used type mocks
+        for mock in typeMocks do state.typeMocks.Add mock
+        // Returning filled state
+        state
+
+    member private this.FuzzingResultToInitialState (result: FuzzingResult) =
+        match result with
+        | Returned (args, _)
+        | Thrown(args, _) ->
+            this.FillState args
+
+    member private this.FuzzingResultToCompletedState (result: FuzzingResult) =
         match result with
         | Returned (args, returned) ->
-            let cm = state.concreteMemory
-            let concreteAddresses = Array.map (fun (arg, t) -> API.Memory.AllocateConcreteObject state arg t) args
-            __notImplemented__()
-        __notImplemented__()
+            let state = this.FillState args
+            // Pushing result onto evaluation stack
+            let returnType = Reflection.getMethodReturnType methodBase
+            let returnedTerm = Memory.ObjectToTerm state returned returnType
+            state.evaluationStack <- EvaluationStack.Push returnedTerm state.evaluationStack
+            state
+        | Thrown(args, exn) ->
+            let state = this.FillState args
+            // Filling exception register
+            let exnType = exn.GetType()
+            let exnRef = Memory.AllocateConcreteObject state exn exnType
+            // TODO: check if exception was thrown by user or by runtime
+            state.exceptionsRegister <- Unhandled(exnRef, false)
+            state
 
     interface IFuzzer with
 
-        member this.Fuzz state seed =
-            let info = this.GetInfo state
-            let rndGenerator = System.Random(seed)
+        member this.FuzzWithState state seed =
+            let info = this.GetInfo (Some state)
+            let rndGenerator = Random(seed)
             [0..this.Config.MaxTest]
-            |> List.map (fun _ -> System.Random(rndGenerator.NextInt64() |> int))
+            |> List.map (fun _ -> Random(rndGenerator.NextInt64() |> int))
             |> List.map (this.FuzzOnce info)
-            |> List.map (this.FuzzingResultToState state)
+            |> List.map this.FuzzingResultToCompletedState
+            |> Seq.ofList
+
+        member this.Fuzz seed =
+            let info = this.GetInfo None
+            let rndGenerator = Random(seed)
+            [0..this.Config.MaxTest]
+            |> List.map (fun _ -> Random(rndGenerator.NextInt64() |> int))
+            |> List.map (this.FuzzOnce info)
+            |> List.map this.FuzzingResultToInitialState
             |> Seq.ofList
 
         member this.Configure config =
