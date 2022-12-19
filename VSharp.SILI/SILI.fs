@@ -383,8 +383,8 @@ type public SILI(options : SiliOptions) =
                 let states = Fuzzer.FuzzerInfo.Fuzz()
                 Seq.map (withFst method) states
             let states = Seq.collect fuzzOne methods
-            Logger.info "Fuzzer finished with %O states" (Seq.length states)
             let cilStates = Seq.map (fun (m, s) -> makeInitialState m s) states |> Seq.toList
+            Logger.info "Fuzzer finished with %O states" (Seq.length states)
             x.AnswerPobs cilStates
             methods |> Seq.iter (fun m -> Logger.info "Statistics: %O coverage is %O" m (statistics.GetApproximateCoverage(m)))
         with

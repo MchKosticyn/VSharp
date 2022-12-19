@@ -21,7 +21,7 @@ let mutable private stdGen = FsCheck.Random.StdGen(1, 1)
 let mutable private size = 0
 let private recognize t = List.contains t primitiveTypes
 
-let private generate (_: Random) (conf: GeneratorConfig) (t: Type) =
+let private generate (rnd: Random) (conf: GeneratorConfig) (t: Type) =
     assert (recognize t)
     let nextSize, nextStdGen = Random.stdNext stdGen
     stdGen <- nextStdGen
@@ -41,7 +41,9 @@ let private generate (_: Random) (conf: GeneratorConfig) (t: Type) =
         | _ when t = typeof<uint64> -> Arb.generate<uint64>.Eval(UInt64.MaxValue |> int, stdGen)
         | _ when t = typeof<float> -> Arb.generate<float>.Eval(size, stdGen) // TODO: check size
         | _ when t = typeof<double> -> Arb.generate<double>.Eval(size, stdGen)
-        | _ when t = typeof<char> -> Arb.generate<char>.Eval(size, stdGen)
+        | _ when t = typeof<char> ->
+            // Arb.generate<char>.Eval(size, stdGen)
+            rnd.Next(33, int Char.MaxValue) |> char |> box
         | _ when t = typeof<string> -> Arb.generate<string>.Eval(conf.StringMaxSize, stdGen)
         | _ when t = typeof<byte> -> Arb.generate<byte>.Eval(size, stdGen)
         | _ when t = typeof<bool> -> Arb.generate<bool>.Eval(size, stdGen)
