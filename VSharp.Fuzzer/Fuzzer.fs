@@ -111,21 +111,35 @@ type Fuzzer(method : Method) =
 //    complete -- true?
 //    typeMocks -- created mocks
 
+//    member private this.FillModel (args: array<obj * Type>) =
+//        let model = Memory.EmptyModel method (typeModel.CreateEmpty())
+//        match model with
+//        | StateModel (state, _) ->
+//            state
+//        | _ -> __unreachable__()
+
     member private this.FillState (args : array<obj * Type>) =
         // Creating state
         let state = Memory.EmptyState()
         state.model <- Memory.EmptyModel method (typeModel.CreateEmpty())
         // Creating first frame and filling stack
-        let args = Array.tail args
         let this =
             if method.HasThis then
                 Some (Memory.ObjectToTerm state (fst (Array.head args)) method.DeclaringType)
             else None
+        let args = Array.tail args
         let createTerm (arg, argType) = Memory.ObjectToTerm state arg argType |> Some
         let parameters = Array.map createTerm args |> List.ofArray
+        Logger.info $"[Fuzzer] Creating state with params: {parameters}"
         Memory.InitFunctionFrame state method this (Some parameters)
         // Filling used type mocks
         for mock in typeMocks do state.typeMocks.Add mock
+
+        match state.model with
+        | StateModel (model, _) ->
+            Memory.InitFunctionFrame model method this (Some parameters)
+        | _ -> __unreachable__()
+
         // Returning filled state
         state
 

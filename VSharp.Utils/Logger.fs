@@ -9,7 +9,7 @@ module Logger =
     let Info = 3
     let Trace = 4
 
-    let mutable current_log_level = Error
+    let mutable current_log_level = Info
     let mutable current_text_writer = Console.Out
     let public ConfigureWriter writer = current_text_writer <- writer
 
