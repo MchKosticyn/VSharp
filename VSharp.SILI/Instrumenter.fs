@@ -1524,14 +1524,22 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
         if t = typeof<System.InvalidProgramException> || t = typeof<System.TypeLoadException> || t = typeof<System.BadImageFormatException> then
             internalfailf "Incorrect instrumentation: exception %O is thrown!" t
         let result =
-            if x.ShouldInstrument && Instrumenter.instrumentedFunctions.Add x.m then
-                Logger.trace "Instrumenting %s (token = %X)" (Reflection.methodToString x.m) body.properties.token
-                x.rewriter.Import()
-                x.rewriter.PrintInstructions "before instrumentation" probes
-                x.PlaceProbes()
-                x.rewriter.PrintInstructions "after instrumentation" probes
-                let result = x.rewriter.Export()
-                result
+            if Instrumenter.instrumentedFunctions.Add x.m then
+                Logger.trace "Instrumenting %s (token = %u)" (Reflection.methodToString x.m) body.properties.token
+                try
+                    x.rewriter.Import()
+                    x.rewriter.PrintInstructions "before instrumentation" probes
+    //                Logger.trace "Placing probes..."
+                    x.PlaceProbes()
+    //                Logger.trace "Done placing probes!"
+                    x.rewriter.PrintInstructions "after instrumentation" probes
+    //                Logger.trace "Exporting..."
+                    let result = x.rewriter.Export()
+    //                Logger.trace "Exported!"
+                    result
+                with e ->
+                    Logger.error "Instrumentation failed: in method %O got exception %O" x.m e
+                    x.Skip body
             else
                 Logger.trace "Duplicate JITting of %s" x.MethodName
                 x.Skip body
