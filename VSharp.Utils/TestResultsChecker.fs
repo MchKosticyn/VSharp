@@ -123,6 +123,7 @@ type TestResultsChecker(testDir : DirectoryInfo, runnerDir : DirectoryInfo, expe
         | Some expectedCoverage ->
             let coverage = getCoverage methodInfo
             actualCoverage <- Nullable(uint coverage)
+            System.IO.File.AppendAllText ("/home/viktor/Desktop/results/withoutFuzzing", $"{methodInfo.Name}, {coverage.ToString()}")
             if coverage = expectedCoverage then true
             else
                 resultMessage <- sprintf "Incomplete coverage! Expected %d, but got %d" expectedCoverage coverage

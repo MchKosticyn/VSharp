@@ -96,7 +96,7 @@ namespace VSharp.Test
             uint recThresholdForTest = 0u,
             int timeout = -1,
             bool concolicMode = false,
-            bool guidedMode = true,
+            bool guidedMode = false,
             bool releaseBranches = true,
             SearchStrategy strat = SearchStrategy.BFS,
             CoverageZone coverageZone = CoverageZone.Class,

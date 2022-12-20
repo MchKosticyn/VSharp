@@ -186,7 +186,10 @@ type GuidedSearcher(maxBound, threshold : uint, baseSearcher : IForwardSearcher,
             pause state
 
     let rec pick' (selector : (cilState -> bool) option) =
-        let pick (searcher : IForwardSearcher) = if selector.IsSome then searcher.Pick selector.Value else searcher.Pick()
+        let pick (searcher : IForwardSearcher) =
+            match selector with
+            | Some s -> searcher.Pick (fun c -> s c && not (isPaused c))
+            | None -> searcher.Pick isPaused
         let pickFromBaseSearcher () =
             match pick baseSearcher with
             | Some state ->

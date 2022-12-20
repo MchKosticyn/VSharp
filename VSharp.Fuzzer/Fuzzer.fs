@@ -1,4 +1,4 @@
-module VSharp.Fuzzer.Fuzzer
+namespace Fuzzer
 
 open System
 open System.Collections.Generic
@@ -25,7 +25,7 @@ type Fuzzer(method : Method) =
     let typeMocks = Dictionary<Type list, ITypeMock>()
 
     member val private Config = defaultFuzzerConfig with get, set
-    member val private Generator = Generator.Generator.GetGenerator() with get
+    member val private Generator = Generator.Generator.generate with get
 
     // TODO: refactor
     member private this.SolveGenerics (method: IMethod) (model: model option): MethodBase option =
@@ -167,25 +167,26 @@ type Fuzzer(method : Method) =
             state.exceptionsRegister <- Unhandled(exnRef, false)
             state
 
-    interface IFuzzer with
 
-        member this.FuzzWithState state seed =
-            let info = this.GetInfo (Some state)
-            let rndGenerator = Random(seed)
-            [0..this.Config.MaxTest]
-            |> List.map (fun _ -> Random(rndGenerator.NextInt64() |> int))
-            |> List.map (this.FuzzOnce info)
-            |> List.map this.FuzzingResultToCompletedState
-            |> Seq.ofList
 
-        member this.Fuzz seed =
-            let info = this.GetInfo None
-            let rndGenerator = Random(seed)
-            [0..this.Config.MaxTest]
-            |> List.map (fun _ -> Random(rndGenerator.NextInt64() |> int))
-            |> List.map (this.FuzzOnce info)
-            |> List.map this.FuzzingResultToInitialState
-            |> Seq.ofList
+    member this.FuzzWithState state seed =
+        let info = this.GetInfo (Some state)
+        let rndGenerator = Random(seed)
+        [0..this.Config.MaxTest]
+        |> List.map (fun _ -> Random(rndGenerator.NextInt64() |> int))
+        |> List.map (this.FuzzOnce info)
+        |> List.map this.FuzzingResultToCompletedState
+        |> Seq.ofList
 
-        member this.Configure config =
-            this.Config <- config
+    member this.Fuzz () =
+        let seed = 100 // Magic const!!!!
+        let info = this.GetInfo None
+        let rndGenerator = Random(seed)
+        [0..this.Config.MaxTest]
+        |> List.map (fun _ -> Random(rndGenerator.NextInt64() |> int))
+        |> List.map (this.FuzzOnce info)
+        |> List.map this.FuzzingResultToInitialState
+        |> Seq.ofList
+
+    member this.Configure config =
+        this.Config <- config
