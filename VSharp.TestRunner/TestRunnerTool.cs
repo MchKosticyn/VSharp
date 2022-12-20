@@ -4,11 +4,28 @@ using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Linq;
+using System.Runtime.InteropServices;
+using static VSharp.Reflection;
 
 namespace VSharp.TestRunner
 {
-    public static class TestRunner
+    public static unsafe class TestRunner
     {
+        [DllImport("libvsharpConcolic", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        public static extern void SyncInfoGettersPointers(Int64 arrayGetterPtr, Int64 objectGetterPtr);
+        
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        public delegate void ArrayInfoSender(IntPtr arrayPtr, UIntPtr *objID, int *elemSize, int *refOffsetsLength, 
+            int **refOffsets, byte *typ, UInt64 typeLength);
+        
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        public delegate void ObjectInfoSender(IntPtr arrayPtr, UIntPtr *objID, int *refOffsetsLength, int **refOffsets, 
+            byte *typ, UInt64 typeLength);
+        
+        public static IntPtr ArrayInfoAction;
+        public static IntPtr ObjectInfoAction;
+        public static ArrayInfoSender ArraySender;
+        public static ObjectInfoSender ObjectSender;
 
         private static IEnumerable<string> _extraAssemblyLoadDirs;
 
@@ -87,8 +104,62 @@ namespace VSharp.TestRunner
             return StructurallyEqual(expected, got);
         }
 
+        private static void GetArrayInfo(IntPtr arrayPtr, UIntPtr *objID, int *elemSize, int *refOffsetsLength,
+            int **refOffsets, byte *typ, UInt64 typeLength)
+        {
+            var type = new byte[typeLength];
+            Marshal.Copy((IntPtr)typ, type, 0, (int)typeLength); 
+            var offset = 0;
+            var realType = VSharp.Utils.ConcolicUtils.parseType(type, ref offset);
+
+            // checking if the type is an array; non-vector arrays are not implemented!
+            Debug.Assert(realType.IsSZArray);
+            
+            var elemType = realType.GetElementType();
+            *elemSize = TypeUtils.internalSizeOf(elemType);
+
+            var offsets = arrayRefOffsets(realType);
+            *refOffsets = (int*)Marshal.AllocHGlobal(offsets.Length * sizeof(int));
+            Marshal.Copy(offsets, 0, (IntPtr)refOffsets, offsets.Length);
+
+            *refOffsetsLength = offsets.Length;
+        }
+
+        private static void GetObjectInfo(IntPtr arrayPtr, UIntPtr* objID, int* refOffsetsLength, int** refOffsets,
+            byte* typ, UInt64 typeLength)
+        {
+            var type = new byte[typeLength];
+            Marshal.Copy((IntPtr)typ, type, 0, (int)typeLength); 
+            var offset = 0;
+            var realType = VSharp.Utils.ConcolicUtils.parseType(type, ref offset);
+            
+            // we treat Strings with a bit of a funny taste
+            if (realType == typeof(String))
+            {
+                *refOffsetsLength = 0;
+                *refOffsets = (int*)Marshal.AllocHGlobal(0);
+
+                return;
+            }
+            
+            // checking if the type is a value type
+            Debug.Assert(realType.IsValueType);
+
+            var offsets = chooseRefOffsets(fieldsWithOffsets(realType));
+            *refOffsets = (int*)Marshal.AllocHGlobal(offsets.Length * sizeof(int));
+            Marshal.Copy(offsets, 0, (IntPtr)refOffsets, offsets.Length);
+
+            *refOffsetsLength = offsets.Length;
+        }
+
         private static bool ReproduceTests(IEnumerable<FileInfo> tests, bool shouldReproduceError, bool checkResult)
         {
+            ArraySender = new ArrayInfoSender(GetArrayInfo);
+            ObjectSender = new ObjectInfoSender(GetObjectInfo);
+            ArrayInfoAction = Marshal.GetFunctionPointerForDelegate(ArraySender);
+            ObjectInfoAction = Marshal.GetFunctionPointerForDelegate(ObjectSender);
+            SyncInfoGettersPointers(ArrayInfoAction.ToInt64(), ObjectInfoAction.ToInt64());
+            
             AppDomain.CurrentDomain.AssemblyResolve += TryLoadAssemblyFrom;
 
             foreach (FileInfo fi in tests)

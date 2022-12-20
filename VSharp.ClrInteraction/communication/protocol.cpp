@@ -5,6 +5,15 @@
 #include <cstring>
 #include <iostream>
 
+ArrayGetterType arrayInfoGetter = nullptr;
+ObjectGetterType objectInfoGetter = nullptr;
+
+void SyncInfoGettersPointers(long arrayInfoPtr, long objectInfoPtr) {
+    LOG(tout << "received function pointers: " << arrayInfoPtr << " for arrays and " << objectInfoPtr << " for objects" << std::endl);
+    arrayInfoGetter = (ArrayGetterType)arrayInfoPtr;
+    objectInfoGetter = (ObjectGetterType)objectInfoPtr;
+}
+
 using namespace vsharp;
 
 bool Protocol::readConfirmation() {
@@ -304,12 +313,14 @@ bool Protocol::acceptReadObjectParameters(OBJID &objID, int &refOffsetsLength, i
     return true;
 }
 
-bool Protocol::getArrayInfo(INT_PTR arrayPtr, OBJID &objID, int &elemSize, int &refOffsetsLength, int *&refOffsets) {
-    return false;
+bool Protocol::getArrayInfo(INT_PTR arrayPtr, OBJID &objID, int &elemSize, int &refOffsetsLength, int *&refOffsets, char *type, unsigned long typeLength) {
+    arrayInfoGetter(arrayPtr, objID, elemSize, refOffsetsLength, refOffsets, type, typeLength);
+    return true;
 }
 
-bool Protocol::getObjectInfo(INT_PTR objectPtr, OBJID &objID, int &refOffsetsLength, int *&refOffsets) {
-    return false;
+bool Protocol::getObjectInfo(INT_PTR objectPtr, OBJID &objID, int &refOffsetsLength, int *&refOffsets, char *type, unsigned long typeLength) {
+    objectInfoGetter(objectPtr, objID, refOffsetsLength, refOffsets, type, typeLength);
+    return true;
 }
 
 bool Protocol::sendStringsPoolIndex(const unsigned index) {

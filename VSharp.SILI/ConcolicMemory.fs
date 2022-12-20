@@ -7,28 +7,40 @@ open VSharp.Core
 open VSharp.CSharpUtils
 open Reflection
 
+type ReadConcreteBytes =
+    | NoBytes
+    | ConcreteBytes of UIntPtr * byte[]
+
 type ConcolicMemory(communicator : Communicator) =
     let mutable physicalAddresses = Dictionary<UIntPtr, concreteHeapAddress Lazy>()
     let mutable virtualAddresses = Dictionary<concreteHeapAddress, UIntPtr>()
     let mutable unmarshalledAddresses = HashSet()
+    let mutable concreteBytes = Dictionary<UIntPtr, byte[]>()
 
     let zeroHeapAddress = VectorTime.zero
+            
+    member private x.GetConcreteBytesData (address : UIntPtr) =
+        if not (concreteBytes.ContainsKey address)
+        then internalfailf "concrete data dictionary does not contain %O address!" address
+        concreteBytes[address]
 
-    let readHeapBytes address offset size (t : Type) =
+    member private x.ReadHeapBytes address offset size (t : Type) =
+        let bytes = x.GetConcreteBytesData address
         match t with
         | _ when t.IsPrimitive || t.IsEnum ->
-            let bytes = communicator.ReadHeapBytes address offset size Array.empty
             bytesToObj bytes t
         | _ when TypeUtils.isStruct t ->
             let fieldOffsets = fieldsWithOffsets t
-            let refOffsets = chooseRefOffsets fieldOffsets
-            let bytes = communicator.ReadHeapBytes address offset size refOffsets
             parseFields bytes fieldOffsets |> FieldsData |> box
         | _ ->
             assert(not t.IsValueType)
-            let bytes = communicator.ReadHeapBytes address offset size (Array.singleton 0)
             bytesToObj bytes t
-
+    
+    member private x.ConcreteBytes
+        with get() = concreteBytes
+        and set newData =
+            concreteBytes <- newData
+    
     member private x.PhysicalAddresses
         with get() = physicalAddresses
         and set anotherPhysicalAddresses =
@@ -48,6 +60,10 @@ type ConcolicMemory(communicator : Communicator) =
         x.PhysicalAddresses <- Dictionary(anotherConcolicMemory.PhysicalAddresses)
         x.VirtualAddresses <- Dictionary(anotherConcolicMemory.VirtualAddresses)
         x.UnmarshalledAddresses <- HashSet(anotherConcolicMemory.UnmarshalledAddresses)
+        x.ConcreteBytes <- Dictionary(anotherConcolicMemory.ConcreteBytes)
+        
+    member x.WriteConcreteBytes ref newBytes =
+        concreteBytes.Add(ref, newBytes)
 
     interface IConcreteMemory with
         // TODO: support non-vector arrays
@@ -66,7 +82,7 @@ type ConcolicMemory(communicator : Communicator) =
                 let metadata = if isSting then LayoutUtils.StringElementsOffset else LayoutUtils.ArrayElementsOffset
                 let offset = linearIndex * size + metadata
                 let address = cm.GetPhysicalAddress address
-                readHeapBytes address offset size elemType
+                x.ReadHeapBytes address offset size elemType
             if isVector then
                 assert(List.length indices = 1)
                 readElement (List.head indices)
@@ -77,10 +93,11 @@ type ConcolicMemory(communicator : Communicator) =
                 readElement linearIndex
 
         member x.ReadArrayLength address dim arrayType =
+            let tata = arrayRefOffsets
             let _, _, isVector = arrayType
             let address = (x :> IConcreteMemory).GetPhysicalAddress address
             let offset = LayoutUtils.ArrayLengthOffset(isVector, dim)
-            if isVector then readHeapBytes address offset sizeof<int> typeof<int>
+            if isVector then x.ReadHeapBytes address offset sizeof<int> typeof<int>
             else internalfail "Length reading for non-vector array is not implemented!"
 
         member x.ReadArrayLowerBound _ _ arrayType =
@@ -94,30 +111,23 @@ type ConcolicMemory(communicator : Communicator) =
             let t = fieldInfo.FieldType
             let offset = memoryFieldOffset fieldInfo
             let size = TypeUtils.internalSizeOf t |> int
-            readHeapBytes address offset size t
+            x.ReadHeapBytes address offset size t
 
         member x.ReadBoxedLocation address actualType =
             let address = (x :> IConcreteMemory).GetPhysicalAddress address
+            let bytes = x.GetConcreteBytesData address
             match actualType with
             | _ when actualType.IsPrimitive || actualType.IsEnum ->
-                let size = TypeUtils.internalSizeOf actualType |> int
-                let metadataSize = LayoutUtils.MetadataSize typeof<Object>
-                let bytes = communicator.ReadHeapBytes address metadataSize size Array.empty
                 bytesToObj bytes actualType
             | _ ->
                 assert(actualType.IsValueType)
                 let fieldOffsets = fieldsWithOffsets actualType
-                let refOffsets = chooseRefOffsets fieldOffsets
-                let bytes = communicator.ReadWholeObject address refOffsets
                 parseFields bytes fieldOffsets |> FieldsData |> box
 
         member x.GetAllArrayData address arrayType =
-            let cm = x :> IConcreteMemory
             let elemType, dims, isVector = arrayType
-            let elemSize = TypeUtils.internalSizeOf elemType
-            let physAddress = cm.GetPhysicalAddress address
-            let refOffsets = arrayRefOffsets elemType
-            let bytes = communicator.ReadArray physAddress elemSize refOffsets
+            let address = (x :> IConcreteMemory).GetPhysicalAddress address
+            let bytes = x.GetConcreteBytesData address
             if isVector then
                 let array = parseVectorArray bytes elemType
                 Array.mapi (fun i value -> List.singleton i, value) array

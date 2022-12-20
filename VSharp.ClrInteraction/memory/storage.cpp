@@ -101,10 +101,27 @@ namespace vsharp {
         return (size + sizeofCell - 1) / sizeofCell;
     }
 
-    Object::Object(ADDR address, SIZE size, const ObjectLocation &location, bool isArray)
+    Object::Object(ADDR address, SIZE size, const ObjectLocation &location, bool isArray, char *type, unsigned long typeLength)
             : Interval(address, size)
             , m_location(ObjectLocation(location))
             , isArray(isArray)
+            , type(type)
+            , typeLength(typeLength)
+    {
+        assert(size > 0);
+        SIZE squashedSize = squashSize(size);
+        concreteness = new cell[squashedSize];
+        // NOTE: all contents are concrete at the beginning
+        for (int i = 0; i < squashedSize; ++i) concreteness[i] = max;
+        fullConcreteness = true;
+    }
+
+    Object::Object(ADDR address, SIZE size, const ObjectLocation &location)
+            : Interval(address, size)
+            , m_location(ObjectLocation(location))
+            , isArray(false)
+            , type(nullptr)
+            , typeLength(0)
     {
         assert(size > 0);
         SIZE squashedSize = squashSize(size);
@@ -208,24 +225,32 @@ namespace vsharp {
         return (int) size;
     }
 
+    char *Object::getType() const {
+        return type;
+    }
+
+    unsigned long Object::getTypeLength() const {
+        return typeLength;
+    }
+
 // --------------------------- LocalObject ---------------------------
 
 // TODO: think about marked and flushed flags
 
     LocalObject::LocalObject(int size, const ObjectLocation &location)
-        : Object(UNKNOWN_ADDRESS, size, location, false)
+        : Object(UNKNOWN_ADDRESS, size, location)
     {
     }
 
     LocalObject::LocalObject()
-        : Object(UNKNOWN_ADDRESS, 1, ObjectLocation{}, false)
+        : Object(UNKNOWN_ADDRESS, 1, ObjectLocation{})
     {
     }
 
     LocalObject::~LocalObject() = default;
 
     LocalObject::LocalObject(const LocalObject &s)
-        : Object(s.left, s.sizeOf(), s.m_location, false)
+        : Object(s.left, s.sizeOf(), s.m_location)
     {
         copyConcreteness(s);
     }
@@ -296,7 +321,7 @@ namespace vsharp {
         ObjectKey key{};
         key.none = nullptr;
         ObjectLocation location{ReferenceType, key};
-        auto *obj = new Object(address, size, location, isArray);
+        auto *obj = new Object(address, size, location, isArray, type, typeLength);
         tree.add(*obj);
         auto id = (OBJID) obj;
         newAddresses[id] = std::make_pair(type, typeLength);
@@ -319,7 +344,7 @@ namespace vsharp {
         const Interval *i;
         if (!tree.find(address, i)) {
             ObjectLocation location{Statics, key};
-            auto *obj = new Object(address, size, location, false);
+            auto *obj = new Object(address, size, location);
             obj->disableGC();
             tree.add(*obj);
             return (OBJID) obj;

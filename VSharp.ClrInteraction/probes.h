@@ -20,19 +20,19 @@ void setProtocol(Protocol *p) {
     protocol = p;
 }
 
-enum UnmarshalledDataType {
+enum ConcreteBytesType {
     None = 0,
-    UArray = 1,
-    UObject = 2
+    UnmarshalledData = 1,
+    ReadData = 2
 };
 
-struct UnmarshalledData {
-    UnmarshalledDataType type;
+struct ConcreteBytes {
+    ConcreteBytesType type;
     UINT_PTR ptr;
     char* bytes;
     SIZE sizeBytes;
 
-    UnmarshalledData() {
+    ConcreteBytes() {
         type = None;
         bytes = nullptr;
         sizeBytes = 0;
@@ -41,11 +41,11 @@ struct UnmarshalledData {
 
     size_t size() const {
         switch (type) {
-            case UObject:
-            case UArray:
+            case ReadData:
+            case UnmarshalledData:
                 return sizeBytes + 2 * sizeof(INT32) + sizeof(UINT_PTR);
             case None:
-                return 2 * sizeof(INT32);
+                return 2 * sizeof(INT32) + sizeof(UINT_PTR);
             default: FAIL_LOUD("unexpected unmarshalledDataType value!");
         }
     }
@@ -53,10 +53,11 @@ struct UnmarshalledData {
     void serialize(char *&buffer) const {
         WRITE_BYTES(INT32, buffer, (INT32)type);
         WRITE_BYTES(INT32, buffer, (INT32)sizeBytes);
+        WRITE_BYTES(UINT_PTR, buffer, ptr);
         switch (type) {
-            case UObject:
-            case UArray:
-                WRITE_BYTES(UINT_PTR, buffer, ptr);
+            // the difference is how we treat them in SILI
+            case ReadData:
+            case UnmarshalledData:
                 memcpy(buffer, bytes, sizeBytes);
                 buffer += sizeBytes;
                 break;
@@ -66,7 +67,7 @@ struct UnmarshalledData {
         }
     }
 
-    ~UnmarshalledData() {
+    ~ConcreteBytes() {
         delete[] bytes;
         bytes = nullptr;
         sizeBytes = 0;
@@ -169,7 +170,7 @@ struct ExecCommand {
     OBJID *deletedAddresses;
     std::tuple<OBJID, INT32, OBJID> *delegates;
     const CoverageNode *newCoverageNodes;
-    UnmarshalledData *unmarshalledData;
+    ConcreteBytes *concreteBytes;
 
     void serialize(char *&bytes, unsigned &count) const {
         count = 9 * sizeof(unsigned) + 3 * sizeof(BYTE) + sizeof(UINT_PTR) + 2 * sizeof(unsigned) * newCallStackFramesCount + sizeof(unsigned) * ipStackCount;
@@ -192,7 +193,7 @@ struct ExecCommand {
             node = node->next;
         }
         count += sizeof(unsigned);
-        count += unmarshalledData->size();
+        count += concreteBytes->size();
 
         bytes = new char[count];
         char *buffer = bytes;
@@ -243,11 +244,11 @@ struct ExecCommand {
             node = node->next;
         }
 
-        unmarshalledData->serialize(buffer);
+        concreteBytes->serialize(buffer);
     }
 };
 
-void initCommand(OFFSET offset, bool isBranch, unsigned opsCount, EvalStackOperand *ops, ExecCommand &command, UnmarshalledData &unmarshalled) {
+void initCommand(OFFSET offset, bool isBranch, unsigned opsCount, EvalStackOperand *ops, ExecCommand &command, ConcreteBytes &unmarshalled) {
     Stack &stack = vsharp::stack();
     StackFrame &top = stack.topFrame();
     command.isBranch = isBranch ? 1 : 0;
@@ -331,7 +332,7 @@ void initCommand(OFFSET offset, bool isBranch, unsigned opsCount, EvalStackOpera
 
     command.newCoverageNodes = flushNewCoverageNodes();
 
-    command.unmarshalledData = &unmarshalled;
+    command.concreteBytes = &unmarshalled;
 }
 
 bool readExecResponse(StackFrame &top, EvalStackOperand *ops, unsigned &count, EvalStackOperand &result) {
@@ -408,13 +409,7 @@ CommandType getAndHandleCommand() {
     if (!protocol->acceptCommand(command)) FAIL_LOUD("Accepting command failed!");
     switch (command) {
         case ReadHeapBytes: {
-            VirtualAddress address{};
-            INT32 size;
-            int refOffsetsLength, *refOffsets;
-            if (!protocol->acceptHeapReadingParameters(address, size, refOffsetsLength, refOffsets)) FAIL_LOUD("Accepting heap reading parameters failed!");
-
-            char *buffer = heap.readBytes(address, size, refOffsetsLength, refOffsets);
-            if (!protocol->sendBytes(buffer, size)) FAIL_LOUD("Sending bytes from heap reading failed!");
+            FAIL_LOUD("Object Bytes data should be sent within SendCommand now!");
             break;
         }
         case Unmarshall: {
@@ -426,25 +421,11 @@ CommandType getAndHandleCommand() {
             break;
         }
         case ReadWholeObject: {
-            OBJID objID;
-            bool isArray;
-            int refOffsetsLength, *refOffsets;
-            if (!protocol->acceptReadObjectParameters(objID, refOffsetsLength, refOffsets)) FAIL_LOUD("Accepting object ID failed!");
-            char *buffer;
-            SIZE size;
-            heap.readWholeObject(objID, buffer, size, refOffsetsLength, refOffsets);
-            if (!protocol->sendBytes(buffer, (int) size)) FAIL_LOUD("Sending bytes from heap reading failed!");
+            FAIL_LOUD("Object Bytes data should be sent within SendCommand now!");
             break;
         }
         case ReadArray: {
-            OBJID objID;
-            bool isArray;
-            int elemSize, refOffsetsLength, *refOffsets;
-            if (!protocol->acceptReadArrayParameters(objID, elemSize, refOffsetsLength, refOffsets)) FAIL_LOUD("Accepting object ID failed!");
-            char *buffer;
-            SIZE size;
-            heap.readArray(objID, buffer, size, elemSize, refOffsetsLength, refOffsets);
-            if (!protocol->sendBytes(buffer, (int) size)) FAIL_LOUD("Sending bytes from heap reading failed!");
+            FAIL_LOUD("Object Bytes data should be sent within SendCommand now!");
             break;
         }
         default:
@@ -460,7 +441,7 @@ void trackCoverage(OFFSET offset, StackPush &lastPushInfo, bool &stillExpectsCov
     }
 }
 
-void sendCommandUnmarshall(OFFSET offset, unsigned opsCount, EvalStackOperand *ops, UnmarshalledData &unmarshalled, bool mightFork = true) {
+void sendCommandConcreteBytes(OFFSET offset, unsigned opsCount, EvalStackOperand *ops, ConcreteBytes &unmarshalled, bool mightFork = true) {
     getLock();
     StackPush lastStackPush;
     bool commandsDisabled;
@@ -508,8 +489,8 @@ void sendCommandUnmarshall(OFFSET offset, unsigned opsCount, EvalStackOperand *o
 }
 
 void sendCommand(OFFSET offset, unsigned opsCount, EvalStackOperand *ops, bool mightFork = true) {
-    UnmarshalledData unmarshalled = UnmarshalledData();
-    sendCommandUnmarshall(offset, opsCount, ops, unmarshalled, mightFork);
+    ConcreteBytes unmarshalled = ConcreteBytes();
+    sendCommandConcreteBytes(offset, opsCount, ops, unmarshalled, mightFork);
 }
 
 void sendCommand0(OFFSET offset, bool mightFork = true) { sendCommand(offset, 0, nullptr, mightFork); }
@@ -598,26 +579,39 @@ EvalStackOperand* createOps(int opsCount, OFFSET offset) {
     return ops;
 }
 
-void unmarshallData(INT_PTR ptr, UnmarshalledData &unmarshalledData) {
+void getObjectData(INT_PTR ptr, ConcreteBytes &data, bool toUnmarshall) {
     VirtualAddress vAddr{};
     resolve(ptr, vAddr);
     Object *obj = (Object*)vAddr.obj;
-    if (!obj->isFullyConcrete() || heap.checkUnmarshalled(vAddr.obj)) return;
+    if (!obj->isFullyConcrete() || (toUnmarshall && heap.checkUnmarshalled(vAddr.obj))) return;
 
     OBJID objID;
     int offsetsLength;
     int *offsets;
     int elemSize;
-    unmarshalledData.ptr = ptr;
-    if (obj->isArrayData()) {
-        unmarshalledData.type = UArray;
-        if (!protocol->getArrayInfo(ptr, objID, elemSize, offsetsLength, offsets)) FAIL_LOUD("Could not get array parameters from SILI!");
-        heap.unmarshallArray(objID, unmarshalledData.bytes, unmarshalledData.sizeBytes, elemSize, offsetsLength, offsets);
+    data.ptr = ptr;
+    bool isArray = obj->isArrayData();
+
+    if (isArray) {
+        if (!protocol->getArrayInfo(ptr, objID, elemSize, offsetsLength, offsets, obj->getType(), obj->getTypeLength())) FAIL_LOUD("Could not get array parameters from SILI!");
     }
     else {
-        unmarshalledData.type = UObject;
-        if (!protocol->getObjectInfo(ptr, objID, offsetsLength, offsets)) FAIL_LOUD("Could not get object parameters from SILI!");
-        heap.unmarshall(objID, unmarshalledData.bytes, unmarshalledData.sizeBytes, offsetsLength, offsets);
+        if (!protocol->getObjectInfo(ptr, objID, offsetsLength, offsets, obj->getType(), obj->getTypeLength())) FAIL_LOUD("Could not get object parameters from SILI!");
+    }
+    // create separate functions within storage accepting unmarshall option to improve readability?
+    if (toUnmarshall) {
+        data.type = UnmarshalledData;
+        if (isArray)
+            heap.unmarshallArray(vAddr.obj, data.bytes, data.sizeBytes, elemSize, offsetsLength, offsets);
+        else
+            heap.unmarshall(vAddr.obj, data.bytes, data.sizeBytes, offsetsLength, offsets);
+    }
+    else {
+        data.type = ReadData;
+        if (isArray)
+            heap.readArray(vAddr.obj, data.bytes, data.sizeBytes, elemSize, offsetsLength, offsets);
+        else
+            heap.readWholeObject(vAddr.obj, data.bytes, data.sizeBytes, offsetsLength, offsets);
     }
 }
 
@@ -818,23 +812,22 @@ PROBE(void, Track_Ldind, (INT_PTR ptr, INT32 sizeOfPtr, OFFSET offset)) {
     else sendCommand(offset, 1, new EvalStackOperand[1] { mkop_p(ptr) });
 }
 
-//PROBE(COND, Track_Stind, (INT_PTR ptr, INT32 sizeOfPtr)) {
-bool checkStindConcreteness(INT_PTR ptr, INT32 sizeOfPtr, UnmarshalledData &unmarshalledData) {
+bool checkStindConcreteness(INT_PTR ptr, INT32 sizeOfPtr, ConcreteBytes &unmarshalledData) {
     StackFrame &top = topFrame();
     auto valueIsConcrete = top.peek0();
     auto addressIsConcrete = top.peek1();
     // probable change of the object from fully concrete to partially symbolic
     if (addressIsConcrete && !valueIsConcrete) {
-        unmarshallData(ptr, unmarshalledData);
+        getObjectData(ptr, unmarshalledData, true);
     }
     if (addressIsConcrete) heap.writeConcreteness(ptr, sizeOfPtr, valueIsConcrete);
     return top.pop(2);
 }
 
 inline void Exec_Stind_Common(INT_PTR ptr, INT32 sizeOfPtr, EvalStackOperand op, OFFSET offset) {
-    UnmarshalledData unmarshalledData = UnmarshalledData();
+    ConcreteBytes unmarshalledData = ConcreteBytes();
     if (!checkStindConcreteness(ptr, sizeOfPtr, unmarshalledData)) {
-        sendCommandUnmarshall(offset, 2, new EvalStackOperand[2] { mkop_p(ptr), op }, unmarshalledData);
+        sendCommandConcreteBytes(offset, 2, new EvalStackOperand[2]{mkop_p(ptr), op}, unmarshalledData);
     }
 }
 
@@ -985,14 +978,14 @@ PROBE(void, Track_Ldfld_Struct, (INT32 fieldOffset, INT32 fieldSize, OFFSET offs
 }
 PROBE(void, Track_Ldflda, (INT_PTR objPtr, mdToken fieldToken, OFFSET offset)) { /*TODO*/ }
 
-inline bool stfld(INT_PTR ptr, INT_PTR fieldPtr, INT32 fieldSize, UnmarshalledData &unmarshalledData) {
+inline bool stfld(INT_PTR ptr, INT_PTR fieldPtr, INT32 fieldSize, ConcreteBytes &unmarshalledData) {
     StackFrame &top = vsharp::topFrame();
     bool value = top.peek0();
     bool obj = top.peek1();
     bool memory = false;
     // probable change of the object from fully concrete to partially symbolic
     if (obj && !value) {
-        unmarshallData(ptr, unmarshalledData);
+        getObjectData(ptr, unmarshalledData, true);
     }
     if (obj) memory = heap.readConcreteness(fieldPtr, fieldSize);
     if (memory) {
@@ -1003,9 +996,9 @@ inline bool stfld(INT_PTR ptr, INT_PTR fieldPtr, INT32 fieldSize, UnmarshalledDa
 }
 
 inline void Track_Stfld_Common(INT_PTR fieldPtr, INT_PTR ptr, EvalStackOperand op, INT32 fieldSize, OFFSET offset) {
-    UnmarshalledData unmarshalledData = UnmarshalledData();
+    ConcreteBytes unmarshalledData = ConcreteBytes();
     if (!stfld(ptr, fieldPtr, fieldSize, unmarshalledData))
-        sendCommandUnmarshall(offset, 2, new EvalStackOperand[2] {mkop_p(ptr), op}, unmarshalledData);
+        sendCommandConcreteBytes(offset, 2, new EvalStackOperand[2]{mkop_p(ptr), op}, unmarshalledData);
 }
 
 PROBE(void, Track_Stfld_4, (INT_PTR fieldPtr, INT_PTR ptr, INT32 value, OFFSET offset)) {
@@ -1049,7 +1042,7 @@ bool ldelema(INT_PTR ptr, INT_PTR index) {
     StackFrame &top = vsharp::topFrame();
     return top.pop1() && top.peek0();
 }
-bool checkLdelemConcreteness(INT_PTR ptr, INT_PTR index, INT32 elemSize) {
+bool checkLdelemConcreteness(INT_PTR ptr, INT_PTR index, INT32 elemSize, ConcreteBytes &arrayData) {
     StackFrame &top = vsharp::topFrame();
     bool iConcrete = top.peek0();
     bool ptrConcrete = top.peek1();
@@ -1057,17 +1050,22 @@ bool checkLdelemConcreteness(INT_PTR ptr, INT_PTR index, INT32 elemSize) {
     int metadataSize = sizeof(INT_PTR) + sizeof(INT64);
     INT_PTR elemPtr = ptr + index * elemSize + metadataSize;
     bool memory = false;
+    // we might need to send the whole array so SILI can read it
+    if (!iConcrete) {
+        getObjectData(ptr, arrayData, false);
+    }
     if (ptrConcrete && iConcrete) memory = heap.readConcreteness(elemPtr, elemSize);
     if (memory) top.push1Concrete();
     return memory;
 }
 PROBE(void, Exec_Ldelema, (INT_PTR ptr, INT_PTR index, INT32 elemSize, OFFSET offset)) { /*send command if ldelema returns false*/ }
 PROBE(void, Exec_Ldelem, (INT_PTR ptr, INT_PTR index, INT32 elemSize, OFFSET offset)) {
-    if (!checkLdelemConcreteness(ptr, index, elemSize))
-        sendCommand(offset, 2, new EvalStackOperand[2] {mkop_p(ptr), mkop_4(index)});
+    ConcreteBytes arrayData = ConcreteBytes();
+    if (!checkLdelemConcreteness(ptr, index, elemSize, arrayData))
+        sendCommandConcreteBytes(offset, 2, new EvalStackOperand[2] {mkop_p(ptr), mkop_4(index)}, arrayData);
 }
 
-inline bool checkStelemConcreteness(INT_PTR ptr, INT_PTR index, INT32 elemSize, UnmarshalledData &unmarshalledData) {
+inline bool checkStelemConcreteness(INT_PTR ptr, INT_PTR index, INT32 elemSize, ConcreteBytes &unmarshalledData) {
     StackFrame &top = vsharp::topFrame();
     bool vConcrete = top.peek0();
     bool iConcrete = top.peek1();
@@ -1077,7 +1075,7 @@ inline bool checkStelemConcreteness(INT_PTR ptr, INT_PTR index, INT32 elemSize, 
     bool memory = false;
     // probable change of the object from fully concrete to partially symbolic
     if (!iConcrete || !vConcrete) {
-        unmarshallData(ptr, unmarshalledData);
+        getObjectData(ptr, unmarshalledData, true);
     }
     if (ptrConcrete) memory = heap.readConcreteness(elemPtr, elemSize);
     if (memory) heap.writeConcreteness(elemPtr, elemSize, vConcrete);
@@ -1087,9 +1085,9 @@ inline bool checkStelemConcreteness(INT_PTR ptr, INT_PTR index, INT32 elemSize, 
 }
 
 inline void Exec_Stelem_Common(INT_PTR ptr, INT_PTR index, EvalStackOperand op, INT32 elemSize, OFFSET offset) {
-    UnmarshalledData unmarshalledData = UnmarshalledData();
+    ConcreteBytes unmarshalledData = ConcreteBytes();
     if (!checkStelemConcreteness(ptr, index, elemSize, unmarshalledData))
-        sendCommandUnmarshall(offset, 3, new EvalStackOperand[3] {mkop_p(ptr), mkop_4(index), op}, unmarshalledData);
+        sendCommandConcreteBytes(offset, 3, new EvalStackOperand[3]{mkop_p(ptr), mkop_4(index), op}, unmarshalledData);
 }
 
 PROBE(void, Exec_Stelem_I, (INT_PTR ptr, INT_PTR index, INT_PTR value, INT32 elemSize, OFFSET offset)) {

@@ -94,13 +94,18 @@ protected:
     bool fullConcreteness = true;
     ObjectLocation m_location;
     bool isArray;
+    char *type;
+    unsigned long typeLength;
 public:
-    Object(ADDR address, SIZE size, const ObjectLocation &location, bool isArray);
+    Object(ADDR address, SIZE size, const ObjectLocation &location, bool isArray, char *type, unsigned long typeLength);
+    Object(ADDR address, SIZE size, const ObjectLocation &location);
     ~Object() override;
     std::string toString() const override;
     bool readConcreteness(SIZE offset, SIZE size) const;
     bool isFullyConcrete() const;
     bool isArrayData() const;
+    char *getType() const;
+    unsigned long getTypeLength() const;
     void writeConcretenessWholeObject(bool vConcreteness);
     void writeConcreteness(SIZE offset, SIZE size, bool vConcreteness);
     char *readBytes(SIZE offset, SIZE size) const;

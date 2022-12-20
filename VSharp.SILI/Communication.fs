@@ -62,9 +62,10 @@ type evalStackArgType =
     | OpStruct = 7
     | OpEmpty = 8
     
-type unmarshalledData =
+type concreteDataFromConcolic =
     | NoData
-    | UData of UIntPtr * byte[]
+    | UnmarshalledData of UIntPtr * byte[]
+    | ReadBytesData of UIntPtr * byte[]
 
 type concolicAddressKey =
     | ReferenceType
@@ -117,7 +118,7 @@ type execCommand = {
     delegates : array<UIntPtr * Int32 * UIntPtr>
     newAddressesTypes : Type array
     newCoveragePath : coverageLocation list
-    unmarshalledData : unmarshalledData
+    unmarshalledData : concreteDataFromConcolic
 }
 
 [<type: StructLayout(LayoutKind.Sequential, Pack=1, CharSet=CharSet.Ansi)>]
@@ -700,19 +701,20 @@ type Communicator(pipeFile) =
             for i in 1 .. newCoverageNodesCount do
                 let node = x.DeserializeCoverageLocation(dynamicBytes, &offset)
                 newCoveragePath <- node::newCoveragePath
-            let unmarshalledDataType = BitConverter.ToInt32(dynamicBytes, offset)
+            let concreteBytesType = BitConverter.ToInt32(dynamicBytes, offset)
             offset <- offset + sizeof<int32>
-            let unmarshalledDataSize = BitConverter.ToInt32(dynamicBytes, offset)
+            let concreteBytesSize = BitConverter.ToInt32(dynamicBytes, offset)
             offset <- offset + sizeof<int32>
             let unmarshalledData =
-                match unmarshalledDataType with
+                let ref = Reflection.BitConverterToUIntPtr dynamicBytes offset in offset <- offset + UIntPtr.Size
+                match concreteBytesType with
                 | 0 -> NoData
-                | 1
+                | 1 ->
+                    UnmarshalledData (ref, dynamicBytes[offset .. offset + concreteBytesSize - 1])
                 | 2 ->
-                    let ref = Reflection.BitConverterToUIntPtr dynamicBytes offset in offset <- offset + UIntPtr.Size
-                    UData (ref, dynamicBytes[offset .. offset + unmarshalledDataSize - 1])
-                | _ -> internalfailf "unexpected unmarshalledDataType value %O" unmarshalledDataType
-            offset <- offset + unmarshalledDataSize
+                    ReadBytesData (ref, dynamicBytes[offset .. offset + concreteBytesSize - 1])
+                | _ -> internalfailf "unexpected unmarshalledDataType value %O" concreteBytesType
+            offset <- offset + concreteBytesSize
             { isBranch = staticPart.isBranch
               callStackFramesPops = staticPart.callStackFramesPops
               evaluationStackPops = staticPart.evaluationStackPops

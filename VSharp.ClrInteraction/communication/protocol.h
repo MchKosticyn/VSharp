@@ -1,6 +1,12 @@
 #ifndef PROTOCOL_H_
 #define PROTOCOL_H_
 
+#ifdef IMAGEHANDLER_EXPORTS
+#define IMAGEHANDLER_API __declspec(dllexport)
+#else
+#define IMAGEHANDLER_API __declspec(dllimport)
+#endif
+
 #include "communicator.h"
 #include "../memory/memory.h"
 #include "cor.h"
@@ -14,6 +20,11 @@
 #ifdef WIN32
 #include "../profiler_win.h"
 #endif
+
+typedef void (*ArrayGetterType)(INT_PTR, OBJID&, int&, int&, int*&, char*, unsigned long);
+typedef void (*ObjectGetterType)(INT_PTR, OBJID&, int&, int*&, char*, unsigned long);
+
+extern "C" IMAGEHANDLER_API void SyncInfoGettersPointers(long arrayInfoPtr, long objectInfoPtr);
 
 #define sizeOfDelegate (2 * sizeof(UINT_PTR) + sizeof(INT32))
 
@@ -72,8 +83,8 @@ public:
     bool acceptReadArrayParameters(OBJID &objID, INT32 &elemSize, int &refOffsetsLength, int *&refOffsets);
     bool acceptHeapReadingParameters(VirtualAddress &address, INT32 &size, int &refOffsetsLength, int *&refOffsets);
     CoverageNode *acceptCoverageInformation();
-    bool getArrayInfo(INT_PTR arrayPtr, OBJID &objID, int &elemSize, int &refOffsetsLength, int *&refOffsets);
-    bool getObjectInfo(INT_PTR objectPtr, OBJID &objID, int &refOffsetsLength, int *&refOffsets);
+    bool getArrayInfo(INT_PTR arrayPtr, OBJID &objID, int &elemSize, int &refOffsetsLength, int *&refOffsets, char *type, unsigned long typeLength);
+    bool getObjectInfo(INT_PTR objectPtr, OBJID &objID, int &refOffsetsLength, int *&refOffsets, char *type, unsigned long typeLength);
     bool sendToken(mdToken token);
     bool sendBytes(char *bytes, int size);
     bool sendStringsPoolIndex(unsigned index);

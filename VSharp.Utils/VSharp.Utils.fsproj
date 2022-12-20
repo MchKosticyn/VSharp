@@ -42,6 +42,7 @@
         <Compile Include="UnitTests.fs" />
         <Compile Include="TestResultsChecker.fs" />
         <Compile Include="AssemblyManager.fs" />
+        <Compile Include="ConcolicUtils.fs" />
     </ItemGroup>
 
     <ItemGroup>
