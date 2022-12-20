@@ -26,6 +26,7 @@ type ConcolicMemory(communicator : Communicator) =
 
     member private x.ReadHeapBytes address offset size (t : Type) =
         let bytes = x.GetConcreteBytesData address
+        let bytes = bytes[offset .. offset + size - 1]
         match t with
         | _ when t.IsPrimitive || t.IsEnum ->
             bytesToObj bytes t
