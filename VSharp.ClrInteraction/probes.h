@@ -598,7 +598,7 @@ void getObjectData(INT_PTR ptr, ConcreteBytes &data, bool toUnmarshall) {
     else {
         if (!protocol->getObjectInfo(ptr, objID, offsetsLength, offsets, obj->getType(), obj->getTypeLength())) FAIL_LOUD("Could not get object parameters from SILI!");
     }
-    // create separate functions within storage accepting unmarshall option to improve readability?
+
     if (toUnmarshall) {
         data.type = UnmarshalledData;
         if (isArray)
@@ -950,19 +950,22 @@ PROBE(void, Track_Box, (INT_PTR ptr, OFFSET offset)) {
 PROBE(void, Track_Unbox, (INT_PTR ptr, mdToken typeToken, OFFSET offset)) { /*TODO*/ }
 PROBE(void, Track_Unbox_Any, (INT_PTR ptr, mdToken typeToken, OFFSET offset)) { /*TODO*/ }
 
-inline bool ldfld(INT_PTR fieldPtr, INT32 fieldSize) {
+bool ldfld(INT_PTR fieldPtr, INT32 fieldSize, ConcreteBytes &concreteData) {
     StackFrame &top = vsharp::topFrame();
     bool ptrIsConcrete = top.pop1();
     bool fieldIsConcrete = false;
     if (ptrIsConcrete)
         fieldIsConcrete = heap.readConcreteness(fieldPtr, fieldSize);
+    if (fieldIsConcrete)
+        getObjectData(fieldPtr, concreteData, false);
     return fieldIsConcrete;
 }
 
 // TODO: if objPtr = null, it's static field
 PROBE(void, Track_Ldfld, (INT_PTR objPtr, INT_PTR fieldPtr, INT32 fieldSize, OFFSET offset)) {
-    if (!ldfld(fieldPtr, fieldSize)) {
-        sendCommand(offset, 1, new EvalStackOperand[1] { mkop_p(objPtr) });
+    ConcreteBytes concreteData = ConcreteBytes();
+    if (!ldfld(fieldPtr, fieldSize, concreteData)) {
+        sendCommandConcreteBytes(offset, 1, new EvalStackOperand[1] { mkop_p(objPtr) }, concreteData);
     } else {
         vsharp::topFrame().push1Concrete();
     }
