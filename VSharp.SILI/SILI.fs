@@ -334,8 +334,6 @@ type public SILI(options : SiliOptions) =
             | Stop -> __unreachable__()
 
     member private x.AnswerPobs initialStates =
-        statistics.ExplorationStarted()
-
         // For backward compatibility. TODO: remove main pobs at all
         let mainPobs = []
         Application.spawnStates (Seq.cast<_> initialStates)
@@ -390,14 +388,14 @@ type public SILI(options : SiliOptions) =
     member x.Fuzz (methods : Method seq) =
         try
             let fuzzOne method =
-                Fuzzer.FuzzerInfo.SetFuzzer (Fuzzer.Fuzzer.Fuzzer(method))
-                let states = Fuzzer.FuzzerInfo.Fuzz()
+                let fuzzer = Fuzzer.Fuzzer(method)
+                let states = fuzzer.Fuzz()
                 Seq.map (withFst method) states
             let states = Seq.collect fuzzOne methods
             let cilStates = Seq.map (fun (m, s) -> makeInitialState m s) states |> Seq.toList
             Logger.info "Fuzzer finished with %O states" (Seq.length states)
             x.AnswerPobs cilStates
-            methods |> Seq.iter (fun m -> Logger.info "Statistics: %O coverage is %O" m (statistics.GetApproximateCoverage(m)))
+            methods |> Seq.iter (fun m -> Logger.info "Statistics: %O coverage is %O" m (statistics.GetApproximateCoverage(m, ByTest)))
         with
         | e -> Logger.error "Fuzzing before symbolic execution failed with %O" e
 
@@ -426,15 +424,16 @@ type public SILI(options : SiliOptions) =
                         let m, tm = trySubstituteTypeParameters m
                         (Application.getMethod m, a, tm))
                     |> Seq.toList
-                let isolatedStates = List.map fst isolated
-                x.Reset (isolatedStates @ (entryPoints |> List.map (fun (m, _, _) -> m)))
+                let isolatedMethods = List.map fst isolated
+                x.Reset (isolatedMethods @ (entryPoints |> List.map (fun (m, _, _) -> m)))
+                statistics.ExplorationStarted()
                 let isolatedInitialStates = isolated |> List.collect x.FormIsolatedInitialStates
                 let entryPointsInitialStates = entryPoints |> List.collect x.FormEntryPointInitialStates
                 let iieStates, initialStates = isolatedInitialStates @ entryPointsInitialStates |> List.partition (fun state -> state.iie.IsSome)
                 iieStates |> List.iter reportStateIncomplete
                 statistics.SetStatesGetter(fun () -> searcher.States())
                 statistics.SetStatesCountGetter(fun () -> searcher.StatesCount)
-                x.Fuzz isolatedStates
+                //x.Fuzz isolatedMethods
                 if not initialStates.IsEmpty then
                     x.AnswerPobs initialStates
             with

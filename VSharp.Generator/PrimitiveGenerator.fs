@@ -3,7 +3,6 @@ module VSharp.Generator.PrimitiveGenerator
 open System
 
 open VSharp.Generator.Config
-open VSharp.Generator.GeneratorInfo
 open VSharp
 open FsCheck
 
@@ -19,10 +18,11 @@ let private primitiveTypes = [
 
 let mutable private stdGen = FsCheck.Random.StdGen(1, 1)
 let mutable private size = 0
-let private recognize t = List.contains t primitiveTypes
 
-let private generate (rnd: Random) (conf: GeneratorConfig) (t: Type) =
-    assert (recognize t)
+let (|Primitive|_|) t =
+    if List.contains t primitiveTypes then Some Primitive else None
+
+let generate (rnd: Random) (conf: GeneratorConfig) (t: Type) =
     let nextSize, nextStdGen = Random.stdNext stdGen
     stdGen <- nextStdGen
     size <- nextSize
@@ -49,7 +49,7 @@ let private generate (rnd: Random) (conf: GeneratorConfig) (t: Type) =
         | _ when t = typeof<bool> -> Arb.generate<bool>.Eval(size, stdGen)
         | _ when t = typeof<decimal> -> Arb.generate<decimal>.Eval(size, stdGen)
         | _ -> __unreachable__()
+    res
 
-    Some res
 
-let primitiveGenerator: Generator = mkGenerator recognize generate
+

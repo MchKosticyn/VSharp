@@ -7,7 +7,6 @@
 
     <ItemGroup>
         <Compile Include="Config.fs" />
-        <Compile Include="GeneratorInfo.fs" />
         <Compile Include="PrimitiveGenerator.fs" />
         <Compile Include="EnumGenerator.fs" />
         <Compile Include="ArrayGenerator.fs" />

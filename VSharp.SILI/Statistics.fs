@@ -290,8 +290,9 @@ type public SILIStatistics(statsDumpIntervalMs : int) as this =
         ()
 
     member x.TrackFork (parent : cilState) (children : cilState seq) =
-        for child in children do
-            visitedBlocksNotCoveredByTests.[child] <- visitedBlocksNotCoveredByTests.[parent]
+        if visitedBlocksNotCoveredByTests.ContainsKey parent then
+            for child in children do
+                visitedBlocksNotCoveredByTests.[child] <- visitedBlocksNotCoveredByTests.[parent]
 
     member x.AddUnansweredPob (p : pob) = unansweredPobs.Add(p)
 
