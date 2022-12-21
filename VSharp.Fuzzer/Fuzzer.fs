@@ -167,8 +167,6 @@ type Fuzzer(method : Method) =
             state.exceptionsRegister <- Unhandled(exnRef, false)
             state
 
-
-
     member this.FuzzWithState state seed =
         let info = this.GetInfo (Some state)
         let rndGenerator = Random(seed)
@@ -179,11 +177,11 @@ type Fuzzer(method : Method) =
         |> Seq.ofList
 
     member this.Fuzz () =
-        let seed = 100 // Magic const!!!!
+        let seed = Int32.MaxValue // Magic const!!!!
         let info = this.GetInfo None
         let rndGenerator = Random(seed)
         [0..this.Config.MaxTest]
-        |> List.map (fun _ -> Random(rndGenerator.NextInt64() |> int))
+        |> List.map (fun _ -> Random(rndGenerator.Next() |> int))
         |> List.map (this.FuzzOnce info)
         |> List.map this.FuzzingResultToInitialState
         |> Seq.ofList

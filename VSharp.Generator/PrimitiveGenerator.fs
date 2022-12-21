@@ -31,14 +31,14 @@ let generate (rnd: Random) (conf: GeneratorConfig) (t: Type) =
 
     let res: obj =
         match t with
-        | _ when t = typeof<int8> -> Arb.generate<int8>.Eval(SByte.MaxValue |> int, stdGen)
-        | _ when t = typeof<int16> -> Arb.generate<int16>.Eval(Int16.MaxValue |> int, stdGen)
-        | _ when t = typeof<int32> -> Arb.generate<int32>.Eval(Int32.MaxValue |> int, stdGen)
-        | _ when t = typeof<int64> -> Arb.generate<int64>.Eval(Int64.MaxValue |> int, stdGen)
-        | _ when t = typeof<uint8> -> Arb.generate<uint8>.Eval(Byte.MaxValue |> int, stdGen)
-        | _ when t = typeof<uint16> -> Arb.generate<uint16>.Eval(UInt16.MaxValue |> int, stdGen)
-        | _ when t = typeof<uint32> -> Arb.generate<uint32>.Eval(UInt32.MaxValue |> int, stdGen)
-        | _ when t = typeof<uint64> -> Arb.generate<uint64>.Eval(UInt64.MaxValue |> int, stdGen)
+        | _ when t = typeof<int8> -> Arb.generate<int8>.Eval(size, stdGen)
+        | _ when t = typeof<int16> -> Arb.generate<int16>.Eval(size, stdGen)
+        | _ when t = typeof<int32> -> Arb.generate<int32>.Eval(size, stdGen)
+        | _ when t = typeof<int64> -> Arb.generate<int64>.Eval(size, stdGen)
+        | _ when t = typeof<uint8> -> Arb.generate<uint8>.Eval(size, stdGen)
+        | _ when t = typeof<uint16> -> Arb.generate<uint16>.Eval(size, stdGen)
+        | _ when t = typeof<uint32> -> Arb.generate<uint32>.Eval(size, stdGen)
+        | _ when t = typeof<uint64> -> Arb.generate<uint64>.Eval(size, stdGen)
         | _ when t = typeof<float> -> Arb.generate<float>.Eval(size, stdGen) // TODO: check size
         | _ when t = typeof<double> -> Arb.generate<double>.Eval(size, stdGen)
         | _ when t = typeof<char> ->
@@ -50,6 +50,3 @@ let generate (rnd: Random) (conf: GeneratorConfig) (t: Type) =
         | _ when t = typeof<decimal> -> Arb.generate<decimal>.Eval(size, stdGen)
         | _ -> __unreachable__()
     res
-
-
-
