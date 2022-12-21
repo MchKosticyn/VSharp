@@ -433,7 +433,7 @@ type public SILI(options : SiliOptions) =
                 iieStates |> List.iter reportStateIncomplete
                 statistics.SetStatesGetter(fun () -> searcher.States())
                 statistics.SetStatesCountGetter(fun () -> searcher.StatesCount)
-                //x.Fuzz isolatedMethods
+                x.Fuzz isolatedMethods
                 if not initialStates.IsEmpty then
                     x.AnswerPobs initialStates
             with
