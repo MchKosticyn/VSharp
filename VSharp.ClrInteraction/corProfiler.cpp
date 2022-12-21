@@ -222,6 +222,8 @@ bool jitInProcess = false;
 
 HRESULT STDMETHODCALLTYPE CorProfiler::JITCompilationStarted(FunctionID functionId, BOOL fIsSafeToBlock)
 {
+    tout << "JITCompilationStarted: isConcolicCall " << Protocol::isCSharpCallFromConcolicInRun() << std::endl;
+    if (Protocol::isCSharpCallFromConcolicInRun()) return S_OK;
     getLock();
     UNUSED(fIsSafeToBlock);
     LOG(tout << "JITCompilationStarted, threadID = " << currentThread() << std::endl);

@@ -104,6 +104,12 @@ namespace VSharp.TestRunner
             return StructurallyEqual(expected, got);
         }
 
+        private static void GetArrayInfoRedirect(IntPtr arrayPtr, UIntPtr* objID, int* elemSize, int* refOffsetsLength,
+            int** refOffsets, byte* typ, UInt64 typeLength)
+        {
+            GetArrayInfo(arrayPtr, objID, elemSize, refOffsetsLength, refOffsets, typ, typeLength);
+        }
+
         private static void GetArrayInfo(IntPtr arrayPtr, UIntPtr *objID, int *elemSize, int *refOffsetsLength,
             int **refOffsets, byte *typ, UInt64 typeLength)
         {
@@ -125,7 +131,13 @@ namespace VSharp.TestRunner
             *refOffsetsLength = offsets.Length;
         }
 
-        private static void GetObjectInfo(IntPtr arrayPtr, UIntPtr* objID, int* refOffsetsLength, int** refOffsets,
+        private static void GetObjectInfoRedirect(IntPtr objectPtr, UIntPtr* objID, int* refOffsetsLength,
+            int** refOffsets, byte* typ, UInt64 typeLength)
+        {
+            GetObjectInfo(objectPtr, objID, refOffsetsLength, refOffsets, typ, typeLength);
+        }
+
+        private static void GetObjectInfo(IntPtr objectPtr, UIntPtr* objID, int* refOffsetsLength, int** refOffsets,
             byte* typ, UInt64 typeLength)
         {
             var type = new byte[typeLength];
@@ -154,8 +166,8 @@ namespace VSharp.TestRunner
 
         private static bool ReproduceTests(IEnumerable<FileInfo> tests, bool shouldReproduceError, bool checkResult)
         {
-            ArraySender = new ArrayInfoSender(GetArrayInfo);
-            ObjectSender = new ObjectInfoSender(GetObjectInfo);
+            ArraySender = new ArrayInfoSender(GetArrayInfoRedirect);
+            ObjectSender = new ObjectInfoSender(GetObjectInfoRedirect);
             ArrayInfoAction = Marshal.GetFunctionPointerForDelegate(ArraySender);
             ObjectInfoAction = Marshal.GetFunctionPointerForDelegate(ObjectSender);
             SyncInfoGettersPointers(ArrayInfoAction.ToInt64(), ObjectInfoAction.ToInt64());

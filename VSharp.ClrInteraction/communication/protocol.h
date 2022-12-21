@@ -104,6 +104,7 @@ public:
     void acceptExecResult(char *&bytes, int &messageLength);
     bool shutdown();
     static void sendTerminateByExceptionCommand();
+    static bool isCSharpCallFromConcolicInRun();
 };
 
 }
