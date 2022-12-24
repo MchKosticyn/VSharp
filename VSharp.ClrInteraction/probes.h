@@ -5,10 +5,15 @@
 #include "memory/memory.h"
 #include "communication/protocol.h"
 #include <vector>
+#include <algorithm>
 
 #define COND INT_PTR
 #define ADDRESS_SIZE sizeof(INT32) + sizeof(UINT_PTR) + sizeof(UINT_PTR) + sizeof(BYTE) + sizeof(BYTE) * 2;
 #define BOXED_OBJ_METADATA_SIZE sizeof(INT_PTR)
+
+// TODO: remove these in the future, they're from storage.cpp
+#define ArrayLengthOffset sizeof(UINT_PTR)
+#define ArrayLengthSize sizeof(INT64)
 
 namespace vsharp {
 
@@ -68,9 +73,9 @@ struct ConcreteBytes {
     }
 
     ~ConcreteBytes() {
-        delete[] bytes;
-        bytes = nullptr;
-        sizeBytes = 0;
+//        delete[] bytes;
+//        bytes = nullptr;
+//        sizeBytes = 0;
     }
 };
 
@@ -170,7 +175,7 @@ struct ExecCommand {
     OBJID *deletedAddresses;
     std::tuple<OBJID, INT32, OBJID> *delegates;
     const CoverageNode *newCoverageNodes;
-    ConcreteBytes *concreteBytes;
+    std::vector<ConcreteBytes> *concreteBytes;
 
     void serialize(char *&bytes, unsigned &count) const {
         count = 9 * sizeof(unsigned) + 3 * sizeof(BYTE) + sizeof(UINT_PTR) + 2 * sizeof(unsigned) * newCallStackFramesCount + sizeof(unsigned) * ipStackCount;
@@ -193,7 +198,10 @@ struct ExecCommand {
             node = node->next;
         }
         count += sizeof(unsigned);
-        count += concreteBytes->size();
+        count += sizeof(int);
+        for (auto const &singleData : *concreteBytes) {
+            count += (unsigned int)singleData.size();
+        }
 
         bytes = new char[count];
         char *buffer = bytes;
@@ -244,11 +252,14 @@ struct ExecCommand {
             node = node->next;
         }
 
-        concreteBytes->serialize(buffer);
+        WRITE_BYTES(int, buffer, (int)concreteBytes->size());
+        for (auto const &singleData : *concreteBytes) {
+            singleData.serialize(buffer);
+        }
     }
 };
 
-void initCommand(OFFSET offset, bool isBranch, unsigned opsCount, EvalStackOperand *ops, ExecCommand &command, ConcreteBytes &unmarshalled) {
+void initCommand(OFFSET offset, bool isBranch, unsigned opsCount, EvalStackOperand *ops, ExecCommand &command, std::vector<ConcreteBytes> &concreteBytes) {
     Stack &stack = vsharp::stack();
     StackFrame &top = stack.topFrame();
     command.isBranch = isBranch ? 1 : 0;
@@ -332,7 +343,7 @@ void initCommand(OFFSET offset, bool isBranch, unsigned opsCount, EvalStackOpera
 
     command.newCoverageNodes = flushNewCoverageNodes();
 
-    command.concreteBytes = &unmarshalled;
+    command.concreteBytes = &concreteBytes;
 }
 
 bool readExecResponse(StackFrame &top, EvalStackOperand *ops, unsigned &count, EvalStackOperand &result) {
@@ -441,7 +452,7 @@ void trackCoverage(OFFSET offset, StackPush &lastPushInfo, bool &stillExpectsCov
     }
 }
 
-void sendCommandConcreteBytes(OFFSET offset, unsigned opsCount, EvalStackOperand *ops, ConcreteBytes &unmarshalled, bool mightFork = true) {
+void sendCommandConcreteBytes(OFFSET offset, unsigned opsCount, EvalStackOperand *ops, std::vector<ConcreteBytes> &concreteData, bool mightFork = true) {
     getLock();
     StackPush lastStackPush;
     bool commandsDisabled;
@@ -456,7 +467,7 @@ void sendCommandConcreteBytes(OFFSET offset, unsigned opsCount, EvalStackOperand
     }
 
     ExecCommand command{};
-    initCommand(offset, false, opsCount, ops, command, unmarshalled);
+    initCommand(offset, false, opsCount, ops, command, concreteData);
     protocol->sendSerializable(ExecuteCommand, command);
 
     // NOTE: handling commands from SILI (ReadBytes, ...)
@@ -486,6 +497,11 @@ void sendCommandConcreteBytes(OFFSET offset, unsigned opsCount, EvalStackOperand
     vsharp::stack().resetPopsTracking();
     freeCommand(command);
     freeLock();
+}
+
+void sendCommandConcreteBytes(OFFSET offset, unsigned opsCount, EvalStackOperand *ops, ConcreteBytes &concreteData, bool mightFork = true) {
+    auto singleton = std::vector<ConcreteBytes>({ concreteData });
+    sendCommandConcreteBytes(offset, opsCount, ops, singleton, mightFork);
 }
 
 void sendCommand(OFFSET offset, unsigned opsCount, EvalStackOperand *ops, bool mightFork = true) {
@@ -579,17 +595,20 @@ EvalStackOperand* createOps(int opsCount, OFFSET offset) {
     return ops;
 }
 
-void getObjectData(INT_PTR ptr, ConcreteBytes &data, bool toUnmarshall) {
+void getObjectDataR(INT_PTR ptr, std::vector<ConcreteBytes> &data, bool toUnmarshall, std::vector<INT_PTR> &objectsSent, bool recursive=false) {
     VirtualAddress vAddr{};
     resolve(ptr, vAddr);
     Object *obj = (Object*)vAddr.obj;
-    if (!obj->isFullyConcrete() || (toUnmarshall && heap.checkUnmarshalled(vAddr.obj))) return;
+
+    if (std::find(objectsSent.begin(), objectsSent.end(), ptr) != objectsSent.end() || vAddr.obj == 0 || !obj->isFullyConcrete()
+        || (toUnmarshall && heap.checkUnmarshalled(vAddr.obj))) return;
+
+    objectsSent.push_back(ptr);
 
     OBJID objID;
     int offsetsLength;
     int *offsets;
     int elemSize;
-    data.ptr = ptr;
     bool isArray = obj->isArrayData();
 
     if (isArray) {
@@ -599,20 +618,56 @@ void getObjectData(INT_PTR ptr, ConcreteBytes &data, bool toUnmarshall) {
         if (!protocol->getObjectInfo(ptr, objID, offsetsLength, offsets, obj->getType(), obj->getTypeLength())) FAIL_LOUD("Could not get object parameters from SILI!");
     }
 
+    ConcreteBytes singleData = ConcreteBytes();
     if (toUnmarshall) {
-        data.type = UnmarshalledData;
+        singleData.type = UnmarshalledData;
         if (isArray)
-            heap.unmarshallArray(vAddr.obj, data.bytes, data.sizeBytes, elemSize, offsetsLength, offsets);
+            heap.unmarshallArray(vAddr.obj, singleData.bytes, singleData.sizeBytes, elemSize, offsetsLength, offsets);
         else
-            heap.unmarshall(vAddr.obj, data.bytes, data.sizeBytes, offsetsLength, offsets);
+            heap.unmarshall(vAddr.obj, singleData.bytes, singleData.sizeBytes, offsetsLength, offsets);
     }
     else {
-        data.type = ReadData;
+        singleData.type = ReadData;
         if (isArray)
-            heap.readArray(vAddr.obj, data.bytes, data.sizeBytes, elemSize, offsetsLength, offsets);
+            heap.readArray(vAddr.obj, singleData.bytes, singleData.sizeBytes, elemSize, offsetsLength, offsets);
         else
-            heap.readWholeObject(vAddr.obj, data.bytes, data.sizeBytes, offsetsLength, offsets);
+            heap.readWholeObject(vAddr.obj, singleData.bytes, singleData.sizeBytes, offsetsLength, offsets);
     }
+    singleData.ptr = vAddr.obj;
+
+    data.push_back(singleData);
+
+    if (recursive) {
+        if (isArray) {
+            char *array = (char*)ptr + ArrayLengthOffset;
+            INT64 length = READ_BYTES(array, INT64);
+            for (int j = 0; j < length; j++) {
+                for (int i = 0; i < offsetsLength; i++) {
+                    char *refAddress = array + offsets[i];
+                    auto arrayElem = *(INT_PTR*)(refAddress);
+                    getObjectDataR(arrayElem, data, toUnmarshall, objectsSent, true);
+                }
+                array += elemSize;
+            }
+        }
+        else {
+            for (int i = 0; i < offsetsLength; i++) {
+                auto fld = *(INT_PTR*)(ptr + offsets[i]);
+                getObjectDataR(fld, data, toUnmarshall, objectsSent, true);
+            }
+        }
+    }
+}
+
+void getObjectData(INT_PTR ptr, std::vector<ConcreteBytes> &data, bool toUnmarshall, bool recursive=false) {
+    auto objectsSent = std::vector<INT_PTR>();
+    getObjectDataR(ptr, data, toUnmarshall, objectsSent, recursive);
+}
+
+void getObjectData(INT_PTR ptr, ConcreteBytes &data, bool toUnmarshall) {
+    std::vector<ConcreteBytes> unmarshalledArray;
+    getObjectData(ptr, unmarshalledArray, toUnmarshall, false);
+    data = unmarshalledArray[0];
 }
 
 /// ------------------------------ Probes declarations ---------------------------
@@ -817,8 +872,11 @@ bool checkStindConcreteness(INT_PTR ptr, INT32 sizeOfPtr, ConcreteBytes &unmarsh
     auto valueIsConcrete = top.peek0();
     auto addressIsConcrete = top.peek1();
     // probable change of the object from fully concrete to partially symbolic
+    
     if (addressIsConcrete && !valueIsConcrete) {
-        getObjectData(ptr, unmarshalledData, true);
+        std::vector<ConcreteBytes> unmarshalledArray;
+        getObjectData(ptr, unmarshalledArray, true);
+        unmarshalledData = unmarshalledArray[0];
     }
     if (addressIsConcrete) heap.writeConcreteness(ptr, sizeOfPtr, valueIsConcrete);
     return top.pop(2);
@@ -956,8 +1014,6 @@ bool ldfld(INT_PTR fieldPtr, INT32 fieldSize, ConcreteBytes &concreteData) {
     bool fieldIsConcrete = false;
     if (ptrIsConcrete)
         fieldIsConcrete = heap.readConcreteness(fieldPtr, fieldSize);
-    if (fieldIsConcrete)
-        getObjectData(fieldPtr, concreteData, false);
     return fieldIsConcrete;
 }
 
@@ -1280,12 +1336,34 @@ void leaveMain(OFFSET offset, UINT8 opsCount, EvalStackOperand *ops) {
     // NOTE: main left, further exploration is not needed, so only getting commands
     while (true) getAndHandleCommand();
 }
+void leaveMainP(OFFSET offset, UINT8 opsCount, EvalStackOperand *ops, INT_PTR ptr) {
+    mainLeft();
+    Stack &stack = vsharp::stack();
+    StackFrame &top = stack.topFrame();
+    LOG(tout << "Main left!");
+    auto concreteBytes = std::vector<ConcreteBytes>();
+    if (opsCount > 0) {
+        // NOTE: popping return value from IL execution
+        bool returnValue = top.pop1();
+        LOG(tout << "Return value is " << (returnValue ? "concrete" : "symbolic") << std::endl);
+        if (returnValue) getObjectData(ptr, concreteBytes, false, true);
+    } else {
+        top.pop0();
+    }
+    sendCommandConcreteBytes(offset, opsCount, ops, concreteBytes);
+    // NOTE: popping return value from SILI
+    if (opsCount > 0) stack.topFrame().pop1();
+    stack.popFrame();
+    // NOTE: main left, further exploration is not needed, so only getting commands
+    while (true) getAndHandleCommand();
+}
 PROBE(void, Track_LeaveMain_0, (OFFSET offset)) { leaveMain(offset, 0, new EvalStackOperand[0] { }); }
 PROBE(void, Track_LeaveMain_4, (INT32 returnValue, OFFSET offset)) { leaveMain(offset, 1, new EvalStackOperand[1] { mkop_4(returnValue) }); }
 PROBE(void, Track_LeaveMain_8, (INT64 returnValue, OFFSET offset)) { leaveMain(offset, 1, new EvalStackOperand[1] { mkop_8(returnValue) }); }
 PROBE(void, Track_LeaveMain_f4, (FLOAT returnValue, OFFSET offset)) { leaveMain(offset, 1, new EvalStackOperand[1] { mkop_f4(returnValue) }); }
 PROBE(void, Track_LeaveMain_f8, (DOUBLE returnValue, OFFSET offset)) { leaveMain(offset, 1, new EvalStackOperand[1] { mkop_f8(returnValue) }); }
-PROBE(void, Track_LeaveMain_p, (INT_PTR returnValue, OFFSET offset)) { leaveMain(offset, 1, new EvalStackOperand[1] { mkop_p(returnValue) }); }
+
+PROBE(void, Track_LeaveMain_p, (INT_PTR returnValue, OFFSET offset)) { leaveMainP(offset, 1, new EvalStackOperand[1] { mkop_p(returnValue) }, returnValue); }
 
 PROBE(void, Finalize_Call, (UINT8 returnValues)) {
     Stack &stack = vsharp::stack();

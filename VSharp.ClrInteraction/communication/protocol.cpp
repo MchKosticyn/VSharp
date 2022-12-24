@@ -324,7 +324,6 @@ bool Protocol::getArrayInfo(INT_PTR arrayPtr, OBJID &objID, int &elemSize, int &
 
 bool Protocol::getObjectInfo(INT_PTR objectPtr, OBJID &objID, int &refOffsetsLength, int *&refOffsets, char *type, unsigned long typeLength) {
     cSharpCallFromConcolicInRun = true;
-    tout << "calling objectInfoGetter" << std::endl;
     objectInfoGetter(objectPtr, objID, refOffsetsLength, refOffsets, type, typeLength);
     cSharpCallFromConcolicInRun = false;
     return true;

@@ -118,7 +118,7 @@ type execCommand = {
     delegates : array<UIntPtr * Int32 * UIntPtr>
     newAddressesTypes : Type array
     newCoveragePath : coverageLocation list
-    unmarshalledData : concreteDataFromConcolic
+    concreteBytes : array<concreteDataFromConcolic>
 }
 
 [<type: StructLayout(LayoutKind.Sequential, Pack=1, CharSet=CharSet.Ansi)>]
@@ -701,20 +701,27 @@ type Communicator(pipeFile) =
             for i in 1 .. newCoverageNodesCount do
                 let node = x.DeserializeCoverageLocation(dynamicBytes, &offset)
                 newCoveragePath <- node::newCoveragePath
-            let concreteBytesType = BitConverter.ToInt32(dynamicBytes, offset)
+            let concreteBytesAmount = BitConverter.ToInt32(dynamicBytes, offset)
             offset <- offset + sizeof<int32>
-            let concreteBytesSize = BitConverter.ToInt32(dynamicBytes, offset)
-            offset <- offset + sizeof<int32>
-            let unmarshalledData =
-                let ref = Reflection.BitConverterToUIntPtr dynamicBytes offset in offset <- offset + UIntPtr.Size
-                match concreteBytesType with
-                | 0 -> NoData
-                | 1 ->
-                    UnmarshalledData (ref, dynamicBytes[offset .. offset + concreteBytesSize - 1])
-                | 2 ->
-                    ReadBytesData (ref, dynamicBytes[offset .. offset + concreteBytesSize - 1])
-                | _ -> internalfailf "unexpected unmarshalledDataType value %O" concreteBytesType
-            offset <- offset + concreteBytesSize
+            let concreteBytes = Array.init concreteBytesAmount (fun _ ->
+                let concreteBytesType = BitConverter.ToInt32(dynamicBytes, offset)
+                offset <- offset + sizeof<int32>
+                let concreteBytesSize = BitConverter.ToInt32(dynamicBytes, offset)
+                offset <- offset + sizeof<int32>
+                let ref = Reflection.BitConverterToUIntPtr dynamicBytes offset
+                offset <- offset + UIntPtr.Size
+                let unmarshalledData =
+                    match concreteBytesType with
+                    | 0 ->
+                        assert(concreteBytesSize = 0)
+                        NoData
+                    | 1 ->
+                        UnmarshalledData (ref, dynamicBytes[offset .. offset + concreteBytesSize - 1])
+                    | 2 ->
+                        ReadBytesData (ref, dynamicBytes[offset .. offset + concreteBytesSize - 1])
+                    | _ -> internalfailf "unexpected unmarshalledDataType value %O" concreteBytesType
+                offset <- offset + concreteBytesSize
+                unmarshalledData)
             { isBranch = staticPart.isBranch
               callStackFramesPops = staticPart.callStackFramesPops
               evaluationStackPops = staticPart.evaluationStackPops
@@ -729,7 +736,7 @@ type Communicator(pipeFile) =
               delegates = delegates
               newAddressesTypes = newAddressesTypes
               newCoveragePath = newCoveragePath
-              unmarshalledData = unmarshalledData }
+              concreteBytes = concreteBytes }
         | None -> unexpectedlyTerminated()
 
     member private x.SizeOfConcrete (typ : Type) =

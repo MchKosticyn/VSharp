@@ -64,7 +64,7 @@ type ConcolicMemory(communicator : Communicator) =
         x.ConcreteBytes <- Dictionary(anotherConcolicMemory.ConcreteBytes)
         
     member x.WriteConcreteBytes ref newBytes =
-        concreteBytes.Add(ref, newBytes)
+        concreteBytes[ref] <- newBytes
 
     interface IConcreteMemory with
         // TODO: support non-vector arrays
@@ -94,7 +94,6 @@ type ConcolicMemory(communicator : Communicator) =
                 readElement linearIndex
 
         member x.ReadArrayLength address dim arrayType =
-            let tata = arrayRefOffsets
             let _, _, isVector = arrayType
             let address = (x :> IConcreteMemory).GetPhysicalAddress address
             let offset = LayoutUtils.ArrayLengthOffset(isVector, dim)
@@ -117,6 +116,8 @@ type ConcolicMemory(communicator : Communicator) =
         member x.ReadBoxedLocation address actualType =
             let address = (x :> IConcreteMemory).GetPhysicalAddress address
             let bytes = x.GetConcreteBytesData address
+            let startPoint = LayoutUtils.MetadataSize typeof<Object>
+            let bytes = bytes[startPoint .. startPoint + TypeUtils.internalSizeOf(actualType) - 1]
             match actualType with
             | _ when actualType.IsPrimitive || actualType.IsEnum ->
                 bytesToObj bytes actualType

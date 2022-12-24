@@ -125,8 +125,7 @@ namespace VSharp.TestRunner
             *elemSize = TypeUtils.internalSizeOf(elemType);
 
             var offsets = arrayRefOffsets(realType);
-            *refOffsets = (int*)Marshal.AllocHGlobal(offsets.Length * sizeof(int));
-            Marshal.Copy(offsets, 0, (IntPtr)refOffsets, offsets.Length);
+            *refOffsets = (int*)Marshal.UnsafeAddrOfPinnedArrayElement(offsets, 0);
 
             *refOffsetsLength = offsets.Length;
         }
@@ -145,8 +144,7 @@ namespace VSharp.TestRunner
             var offset = 0;
             var realType = VSharp.Utils.ConcolicUtils.parseType(type, ref offset);
             
-            // we treat Strings with a bit of a funny taste
-            if (realType == typeof(String))
+            if (realType == typeof(String) || realType.IsEnum || realType.IsPrimitive)
             {
                 *refOffsetsLength = 0;
                 *refOffsets = (int*)Marshal.AllocHGlobal(0);
@@ -155,11 +153,11 @@ namespace VSharp.TestRunner
             }
             
             // checking if the type is a value type
-            Debug.Assert(realType.IsValueType);
+            Debug.Assert(!realType.IsArray);
 
-            var offsets = chooseRefOffsets(fieldsWithOffsets(realType));
-            *refOffsets = (int*)Marshal.AllocHGlobal(offsets.Length * sizeof(int));
-            Marshal.Copy(offsets, 0, (IntPtr)refOffsets, offsets.Length);
+            var fieldOffsets = fieldsWithOffsets(realType);
+            var offsets = chooseRefOffsets(fieldOffsets);
+            *refOffsets = (int*)Marshal.UnsafeAddrOfPinnedArrayElement(offsets, 0);
 
             *refOffsetsLength = offsets.Length;
         }

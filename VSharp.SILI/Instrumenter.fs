@@ -1526,7 +1526,6 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
         let result =
             if x.ShouldInstrument && Instrumenter.instrumentedFunctions.Add x.m then
                 Logger.trace "Instrumenting %s (token = %u)" (Reflection.methodToString x.m) body.properties.token
-                Logger.trace ">>> function name is %O" x.m.Name
                 try
                     x.rewriter.Import()
                     x.rewriter.PrintInstructions "before instrumentation" probes

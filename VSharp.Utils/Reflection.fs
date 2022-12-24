@@ -188,7 +188,6 @@ module public Reflection =
 
     let fieldsOf isStatic (t : Type) =
         let extractFieldInfo (field : FieldInfo) =
-            // Events may appear at this point. Filtering them out...
             if TypeUtils.isSubtypeOrEqual field.FieldType typeof<MulticastDelegate> then None
             else Some (wrapField field, field)
         retrieveFields isStatic (FSharp.Collections.Array.choose extractFieldInfo) t
@@ -286,21 +285,25 @@ module public Reflection =
 
     // ------------------------- Parsing objects from bytes -----------------------------
 
-    let rec fieldsWithOffsets (t : Type) : FieldWithOffset array =
+    let rec private fieldsWithOffsetsHelper (t : Type) k =
         assert(not t.IsPrimitive && not t.IsArray)
         let fields = fieldsOf false t
-        let getFieldOffset (_, info : FieldInfo) =
+        let getFieldOffset (_, info : FieldInfo) k =
             let fieldType = info.FieldType
             match fieldType with
             | _ when fieldType.IsPrimitive || fieldType.IsEnum ->
-                Primitive(info, memoryFieldOffset info)
+                Primitive(info, memoryFieldOffset info) |> k
             | _ when TypeUtils.isStruct fieldType ->
-                let fields = fieldsWithOffsets fieldType
-                Struct(info, memoryFieldOffset info, fields)
+                fieldsWithOffsetsHelper fieldType (fun fields -> 
+                Struct(info, memoryFieldOffset info, fields) |> k)
             | _ ->
                 assert(not fieldType.IsValueType)
-                Ref(info, memoryFieldOffset info)
-        Array.map getFieldOffset fields
+                Logger.error "field=%O" info
+                Ref(info, memoryFieldOffset info) |> k
+        Cps.Seq.mapk getFieldOffset fields (Array.ofSeq >> k)
+
+    let fieldsWithOffsets (t : Type) : FieldWithOffset array =
+        fieldsWithOffsetsHelper t id
 
     let chooseRefOffsets (fieldsWithOffsets : FieldWithOffset array) =
         let rec handleOffset (position, offsets) field =

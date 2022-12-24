@@ -354,13 +354,15 @@ type ClientMachine(entryPoint : Method, cmdArgs : string[] option, requestMakeSt
         cilState.lastPushInfo <- None
         cilState.path <- c.newCoveragePath @ cilState.path
         
-        match c.unmarshalledData with
-        | NoData -> ()
-        | UnmarshalledData(ref, bytes) ->
-            x.Unmarshall ref bytes
-        | ReadBytesData(ref, bytes) ->
-            let cmInstance = concreteMemory :?> ConcolicMemory
-            cmInstance.WriteConcreteBytes ref bytes
+        let evalConcreteData concreteBytes =
+            match concreteBytes with
+            | NoData -> ()
+            | UnmarshalledData(ref, bytes) ->
+                x.Unmarshall ref bytes
+            | ReadBytesData(ref, bytes) ->
+                let cmInstance = concreteMemory :?> ConcolicMemory
+                cmInstance.WriteConcreteBytes ref bytes
+        Array.iter evalConcreteData c.concreteBytes
 
     member x.State with get() = cilState
 
@@ -389,8 +391,8 @@ type ClientMachine(entryPoint : Method, cmdArgs : string[] option, requestMakeSt
                 isRunning <- false
                 false
         with
-        | :? IOException ->
-            Logger.trace "exception caught in concolic machine, waiting process to terminate..."
+        | :? IOException as e ->
+            Logger.trace "exception caught in concolic machine, waiting process to terminate... %O" e
             if concolicProcess.WaitForExit(1000) |> not then x.Terminate()
             Logger.trace "process terminated, exit code = %d" concolicProcess.ExitCode
             reraise()
