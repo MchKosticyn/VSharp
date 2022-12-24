@@ -104,12 +104,6 @@ namespace VSharp.TestRunner
             return StructurallyEqual(expected, got);
         }
 
-        private static void GetArrayInfoRedirect(IntPtr arrayPtr, UIntPtr* objID, int* elemSize, int* refOffsetsLength,
-            int** refOffsets, byte* typ, UInt64 typeLength)
-        {
-            GetArrayInfo(arrayPtr, objID, elemSize, refOffsetsLength, refOffsets, typ, typeLength);
-        }
-
         private static void GetArrayInfo(IntPtr arrayPtr, UIntPtr *objID, int *elemSize, int *refOffsetsLength,
             int **refOffsets, byte *typ, UInt64 typeLength)
         {
@@ -128,12 +122,6 @@ namespace VSharp.TestRunner
             *refOffsets = (int*)Marshal.UnsafeAddrOfPinnedArrayElement(offsets, 0);
 
             *refOffsetsLength = offsets.Length;
-        }
-
-        private static void GetObjectInfoRedirect(IntPtr objectPtr, UIntPtr* objID, int* refOffsetsLength,
-            int** refOffsets, byte* typ, UInt64 typeLength)
-        {
-            GetObjectInfo(objectPtr, objID, refOffsetsLength, refOffsets, typ, typeLength);
         }
 
         private static void GetObjectInfo(IntPtr objectPtr, UIntPtr* objID, int* refOffsetsLength, int** refOffsets,
@@ -164,8 +152,8 @@ namespace VSharp.TestRunner
 
         private static bool ReproduceTests(IEnumerable<FileInfo> tests, bool shouldReproduceError, bool checkResult)
         {
-            ArraySender = new ArrayInfoSender(GetArrayInfoRedirect);
-            ObjectSender = new ObjectInfoSender(GetObjectInfoRedirect);
+            ArraySender = new ArrayInfoSender(GetArrayInfo);
+            ObjectSender = new ObjectInfoSender(GetObjectInfo);
             ArrayInfoAction = Marshal.GetFunctionPointerForDelegate(ArraySender);
             ObjectInfoAction = Marshal.GetFunctionPointerForDelegate(ObjectSender);
             SyncInfoGettersPointers(ArrayInfoAction.ToInt64(), ObjectInfoAction.ToInt64());

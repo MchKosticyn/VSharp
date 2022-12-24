@@ -499,14 +499,9 @@ void sendCommandConcreteBytes(OFFSET offset, unsigned opsCount, EvalStackOperand
     freeLock();
 }
 
-void sendCommandConcreteBytes(OFFSET offset, unsigned opsCount, EvalStackOperand *ops, ConcreteBytes &concreteData, bool mightFork = true) {
-    auto singleton = std::vector<ConcreteBytes>({ concreteData });
-    sendCommandConcreteBytes(offset, opsCount, ops, singleton, mightFork);
-}
-
 void sendCommand(OFFSET offset, unsigned opsCount, EvalStackOperand *ops, bool mightFork = true) {
-    ConcreteBytes unmarshalled = ConcreteBytes();
-    sendCommandConcreteBytes(offset, opsCount, ops, unmarshalled, mightFork);
+    std::vector<ConcreteBytes> noConcreteData;
+    sendCommandConcreteBytes(offset, opsCount, ops, noConcreteData, mightFork);
 }
 
 void sendCommand0(OFFSET offset, bool mightFork = true) { sendCommand(offset, 0, nullptr, mightFork); }
@@ -600,6 +595,7 @@ void getObjectDataR(INT_PTR ptr, std::vector<ConcreteBytes> &data, bool toUnmars
     resolve(ptr, vAddr);
     Object *obj = (Object*)vAddr.obj;
 
+    // the object was already added || ptr is a null || obj is not concrete thus already in symbolic engine || was unmarshalled to that engine before
     if (std::find(objectsSent.begin(), objectsSent.end(), ptr) != objectsSent.end() || vAddr.obj == 0 || !obj->isFullyConcrete()
         || (toUnmarshall && heap.checkUnmarshalled(vAddr.obj))) return;
 
@@ -662,12 +658,6 @@ void getObjectDataR(INT_PTR ptr, std::vector<ConcreteBytes> &data, bool toUnmars
 void getObjectData(INT_PTR ptr, std::vector<ConcreteBytes> &data, bool toUnmarshall, bool recursive=false) {
     auto objectsSent = std::vector<INT_PTR>();
     getObjectDataR(ptr, data, toUnmarshall, objectsSent, recursive);
-}
-
-void getObjectData(INT_PTR ptr, ConcreteBytes &data, bool toUnmarshall) {
-    std::vector<ConcreteBytes> unmarshalledArray;
-    getObjectData(ptr, unmarshalledArray, toUnmarshall, false);
-    data = unmarshalledArray[0];
 }
 
 /// ------------------------------ Probes declarations ---------------------------
@@ -867,23 +857,21 @@ PROBE(void, Track_Ldind, (INT_PTR ptr, INT32 sizeOfPtr, OFFSET offset)) {
     else sendCommand(offset, 1, new EvalStackOperand[1] { mkop_p(ptr) });
 }
 
-bool checkStindConcreteness(INT_PTR ptr, INT32 sizeOfPtr, ConcreteBytes &unmarshalledData) {
+bool checkStindConcreteness(INT_PTR ptr, INT32 sizeOfPtr, std::vector<ConcreteBytes> &unmarshalledData) {
     StackFrame &top = topFrame();
     auto valueIsConcrete = top.peek0();
     auto addressIsConcrete = top.peek1();
     // probable change of the object from fully concrete to partially symbolic
     
     if (addressIsConcrete && !valueIsConcrete) {
-        std::vector<ConcreteBytes> unmarshalledArray;
-        getObjectData(ptr, unmarshalledArray, true);
-        unmarshalledData = unmarshalledArray[0];
+        getObjectData(ptr, unmarshalledData, true);
     }
     if (addressIsConcrete) heap.writeConcreteness(ptr, sizeOfPtr, valueIsConcrete);
     return top.pop(2);
 }
 
 inline void Exec_Stind_Common(INT_PTR ptr, INT32 sizeOfPtr, EvalStackOperand op, OFFSET offset) {
-    ConcreteBytes unmarshalledData = ConcreteBytes();
+    std::vector<ConcreteBytes> unmarshalledData;
     if (!checkStindConcreteness(ptr, sizeOfPtr, unmarshalledData)) {
         sendCommandConcreteBytes(offset, 2, new EvalStackOperand[2]{mkop_p(ptr), op}, unmarshalledData);
     }
@@ -1008,7 +996,7 @@ PROBE(void, Track_Box, (INT_PTR ptr, OFFSET offset)) {
 PROBE(void, Track_Unbox, (INT_PTR ptr, mdToken typeToken, OFFSET offset)) { /*TODO*/ }
 PROBE(void, Track_Unbox_Any, (INT_PTR ptr, mdToken typeToken, OFFSET offset)) { /*TODO*/ }
 
-bool ldfld(INT_PTR fieldPtr, INT32 fieldSize, ConcreteBytes &concreteData) {
+bool ldfld(INT_PTR fieldPtr, INT32 fieldSize) {
     StackFrame &top = vsharp::topFrame();
     bool ptrIsConcrete = top.pop1();
     bool fieldIsConcrete = false;
@@ -1019,9 +1007,8 @@ bool ldfld(INT_PTR fieldPtr, INT32 fieldSize, ConcreteBytes &concreteData) {
 
 // TODO: if objPtr = null, it's static field
 PROBE(void, Track_Ldfld, (INT_PTR objPtr, INT_PTR fieldPtr, INT32 fieldSize, OFFSET offset)) {
-    ConcreteBytes concreteData = ConcreteBytes();
-    if (!ldfld(fieldPtr, fieldSize, concreteData)) {
-        sendCommandConcreteBytes(offset, 1, new EvalStackOperand[1] { mkop_p(objPtr) }, concreteData);
+    if (!ldfld(fieldPtr, fieldSize)) {
+        sendCommand(offset, 1, new EvalStackOperand[1] { mkop_p(objPtr) });
     } else {
         vsharp::topFrame().push1Concrete();
     }
@@ -1037,7 +1024,7 @@ PROBE(void, Track_Ldfld_Struct, (INT32 fieldOffset, INT32 fieldSize, OFFSET offs
 }
 PROBE(void, Track_Ldflda, (INT_PTR objPtr, mdToken fieldToken, OFFSET offset)) { /*TODO*/ }
 
-inline bool stfld(INT_PTR ptr, INT_PTR fieldPtr, INT32 fieldSize, ConcreteBytes &unmarshalledData) {
+inline bool stfld(INT_PTR ptr, INT_PTR fieldPtr, INT32 fieldSize, std::vector<ConcreteBytes> &unmarshalledData) {
     StackFrame &top = vsharp::topFrame();
     bool value = top.peek0();
     bool obj = top.peek1();
@@ -1055,7 +1042,7 @@ inline bool stfld(INT_PTR ptr, INT_PTR fieldPtr, INT32 fieldSize, ConcreteBytes 
 }
 
 inline void Track_Stfld_Common(INT_PTR fieldPtr, INT_PTR ptr, EvalStackOperand op, INT32 fieldSize, OFFSET offset) {
-    ConcreteBytes unmarshalledData = ConcreteBytes();
+    std::vector<ConcreteBytes> unmarshalledData;
     if (!stfld(ptr, fieldPtr, fieldSize, unmarshalledData))
         sendCommandConcreteBytes(offset, 2, new EvalStackOperand[2]{mkop_p(ptr), op}, unmarshalledData);
 }
@@ -1101,7 +1088,7 @@ bool ldelema(INT_PTR ptr, INT_PTR index) {
     StackFrame &top = vsharp::topFrame();
     return top.pop1() && top.peek0();
 }
-bool checkLdelemConcreteness(INT_PTR ptr, INT_PTR index, INT32 elemSize, ConcreteBytes &arrayData) {
+bool checkLdelemConcreteness(INT_PTR ptr, INT_PTR index, INT32 elemSize, std::vector<ConcreteBytes> &arrayData) {
     StackFrame &top = vsharp::topFrame();
     bool iConcrete = top.peek0();
     bool ptrConcrete = top.peek1();
@@ -1119,12 +1106,12 @@ bool checkLdelemConcreteness(INT_PTR ptr, INT_PTR index, INT32 elemSize, Concret
 }
 PROBE(void, Exec_Ldelema, (INT_PTR ptr, INT_PTR index, INT32 elemSize, OFFSET offset)) { /*send command if ldelema returns false*/ }
 PROBE(void, Exec_Ldelem, (INT_PTR ptr, INT_PTR index, INT32 elemSize, OFFSET offset)) {
-    ConcreteBytes arrayData = ConcreteBytes();
+    std::vector<ConcreteBytes> arrayData;
     if (!checkLdelemConcreteness(ptr, index, elemSize, arrayData))
         sendCommandConcreteBytes(offset, 2, new EvalStackOperand[2] {mkop_p(ptr), mkop_4(index)}, arrayData);
 }
 
-inline bool checkStelemConcreteness(INT_PTR ptr, INT_PTR index, INT32 elemSize, ConcreteBytes &unmarshalledData) {
+inline bool checkStelemConcreteness(INT_PTR ptr, INT_PTR index, INT32 elemSize, std::vector<ConcreteBytes> &unmarshalledData) {
     StackFrame &top = vsharp::topFrame();
     bool vConcrete = top.peek0();
     bool iConcrete = top.peek1();
@@ -1144,7 +1131,7 @@ inline bool checkStelemConcreteness(INT_PTR ptr, INT_PTR index, INT32 elemSize, 
 }
 
 inline void Exec_Stelem_Common(INT_PTR ptr, INT_PTR index, EvalStackOperand op, INT32 elemSize, OFFSET offset) {
-    ConcreteBytes unmarshalledData = ConcreteBytes();
+    std::vector<ConcreteBytes> unmarshalledData;
     if (!checkStelemConcreteness(ptr, index, elemSize, unmarshalledData))
         sendCommandConcreteBytes(offset, 3, new EvalStackOperand[3]{mkop_p(ptr), mkop_4(index), op}, unmarshalledData);
 }
@@ -1317,26 +1304,7 @@ PROBE(void, Track_Leave, (UINT8 returnValues, OFFSET offset)) {
     LOG(tout << "Managed leave to frame " << stack.framesCount() << ". After popping top frame stack balance is " << top.count() << std::endl);
 }
 
-void leaveMain(OFFSET offset, UINT8 opsCount, EvalStackOperand *ops) {
-    mainLeft();
-    Stack &stack = vsharp::stack();
-    StackFrame &top = stack.topFrame();
-    LOG(tout << "Main left!");
-    if (opsCount > 0) {
-        // NOTE: popping return value from IL execution
-        bool returnValue = top.pop1();
-        LOG(tout << "Return value is " << (returnValue ? "concrete" : "symbolic") << std::endl);
-    } else {
-        top.pop0();
-    }
-    sendCommand(offset, opsCount, ops);
-    // NOTE: popping return value from SILI
-    if (opsCount > 0) stack.topFrame().pop1();
-    stack.popFrame();
-    // NOTE: main left, further exploration is not needed, so only getting commands
-    while (true) getAndHandleCommand();
-}
-void leaveMainP(OFFSET offset, UINT8 opsCount, EvalStackOperand *ops, INT_PTR ptr) {
+void leaveMain(OFFSET offset, UINT8 opsCount, EvalStackOperand *ops, INT_PTR ptr=UNKNOWN_ADDRESS) {
     mainLeft();
     Stack &stack = vsharp::stack();
     StackFrame &top = stack.topFrame();
@@ -1363,7 +1331,7 @@ PROBE(void, Track_LeaveMain_8, (INT64 returnValue, OFFSET offset)) { leaveMain(o
 PROBE(void, Track_LeaveMain_f4, (FLOAT returnValue, OFFSET offset)) { leaveMain(offset, 1, new EvalStackOperand[1] { mkop_f4(returnValue) }); }
 PROBE(void, Track_LeaveMain_f8, (DOUBLE returnValue, OFFSET offset)) { leaveMain(offset, 1, new EvalStackOperand[1] { mkop_f8(returnValue) }); }
 
-PROBE(void, Track_LeaveMain_p, (INT_PTR returnValue, OFFSET offset)) { leaveMainP(offset, 1, new EvalStackOperand[1] { mkop_p(returnValue) }, returnValue); }
+PROBE(void, Track_LeaveMain_p, (INT_PTR returnValue, OFFSET offset)) { leaveMain(offset, 1, new EvalStackOperand[1] { mkop_p(returnValue) }, returnValue); }
 
 PROBE(void, Finalize_Call, (UINT8 returnValues)) {
     Stack &stack = vsharp::stack();
