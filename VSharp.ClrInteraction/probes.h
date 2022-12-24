@@ -942,12 +942,14 @@ PROBE(void, Track_Initobj, (INT_PTR ptr)) {
 
 PROBE(void, Track_Ldlen, (INT_PTR ptr, OFFSET offset)) {
     StackFrame &top = topFrame();
-    bool concreteness = top.pop1();
-    if (concreteness)
+    bool ptrIsConcrete = top.pop1();
+    bool memoryIsConcrete = false;
+    if (ptrIsConcrete)
+        memoryIsConcrete = heap.readConcretenessWholeObject(ptr);
+    if (ptrIsConcrete && memoryIsConcrete)
         top.push1Concrete();
     else
         sendCommand1(offset);
-    // TODO: check concreteness of referenced memory
 }
 
 PROBE(COND, Track_Cpobj, (INT_PTR dest, INT_PTR src)) {
@@ -993,8 +995,20 @@ PROBE(void, Track_Box, (INT_PTR ptr, OFFSET offset)) {
         top.push1Concrete();
     }
 }
-PROBE(void, Track_Unbox, (INT_PTR ptr, mdToken typeToken, OFFSET offset)) { /*TODO*/ }
-PROBE(void, Track_Unbox_Any, (INT_PTR ptr, mdToken typeToken, OFFSET offset)) { /*TODO*/ }
+PROBE(void, Track_Unbox, (INT_PTR ptr, mdToken typeToken, OFFSET offset)) {
+    StackFrame &top = topFrame();
+    bool ptrIsConcrete = top.pop1();
+    bool memoryIsConcrete = false;
+    if (ptrIsConcrete)
+        memoryIsConcrete = heap.readConcretenessWholeObject(ptr);
+    if (ptrIsConcrete && memoryIsConcrete)
+        top.push1Concrete();
+    else
+        sendCommand1(offset);
+}
+PROBE(void, Track_Unbox_Any, (INT_PTR ptr, mdToken typeToken, OFFSET offset)) {
+    Track_Unbox(ptr, typeToken, offset);
+}
 
 bool ldfld(INT_PTR fieldPtr, INT32 fieldSize) {
     StackFrame &top = vsharp::topFrame();

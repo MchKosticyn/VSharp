@@ -205,6 +205,7 @@ public:
     static ADDR virtToPhysAddress(const VirtualAddress &virtAddress);
 
     bool readConcreteness(ADDR address, SIZE sizeOfPtr) const;
+    bool readConcretenessWholeObject(ADDR address) const;
     void writeConcreteness(ADDR address, SIZE sizeOfPtr, bool vConcreteness) const;
     void writeConcretenessWholeObject(ADDR address, bool vConcreteness) const;
     char *readBytes(const VirtualAddress &address, SIZE sizeOfPtr, int refOffsetsLength, int *refOffsets);

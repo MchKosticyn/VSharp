@@ -381,6 +381,18 @@ namespace vsharp {
         return obj->readConcreteness(vAddress.offset, sizeOfPtr);
     }
 
+    bool Storage::readConcretenessWholeObject(ADDR address) const {
+        VirtualAddress vAddress{};
+        if (!resolve(address, vAddress)) {
+            LOG(tout << "WARNING: readConcretenessWholeObject, unbound pointer = " << HEX(address) << std::endl);
+            return true;
+        }
+
+        auto *obj = (Object *) vAddress.obj;
+        assert(!vAddress.offset);
+        return obj->isFullyConcrete();
+    }
+
     void Storage::writeConcreteness(ADDR address, SIZE sizeOfPtr, bool vConcreteness) const {
         VirtualAddress vAddress{};
         if (!resolve(address, vAddress)) {

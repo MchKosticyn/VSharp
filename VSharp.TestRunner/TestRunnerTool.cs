@@ -5,6 +5,7 @@ using System.IO;
 using System.Reflection;
 using System.Linq;
 using System.Runtime.InteropServices;
+using VSharp.Utils;
 using static VSharp.Reflection;
 
 namespace VSharp.TestRunner
@@ -13,15 +14,15 @@ namespace VSharp.TestRunner
     {
         [DllImport("libvsharpConcolic", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         public static extern void SyncInfoGettersPointers(Int64 arrayGetterPtr, Int64 objectGetterPtr);
-        
+
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        public delegate void ArrayInfoSender(IntPtr arrayPtr, UIntPtr *objID, int *elemSize, int *refOffsetsLength, 
+        public delegate void ArrayInfoSender(IntPtr arrayPtr, UIntPtr *objID, int *elemSize, int *refOffsetsLength,
             int **refOffsets, byte *typ, UInt64 typeLength);
-        
+
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        public delegate void ObjectInfoSender(IntPtr arrayPtr, UIntPtr *objID, int *refOffsetsLength, int **refOffsets, 
+        public delegate void ObjectInfoSender(IntPtr arrayPtr, UIntPtr *objID, int *refOffsetsLength, int **refOffsets,
             byte *typ, UInt64 typeLength);
-        
+
         public static IntPtr ArrayInfoAction;
         public static IntPtr ObjectInfoAction;
         public static ArrayInfoSender ArraySender;
@@ -108,13 +109,13 @@ namespace VSharp.TestRunner
             int **refOffsets, byte *typ, UInt64 typeLength)
         {
             var type = new byte[typeLength];
-            Marshal.Copy((IntPtr)typ, type, 0, (int)typeLength); 
+            Marshal.Copy((IntPtr)typ, type, 0, (int)typeLength);
             var offset = 0;
-            var realType = VSharp.Utils.ConcolicUtils.parseType(type, ref offset);
+            var realType = ConcolicUtils.parseType(type, ref offset);
 
             // checking if the type is an array; non-vector arrays are not implemented!
             Debug.Assert(realType.IsSZArray);
-            
+
             var elemType = realType.GetElementType();
             *elemSize = TypeUtils.internalSizeOf(elemType);
 
@@ -128,7 +129,7 @@ namespace VSharp.TestRunner
             byte* typ, UInt64 typeLength)
         {
             var type = new byte[typeLength];
-            Marshal.Copy((IntPtr)typ, type, 0, (int)typeLength); 
+            Marshal.Copy((IntPtr)typ, type, 0, (int)typeLength);
             var offset = 0;
             var realType = VSharp.Utils.ConcolicUtils.parseType(type, ref offset);
             
@@ -139,7 +140,7 @@ namespace VSharp.TestRunner
 
                 return;
             }
-            
+
             // checking if the type is a value type
             Debug.Assert(!realType.IsArray);
 
@@ -157,7 +158,7 @@ namespace VSharp.TestRunner
             ArrayInfoAction = Marshal.GetFunctionPointerForDelegate(ArraySender);
             ObjectInfoAction = Marshal.GetFunctionPointerForDelegate(ObjectSender);
             SyncInfoGettersPointers(ArrayInfoAction.ToInt64(), ObjectInfoAction.ToInt64());
-            
+
             AppDomain.CurrentDomain.AssemblyResolve += TryLoadAssemblyFrom;
 
             foreach (FileInfo fi in tests)
