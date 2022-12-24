@@ -131,7 +131,7 @@ namespace VSharp.TestRunner
             var type = new byte[typeLength];
             Marshal.Copy((IntPtr)typ, type, 0, (int)typeLength);
             var offset = 0;
-            var realType = VSharp.Utils.ConcolicUtils.parseType(type, ref offset);
+            var realType = ConcolicUtils.parseType(type, ref offset);
             
             if (realType == typeof(String) || realType.IsEnum || realType.IsPrimitive)
             {

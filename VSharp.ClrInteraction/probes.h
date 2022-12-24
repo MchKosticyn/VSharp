@@ -656,8 +656,10 @@ void getObjectDataR(INT_PTR ptr, std::vector<ConcreteBytes> &data, bool toUnmars
 }
 
 void getObjectData(INT_PTR ptr, std::vector<ConcreteBytes> &data, bool toUnmarshall, bool recursive=false) {
+    disableInstrumentation();
     auto objectsSent = std::vector<INT_PTR>();
     getObjectDataR(ptr, data, toUnmarshall, objectsSent, recursive);
+    enableInstrumentation();
 }
 
 /// ------------------------------ Probes declarations ---------------------------
@@ -675,15 +677,18 @@ int registerProbe(unsigned long long probe) {
     RETTYPE STDMETHODCALLTYPE NAME ARGS
 
 PROBE(void, Track_Coverage, (OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     StackPush lastStackPush;
     bool commandsDisabled;
     trackCoverage(offset, lastStackPush, commandsDisabled);
 }
 
-PROBE(void, EnableInstrumentation, ()) { enableInstrumentation(); }
-PROBE(void, DisableInstrumentation, ()) { disableInstrumentation(); }
+// TODO: make enabledInstrumentation a stack counter
+PROBE(void, EnableInstrumentation, ()) { if (areProbesEnabled()) enableInstrumentation(); }
+PROBE(void, DisableInstrumentation, ()) { if (areProbesEnabled()) disableInstrumentation(); }
 
 inline bool ldarg(INT16 idx) {
+    if (!areProbesEnabled()) return true;
     StackFrame &top = vsharp::topFrame();
     top.pop0();
     LocalObject &cell = top.arg(idx);
@@ -702,6 +707,7 @@ PROBE(void, Track_Ldarg_S, (UINT8 idx, OFFSET offset)) { if (!ldarg(idx)) sendCo
 PROBE(void, Track_Ldarg, (UINT16 idx, OFFSET offset)) { if (!ldarg(idx)) sendCommand0(offset, false); }
 
 PROBE(void, Track_Ldarga_Primitive, (INT_PTR ptr, UINT16 idx, SIZE size)) {
+    if (!areProbesEnabled()) return;
     Stack &stack = vsharp::stack();
     unsigned frame = stack.framesCount();
     StackFrame &top = stack.topFrame();
@@ -716,6 +722,7 @@ PROBE(void, Track_Ldarga_Primitive, (INT_PTR ptr, UINT16 idx, SIZE size)) {
 }
 
 PROBE(void, Track_Ldarga_Struct, (INT_PTR ptr, UINT16 idx)) {
+    if (!areProbesEnabled()) return;
     StackFrame &top = topFrame();
     LocalObject &cell = top.arg(idx);
     cell.changeAddress(ptr);
@@ -725,6 +732,7 @@ PROBE(void, Track_Ldarga_Struct, (INT_PTR ptr, UINT16 idx)) {
 }
 
 PROBE(void, Track_Delegate, (ADDR closurePtr, ADDR functionPtr)) {
+    if (!areProbesEnabled()) return;
     VirtualAddress closure{};
     heap.physToVirtAddress(closurePtr, closure);
     assert(!closure.offset);
@@ -732,6 +740,7 @@ PROBE(void, Track_Delegate, (ADDR closurePtr, ADDR functionPtr)) {
 }
 
 inline bool ldloc(INT16 idx) {
+    if (!areProbesEnabled()) return true;
     StackFrame &top = vsharp::topFrame();
     top.pop0();
     LocalObject &cell = top.loc(idx);
@@ -749,6 +758,7 @@ PROBE(void, Track_Ldloc_S, (UINT8 idx, OFFSET offset)) { if (!ldloc(idx)) sendCo
 PROBE(void, Track_Ldloc, (UINT16 idx, OFFSET offset)) { if (!ldloc(idx)) sendCommand0(offset, false); }
 
 PROBE(void, Track_Ldloca_Primitive, (INT_PTR ptr, UINT16 idx, SIZE size)) {
+    if (!areProbesEnabled()) return;
     Stack &stack = vsharp::stack();
     unsigned frame = stack.framesCount();
     StackFrame &top = stack.topFrame();
@@ -763,6 +773,7 @@ PROBE(void, Track_Ldloca_Primitive, (INT_PTR ptr, UINT16 idx, SIZE size)) {
 }
 
 PROBE(void, Track_Ldloca_Struct, (INT_PTR ptr, UINT16 idx)) {
+    if (!areProbesEnabled()) return;
     Stack &stack = vsharp::stack();
     unsigned frame = stack.framesCount();
     StackFrame &top = stack.topFrame();
@@ -774,6 +785,7 @@ PROBE(void, Track_Ldloca_Struct, (INT_PTR ptr, UINT16 idx)) {
 }
 
 inline bool starg(INT16 idx) {
+    if (!areProbesEnabled()) return true;
     StackFrame &top = vsharp::topFrame();
     const LocalObject &cell = top.peekObject(0);
     bool concreteness = top.pop1();
@@ -784,6 +796,7 @@ PROBE(void, Track_Starg_S, (UINT8 idx, OFFSET offset)) { if (!starg(idx)) sendCo
 PROBE(void, Track_Starg, (UINT16 idx, OFFSET offset)) { if (!starg(idx)) sendCommand(offset, 1, new EvalStackOperand[1], false); }
 
 inline bool stloc(INT16 idx) {
+    if (!areProbesEnabled()) return true;
     StackFrame &top = vsharp::topFrame();
     const LocalObject &cell = top.peekObject(0);
     bool concreteness = top.pop1();
@@ -797,8 +810,12 @@ PROBE(void, Track_Stloc_3, (OFFSET offset)) { if (!stloc(3)) sendCommand(offset,
 PROBE(void, Track_Stloc_S, (UINT8 idx, OFFSET offset)) { if (!stloc(idx)) sendCommand(offset, 1, new EvalStackOperand[1], false); }
 PROBE(void, Track_Stloc, (UINT16 idx, OFFSET offset)) { if (!stloc(idx)) sendCommand(offset, 1, new EvalStackOperand[1], false); }
 
-PROBE(void, Track_Ldc, ()) { topFrame().push1Concrete(); }
+PROBE(void, Track_Ldc, ()) {
+    if (!areProbesEnabled()) return;
+    topFrame().push1Concrete();
+}
 PROBE(void, Track_Dup, (OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     StackFrame &top = topFrame();
     const LocalObject &cell = top.peekObject(0);
     if (!top.dup()) {
@@ -806,9 +823,13 @@ PROBE(void, Track_Dup, (OFFSET offset)) {
         top.push1(cell);
     }
 }
-PROBE(void, Track_Pop, ()) { topFrame().pop1Async(); }
+PROBE(void, Track_Pop, ()) {
+    if (!areProbesEnabled()) return;
+    topFrame().pop1Async();
+}
 
 inline void branch(OFFSET offset) {
+    if (!areProbesEnabled()) return;
     if (!topFrame().pop1())
         sendCommand1(offset);
 }
@@ -818,6 +839,7 @@ PROBE(void, BrFalse, (OFFSET offset)) { branch(offset); }
 PROBE(void, Switch, (OFFSET offset)) { branch(offset); }
 
 PROBE(void, Track_UnOp, (UINT16 op, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     StackFrame &top = vsharp::topFrame();
     bool concreteness = top.pop1();
     if (concreteness)
@@ -826,6 +848,7 @@ PROBE(void, Track_UnOp, (UINT16 op, OFFSET offset)) {
         sendCommand1(offset);
 }
 PROBE(COND, Track_BinOp, ()) {
+    if (!areProbesEnabled()) return true;
     StackFrame &top = vsharp::topFrame();
     bool concreteness = top.pop(2);
     if (concreteness)
@@ -850,6 +873,7 @@ PROBE(void, Exec_BinOp_4_p_ovf, (UINT16 op, INT32 arg1, INT_PTR arg2, OFFSET off
 PROBE(void, Exec_BinOp_p_4_ovf, (UINT16 op, INT_PTR arg1, INT32 arg2, OFFSET offset)) { sendCommand(offset, 2, new EvalStackOperand[2] { mkop_p(arg1), mkop_4(arg2) }); }
 
 PROBE(void, Track_Ldind, (INT_PTR ptr, INT32 sizeOfPtr, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     StackFrame &top = topFrame();
     auto concreteness = top.pop1();
     if (concreteness) concreteness = heap.readConcreteness(ptr, sizeOfPtr);
@@ -858,6 +882,7 @@ PROBE(void, Track_Ldind, (INT_PTR ptr, INT32 sizeOfPtr, OFFSET offset)) {
 }
 
 bool checkStindConcreteness(INT_PTR ptr, INT32 sizeOfPtr, std::vector<ConcreteBytes> &unmarshalledData) {
+    if (!areProbesEnabled()) return true;
     StackFrame &top = topFrame();
     auto valueIsConcrete = top.peek0();
     auto addressIsConcrete = top.peek1();
@@ -878,28 +903,36 @@ inline void Exec_Stind_Common(INT_PTR ptr, INT32 sizeOfPtr, EvalStackOperand op,
 }
 
 PROBE(void, Exec_Stind_I1, (INT_PTR ptr, INT32 sizeOfPtr, INT8 value, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     Exec_Stind_Common(ptr, sizeOfPtr, mkop_4(value), offset);
 }
 PROBE(void, Exec_Stind_I2, (INT_PTR ptr, INT32 sizeOfPtr, INT16 value, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     Exec_Stind_Common(ptr, sizeOfPtr, mkop_4(value), offset);
 }
 PROBE(void, Exec_Stind_I4, (INT_PTR ptr, INT32 sizeOfPtr, INT32 value, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     Exec_Stind_Common(ptr, sizeOfPtr, mkop_4(value), offset);
 }
 PROBE(void, Exec_Stind_I8, (INT_PTR ptr, INT32 sizeOfPtr, INT64 value, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     Exec_Stind_Common(ptr, sizeOfPtr, mkop_8(value), offset);
 }
 PROBE(void, Exec_Stind_R4, (INT_PTR ptr, INT32 sizeOfPtr, FLOAT value, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     Exec_Stind_Common(ptr, sizeOfPtr, mkop_f4(value), offset);
 }
 PROBE(void, Exec_Stind_R8, (INT_PTR ptr, INT32 sizeOfPtr, DOUBLE value, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     Exec_Stind_Common(ptr, sizeOfPtr, mkop_f8(value), offset);
 }
 PROBE(void, Exec_Stind_ref, (INT_PTR ptr, INT32 sizeOfPtr, INT_PTR value, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     Exec_Stind_Common(ptr, sizeOfPtr, mkop_p(value), offset);
 }
 
 inline void conv(OFFSET offset) {
+    if (!areProbesEnabled()) return;
     StackFrame &top = vsharp::topFrame();
     bool concreteness = top.pop1();
     if (concreteness)
@@ -911,6 +944,7 @@ PROBE(void, Track_Conv, (OFFSET offset)) { conv(offset); }
 PROBE(void, Track_Conv_Ovf, (OFFSET offset)) { conv(offset); }
 
 PROBE(void, Track_Newarr, (INT_PTR ptr, mdToken typeToken, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     StackFrame &top = topFrame();
     if (!top.pop1())
         sendCommand(offset, 1, new EvalStackOperand[1]);
@@ -920,10 +954,11 @@ PROBE(void, Track_Newarr, (INT_PTR ptr, mdToken typeToken, OFFSET offset)) {
 
 PROBE(void, Track_Localloc, (INT_PTR len, OFFSET offset)) { /*TODO*/ }
 PROBE(void, Track_Ldobj, (INT_PTR ptr, OFFSET offset)) { /* TODO! will ptr be always concrete? */ }
-PROBE(void, Track_Ldstr, (INT_PTR ptr)) { topFrame().push1Concrete(); } // TODO: do we need allocated address?
-PROBE(void, Track_Ldtoken, ()) { topFrame().push1Concrete(); }
+PROBE(void, Track_Ldstr, (INT_PTR ptr)) { if (areProbesEnabled()) topFrame().push1Concrete(); } // TODO: do we need allocated address?
+PROBE(void, Track_Ldtoken, ()) { if (areProbesEnabled()) topFrame().push1Concrete(); }
 
 PROBE(void, Track_Stobj, (INT_PTR src, INT_PTR dest, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     // TODO!
     // Will ptr be always concrete?
     topFrame().pop(2);
@@ -933,6 +968,7 @@ PROBE(void, Track_Stobj, (INT_PTR src, INT_PTR dest, OFFSET offset)) {
 // If typeTok is a reference type, the initobj instruction has the same effect as ldnull followed by stind.ref.
 // TODO: add two cases (ref and valueType)
 PROBE(void, Track_Initobj, (INT_PTR ptr)) {
+    if (!areProbesEnabled()) return;
     bool ptrIsConcrete = topFrame().pop1();
     if (ptrIsConcrete) {
         heap.writeConcretenessWholeObject(ptr, true);
@@ -941,6 +977,7 @@ PROBE(void, Track_Initobj, (INT_PTR ptr)) {
 }
 
 PROBE(void, Track_Ldlen, (INT_PTR ptr, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     StackFrame &top = topFrame();
     bool ptrIsConcrete = top.pop1();
     bool memoryIsConcrete = false;
@@ -953,6 +990,7 @@ PROBE(void, Track_Ldlen, (INT_PTR ptr, OFFSET offset)) {
 }
 
 PROBE(COND, Track_Cpobj, (INT_PTR dest, INT_PTR src)) {
+    if (!areProbesEnabled()) return true;
     // TODO: check concreteness of referenced memory!
     return topFrame().pop(2);
 }
@@ -961,6 +999,7 @@ PROBE(void, Exec_Cpobj, (mdToken typeToken, INT_PTR dest, INT_PTR src, OFFSET of
 }
 
 PROBE(COND, Track_Cpblk, (INT_PTR dest, INT_PTR src)) {
+    if (!areProbesEnabled()) return true;
     // TODO: check concreteness of referenced memory!
     return topFrame().pop(3);
 }
@@ -969,6 +1008,7 @@ PROBE(void, Exec_Cpblk, (INT_PTR dest, INT_PTR src, INT_PTR count, OFFSET offset
 }
 
 PROBE(COND, Track_Initblk, (INT_PTR ptr)) {
+    if (!areProbesEnabled()) return true;
     // TODO: check concreteness of referenced memory!
     return topFrame().pop(3);
 }
@@ -988,6 +1028,7 @@ PROBE(void, Track_Castclass, (INT_PTR ptr, mdToken typeToken, OFFSET offset)) {
 PROBE(void, Track_Isinst, (INT_PTR ptr, mdToken typeToken, OFFSET offset)) { /*TODO*/ }
 
 PROBE(void, Track_Box, (INT_PTR ptr, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     StackFrame &top = vsharp::topFrame();
     if (!top.pop1()) {
         sendCommand1(offset);
@@ -996,6 +1037,7 @@ PROBE(void, Track_Box, (INT_PTR ptr, OFFSET offset)) {
     }
 }
 PROBE(void, Track_Unbox, (INT_PTR ptr, mdToken typeToken, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     StackFrame &top = topFrame();
     bool ptrIsConcrete = top.pop1();
     bool memoryIsConcrete = false;
@@ -1007,6 +1049,7 @@ PROBE(void, Track_Unbox, (INT_PTR ptr, mdToken typeToken, OFFSET offset)) {
         sendCommand1(offset);
 }
 PROBE(void, Track_Unbox_Any, (INT_PTR ptr, mdToken typeToken, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     Track_Unbox(ptr, typeToken, offset);
 }
 
@@ -1021,6 +1064,7 @@ bool ldfld(INT_PTR fieldPtr, INT32 fieldSize) {
 
 // TODO: if objPtr = null, it's static field
 PROBE(void, Track_Ldfld, (INT_PTR objPtr, INT_PTR fieldPtr, INT32 fieldSize, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     if (!ldfld(fieldPtr, fieldSize)) {
         sendCommand(offset, 1, new EvalStackOperand[1] { mkop_p(objPtr) });
     } else {
@@ -1028,6 +1072,7 @@ PROBE(void, Track_Ldfld, (INT_PTR objPtr, INT_PTR fieldPtr, INT32 fieldSize, OFF
     }
 }
 PROBE(void, Track_Ldfld_Struct, (INT32 fieldOffset, INT32 fieldSize, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     // TODO: track concreteness of each field (need to get fieldOffset for generic struct)
     StackFrame &top = vsharp::topFrame();
     if (!top.pop1()) {
@@ -1039,6 +1084,7 @@ PROBE(void, Track_Ldfld_Struct, (INT32 fieldOffset, INT32 fieldSize, OFFSET offs
 PROBE(void, Track_Ldflda, (INT_PTR objPtr, mdToken fieldToken, OFFSET offset)) { /*TODO*/ }
 
 inline bool stfld(INT_PTR ptr, INT_PTR fieldPtr, INT32 fieldSize, std::vector<ConcreteBytes> &unmarshalledData) {
+    if (!areProbesEnabled()) return true;
     StackFrame &top = vsharp::topFrame();
     bool value = top.peek0();
     bool obj = top.peek1();
@@ -1062,37 +1108,47 @@ inline void Track_Stfld_Common(INT_PTR fieldPtr, INT_PTR ptr, EvalStackOperand o
 }
 
 PROBE(void, Track_Stfld_4, (INT_PTR fieldPtr, INT_PTR ptr, INT32 value, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     Track_Stfld_Common(fieldPtr, ptr, mkop_4(value), 4, offset);
 }
 PROBE(void, Track_Stfld_8, (INT_PTR fieldPtr, INT_PTR ptr, INT64 value, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     Track_Stfld_Common(fieldPtr, ptr, mkop_8(value), 8, offset);
 }
 PROBE(void, Track_Stfld_f4, (INT_PTR fieldPtr, INT_PTR ptr, FLOAT value, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     Track_Stfld_Common(fieldPtr, ptr, mkop_f4(value), sizeof(FLOAT), offset);
 }
 PROBE(void, Track_Stfld_f8, (INT_PTR fieldPtr, INT_PTR ptr, DOUBLE value, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     Track_Stfld_Common(fieldPtr, ptr, mkop_f8(value), sizeof(DOUBLE), offset);
 }
 PROBE(void, Track_Stfld_p, (INT_PTR fieldPtr, INT_PTR ptr, INT_PTR value, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     Track_Stfld_Common(fieldPtr, ptr, mkop_p(value), sizeof(INT_PTR), offset);
 }
 PROBE(void, Track_Stfld_struct, (INT_PTR fieldPtr, INT32 fieldSize, INT_PTR ptr, INT_PTR value, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     Track_Stfld_Common(fieldPtr, ptr, mkop_struct(value), fieldSize, offset);
 }
 PROBE(void, Track_Stfld_RefLikeStruct, (INT32 fieldOffset, INT32 fieldSize, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     INT_PTR ptr = vsharp::stack().opmem(offset).unmem_refLikeStruct();
     Track_Stfld_Common(ptr + fieldOffset, ptr, mkop_refLikeStruct(), fieldSize, offset);
 }
 
 PROBE(void, Track_Ldsfld, (mdToken fieldToken, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     // TODO
     topFrame().push1Concrete();
 }
 PROBE(void, Track_Ldsflda, (INT_PTR fieldPtr, INT32 size, INT16 id)) {
+    if (!areProbesEnabled()) return;
     OBJID obj = heap.allocateStaticField(fieldPtr, size, id);
     topFrame().push1Concrete();
 }
 PROBE(void, Track_Stsfld, (mdToken fieldToken, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     // TODO
     topFrame().pop1();
 }
@@ -1103,6 +1159,7 @@ bool ldelema(INT_PTR ptr, INT_PTR index) {
     return top.pop1() && top.peek0();
 }
 bool checkLdelemConcreteness(INT_PTR ptr, INT_PTR index, INT32 elemSize, std::vector<ConcreteBytes> &arrayData) {
+    if (!areProbesEnabled()) return true;
     StackFrame &top = vsharp::topFrame();
     bool iConcrete = top.peek0();
     bool ptrConcrete = top.peek1();
@@ -1126,6 +1183,7 @@ PROBE(void, Exec_Ldelem, (INT_PTR ptr, INT_PTR index, INT32 elemSize, OFFSET off
 }
 
 inline bool checkStelemConcreteness(INT_PTR ptr, INT_PTR index, INT32 elemSize, std::vector<ConcreteBytes> &unmarshalledData) {
+    if (!areProbesEnabled()) return true;
     StackFrame &top = vsharp::topFrame();
     bool vConcrete = top.peek0();
     bool iConcrete = top.peek1();
@@ -1151,30 +1209,39 @@ inline void Exec_Stelem_Common(INT_PTR ptr, INT_PTR index, EvalStackOperand op, 
 }
 
 PROBE(void, Exec_Stelem_I, (INT_PTR ptr, INT_PTR index, INT_PTR value, INT32 elemSize, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     Exec_Stelem_Common(ptr, index, mkop_p(value), elemSize, offset);
 }
 PROBE(void, Exec_Stelem_I1, (INT_PTR ptr, INT_PTR index, INT8 value, INT32 elemSize, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     Exec_Stelem_Common(ptr, index, mkop_4(value), elemSize, offset);
 }
 PROBE(void, Exec_Stelem_I2, (INT_PTR ptr, INT_PTR index, INT16 value, INT32 elemSize, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     Exec_Stelem_Common(ptr, index, mkop_4(value), elemSize, offset);
 }
 PROBE(void, Exec_Stelem_I4, (INT_PTR ptr, INT_PTR index, INT32 value, INT32 elemSize, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     Exec_Stelem_Common(ptr, index, mkop_4(value), elemSize, offset);
 }
 PROBE(void, Exec_Stelem_I8, (INT_PTR ptr, INT_PTR index, INT64 value, INT32 elemSize, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     Exec_Stelem_Common(ptr, index, mkop_8(value), elemSize, offset);
 }
 PROBE(void, Exec_Stelem_R4, (INT_PTR ptr, INT_PTR index, FLOAT value, INT32 elemSize, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     Exec_Stelem_Common(ptr, index, mkop_f4(value), elemSize, offset);
 }
 PROBE(void, Exec_Stelem_R8, (INT_PTR ptr, INT_PTR index, DOUBLE value, INT32 elemSize, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     Exec_Stelem_Common(ptr, index, mkop_f8(value), elemSize, offset);
 }
 PROBE(void, Exec_Stelem_Ref, (INT_PTR ptr, INT_PTR index, INT_PTR value, INT32 elemSize, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     Exec_Stelem_Common(ptr, index, mkop_p(value), elemSize, offset);
 }
 PROBE(void, Exec_Stelem_Struct, (INT_PTR ptr, INT_PTR index, INT_PTR boxedValue, INT32 elemSize, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     Exec_Stelem_Common(ptr, index, mkop_struct(boxedValue), elemSize, offset);
 }
 
@@ -1182,20 +1249,23 @@ PROBE(void, Track_Ckfinite, ()) {
     // TODO
     // TODO: if exn is thrown, no value is pushed onto the stack
 }
-PROBE(void, Track_Sizeof, ()) { topFrame().push1Concrete(); }
+PROBE(void, Track_Sizeof, ()) { if (areProbesEnabled()) topFrame().push1Concrete(); }
 PROBE(void, Track_Ldftn, (INT_PTR functionPtr, INT32 functionID)) {
+    if (!areProbesEnabled()) return;
     addFunctionId(functionPtr, functionID);
     topFrame().push1Concrete();
 }
 
 PROBE(void, Track_Ldvirtftn, (INT_PTR ptr, mdToken token, OFFSET offset)) { /*TODO*/ }
-PROBE(void, Track_Arglist, ()) { topFrame().push1Concrete(); }
+PROBE(void, Track_Arglist, ()) { if (areProbesEnabled()) topFrame().push1Concrete(); }
 PROBE(void, Track_Mkrefany, ()) {
+    if (!areProbesEnabled()) return;
     // TODO
     topFrame().pop1();
 }
 
 PROBE(void, SetArgSize, (INT8 idx, SIZE size)) {
+    if (!areProbesEnabled()) return;
     assert(size > 0);
     Stack &stack = vsharp::stack();
     unsigned frame = stack.framesCount();
@@ -1207,6 +1277,7 @@ PROBE(void, SetArgSize, (INT8 idx, SIZE size)) {
 }
 
 PROBE(void, SetLocSize, (INT8 idx, SIZE size)) {
+    if (!areProbesEnabled()) return;
     assert(size > 0);
     Stack &stack = vsharp::stack();
     unsigned frame = stack.framesCount();
@@ -1218,6 +1289,7 @@ PROBE(void, SetLocSize, (INT8 idx, SIZE size)) {
 }
 
 PROBE(void, Track_Enter, (mdMethodDef token, unsigned moduleToken, unsigned maxStackSize, unsigned argsCount, unsigned localsCount, INT8 isSpontaneous)) {
+    if (!areProbesEnabled()) return;
     LOG(tout << "Track_Enter, token = " << HEX(token) << std::endl);
     Stack &stack = vsharp::stack();
     StackFrame *top = stack.isEmpty() ? nullptr : &stack.topFrame();
@@ -1244,6 +1316,7 @@ PROBE(void, Track_Enter, (mdMethodDef token, unsigned moduleToken, unsigned maxS
 }
 
 PROBE(void, Track_StructCtor, (ADDR address)) {
+    if (!areProbesEnabled()) return;
     Stack &stack = vsharp::stack();
     unsigned frames = stack.framesCount();
     const StackFrame &top = stack.topFrame();
@@ -1257,12 +1330,14 @@ PROBE(void, Track_StructCtor, (ADDR address)) {
 }
 
 PROBE(void, Track_Virtual, (ADDR thisAddress)) {
+    if (!areProbesEnabled()) return;
     VirtualAddress virtualAddress{};
     heap.physToVirtAddress(thisAddress, virtualAddress);
     topFrame().setThisAddress(virtualAddress);
 }
 
 PROBE(void, Track_EnterMain, (mdMethodDef token, unsigned moduleToken, UINT16 argsCount, bool argsConcreteness, unsigned maxStackSize, unsigned localsCount)) {
+    if (!areProbesEnabled()) return;
     Stack &stack = vsharp::stack();
     assert(stack.isEmpty());
     auto args = new bool[argsCount];
@@ -1274,6 +1349,7 @@ PROBE(void, Track_EnterMain, (mdMethodDef token, unsigned moduleToken, UINT16 ar
 }
 
 PROBE(void, Track_Leave, (UINT8 returnValues, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     Stack &stack = vsharp::stack();
     StackFrame &top = stack.topFrame();
 #ifdef _DEBUG
@@ -1319,7 +1395,6 @@ PROBE(void, Track_Leave, (UINT8 returnValues, OFFSET offset)) {
 }
 
 void leaveMain(OFFSET offset, UINT8 opsCount, EvalStackOperand *ops, INT_PTR ptr=UNKNOWN_ADDRESS) {
-    mainLeft();
     Stack &stack = vsharp::stack();
     StackFrame &top = stack.topFrame();
     LOG(tout << "Main left!");
@@ -1328,7 +1403,7 @@ void leaveMain(OFFSET offset, UINT8 opsCount, EvalStackOperand *ops, INT_PTR ptr
         // NOTE: popping return value from IL execution
         bool returnValue = top.pop1();
         LOG(tout << "Return value is " << (returnValue ? "concrete" : "symbolic") << std::endl);
-        if (returnValue) getObjectData(ptr, concreteBytes, false, true);
+        if (returnValue && ptr != UNKNOWN_ADDRESS) getObjectData(ptr, concreteBytes, false, true);
     } else {
         top.pop0();
     }
@@ -1337,17 +1412,19 @@ void leaveMain(OFFSET offset, UINT8 opsCount, EvalStackOperand *ops, INT_PTR ptr
     if (opsCount > 0) stack.topFrame().pop1();
     stack.popFrame();
     // NOTE: main left, further exploration is not needed, so only getting commands
+    mainLeft();
     while (true) getAndHandleCommand();
 }
-PROBE(void, Track_LeaveMain_0, (OFFSET offset)) { leaveMain(offset, 0, new EvalStackOperand[0] { }); }
-PROBE(void, Track_LeaveMain_4, (INT32 returnValue, OFFSET offset)) { leaveMain(offset, 1, new EvalStackOperand[1] { mkop_4(returnValue) }); }
-PROBE(void, Track_LeaveMain_8, (INT64 returnValue, OFFSET offset)) { leaveMain(offset, 1, new EvalStackOperand[1] { mkop_8(returnValue) }); }
-PROBE(void, Track_LeaveMain_f4, (FLOAT returnValue, OFFSET offset)) { leaveMain(offset, 1, new EvalStackOperand[1] { mkop_f4(returnValue) }); }
-PROBE(void, Track_LeaveMain_f8, (DOUBLE returnValue, OFFSET offset)) { leaveMain(offset, 1, new EvalStackOperand[1] { mkop_f8(returnValue) }); }
+PROBE(void, Track_LeaveMain_0, (OFFSET offset)) { assert(areProbesEnabled()); leaveMain(offset, 0, new EvalStackOperand[0] { }); }
+PROBE(void, Track_LeaveMain_4, (INT32 returnValue, OFFSET offset)) { assert(areProbesEnabled()); leaveMain(offset, 1, new EvalStackOperand[1] { mkop_4(returnValue) }); }
+PROBE(void, Track_LeaveMain_8, (INT64 returnValue, OFFSET offset)) { assert(areProbesEnabled()); leaveMain(offset, 1, new EvalStackOperand[1] { mkop_8(returnValue) }); }
+PROBE(void, Track_LeaveMain_f4, (FLOAT returnValue, OFFSET offset)) { assert(areProbesEnabled()); leaveMain(offset, 1, new EvalStackOperand[1] { mkop_f4(returnValue) }); }
+PROBE(void, Track_LeaveMain_f8, (DOUBLE returnValue, OFFSET offset)) { assert(areProbesEnabled()); leaveMain(offset, 1, new EvalStackOperand[1] { mkop_f8(returnValue) }); }
 
-PROBE(void, Track_LeaveMain_p, (INT_PTR returnValue, OFFSET offset)) { leaveMain(offset, 1, new EvalStackOperand[1] { mkop_p(returnValue) }, returnValue); }
+PROBE(void, Track_LeaveMain_p, (INT_PTR returnValue, OFFSET offset)) { assert(areProbesEnabled()); leaveMain(offset, 1, new EvalStackOperand[1] { mkop_p(returnValue) }, returnValue); }
 
 PROBE(void, Finalize_Call, (UINT8 returnValues)) {
+    if (!areProbesEnabled()) return;
     Stack &stack = vsharp::stack();
     if (!stack.topFrame().hasEntered()) {
         // Extern has been called, should pop its frame and push return result onto stack
@@ -1366,26 +1443,31 @@ PROBE(void, Finalize_Call, (UINT8 returnValues)) {
 }
 
 PROBE(void, Exec_Call, (INT32 argsCount, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     auto ops = createEmptyOps(argsCount);
     sendCommand(offset, argsCount, ops);
 }
 PROBE(void, Exec_ThisCall, (INT32 argsCount, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     auto ops = createEmptyOps(argsCount);
     const Stack::OperandMem &top = vsharp::stack().opmem(offset);
     ops[0] = mkop_p(top.unmem_p(0));
     sendCommand(offset, argsCount, ops);
 }
 PROBE(void, Exec_InternalCall, (INT32 argsCount, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     auto ops = createOps(argsCount, offset);
     sendCommand(offset, argsCount, ops);
 }
 
 // TODO: cache all structs before pop and use them in PushFrame
 PROBE(COND, Track_Call, (UINT16 argsCount)) {
+    if (!areProbesEnabled()) return true;
     return vsharp::stack().topFrame().pop(argsCount);
 }
 
 PROBE(void, PushFrame, (mdToken unresolvedToken, mdMethodDef resolvedToken, bool newobj, UINT16 argsCount, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     Stack &stack = vsharp::stack();
     StackFrame &top = stack.topFrame();
     argsCount = newobj ? argsCount + 1 : argsCount;
@@ -1418,6 +1500,7 @@ PROBE(void, PushFrame, (mdToken unresolvedToken, mdMethodDef resolvedToken, bool
 }
 
 PROBE(void, PushTemporaryAllocatedStruct, (SIZE size, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     Stack &stack = vsharp::stack();
     StackFrame &top = stack.topFrame();
     unsigned frame = stack.framesCount();
@@ -1427,11 +1510,13 @@ PROBE(void, PushTemporaryAllocatedStruct, (SIZE size, OFFSET offset)) {
 }
 
 PROBE(void, PushInternalCallResult, ()) {
+    if (!areProbesEnabled()) return;
     vsharp::topFrame().push1Concrete();
 }
 
 PROBE(void, Track_CallVirt, (UINT16 count, OFFSET offset)) { Track_Call(count); PushFrame(0, 0, false, count, offset); }
 PROBE(void, Track_Newobj, (INT_PTR ptr)) {
+    if (!areProbesEnabled()) return;
     StackFrame &top = topFrame();
     OBJID closureId;
     INT32 functionId;
@@ -1451,6 +1536,7 @@ PROBE(void, Track_Calli, (mdSignature signature, OFFSET offset)) {
 }
 
 PROBE(void, Track_Throw, (UINT_PTR exceptionRef, OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     VirtualAddress virtualAddress{};
     resolve(exceptionRef, virtualAddress);
     assert(!virtualAddress.offset);
@@ -1464,6 +1550,7 @@ PROBE(void, Track_Throw, (UINT_PTR exceptionRef, OFFSET offset)) {
     throwException(virtualAddress.obj, concreteness);
 }
 PROBE(void, Track_Rethrow, (OFFSET offset)) {
+    if (!areProbesEnabled()) return;
     rethrowException();
 }
 

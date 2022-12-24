@@ -76,6 +76,18 @@ bool vsharp::isMainLeft() {
     return _mainLeft;
 }
 
+bool vsharp::areProbesEnabled() {
+    return disabledThreadProbes.find(currentThread()) == disabledThreadProbes.end();
+}
+
+void vsharp::enableProbesThread() {
+    disabledThreadProbes.erase(currentThread());
+}
+
+void vsharp::disableProbesThread() {
+    disabledThreadProbes.insert(currentThread());
+}
+
 bool instrumentationEnabled = true;
 
 bool vsharp::instrumentingEnabled() {

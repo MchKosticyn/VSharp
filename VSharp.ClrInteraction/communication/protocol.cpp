@@ -14,8 +14,6 @@ void SyncInfoGettersPointers(long arrayInfoPtr, long objectInfoPtr) {
     objectInfoGetter = (ObjectGetterType)objectInfoPtr;
 }
 
-bool cSharpCallFromConcolicInRun = false;
-
 using namespace vsharp;
 
 bool Protocol::readConfirmation() {
@@ -316,16 +314,16 @@ bool Protocol::acceptReadObjectParameters(OBJID &objID, int &refOffsetsLength, i
 }
 
 bool Protocol::getArrayInfo(INT_PTR arrayPtr, OBJID &objID, int &elemSize, int &refOffsetsLength, int *&refOffsets, char *type, unsigned long typeLength) {
-    cSharpCallFromConcolicInRun = true;
+    disableProbesThread();
     arrayInfoGetter(arrayPtr, objID, elemSize, refOffsetsLength, refOffsets, type, typeLength);
-    cSharpCallFromConcolicInRun = false;
+    enableProbesThread();
     return true;
 }
 
 bool Protocol::getObjectInfo(INT_PTR objectPtr, OBJID &objID, int &refOffsetsLength, int *&refOffsets, char *type, unsigned long typeLength) {
-    cSharpCallFromConcolicInRun = true;
+    disableProbesThread();
     objectInfoGetter(objectPtr, objID, refOffsetsLength, refOffsets, type, typeLength);
-    cSharpCallFromConcolicInRun = false;
+    enableProbesThread();
     return true;
 }
 
@@ -408,8 +406,4 @@ void Protocol::sendTerminateByExceptionCommand() {
     sendCommand0(topFrame().ip());
     // NOTE: getting SILI commands, until it creates test
     while (true) getAndHandleCommand();
-}
-
-bool Protocol::isCSharpCallFromConcolicInRun() {
-    return cSharpCallFromConcolicInRun;
 }

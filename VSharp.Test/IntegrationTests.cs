@@ -65,7 +65,7 @@ namespace VSharp.Test
             int expectedCoverage = -1,
             uint recThresholdForTest = 0u,
             int timeout = -1,
-            bool concolicMode = false,
+            bool concolicMode = true,
             SearchStrategy strat = SearchStrategy.BFS)
         {
             if (expectedCoverage < 0)

@@ -6,6 +6,7 @@
 #include "storage.h"
 #include <functional>
 #include <map>
+#include <set>
 
 #define staticSizeOfCoverageNode (2 * sizeof(int) + sizeof(mdMethodDef) + sizeof(OFFSET))
 #define READ_BYTES(src, type) *(type*)(src); (src) += sizeof(type)
@@ -17,6 +18,7 @@ namespace vsharp {
 
 extern std::function<ThreadID()> currentThread;
 static std::map<ThreadID, Stack *> stacks;
+static std::set<ThreadID> disabledThreadProbes;
 extern Storage heap;
 #ifdef _DEBUG
 extern std::map<unsigned, const char*> stringsPool;
@@ -29,6 +31,10 @@ StackFrame &topFrame();
 
 void mainLeft();
 bool isMainLeft();
+
+bool areProbesEnabled();
+void enableProbesThread();
+void disableProbesThread();
 
 bool instrumentingEnabled();
 void enableInstrumentation();
