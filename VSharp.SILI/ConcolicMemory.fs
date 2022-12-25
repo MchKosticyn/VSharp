@@ -66,6 +66,9 @@ type ConcolicMemory(communicator : Communicator) =
     member x.WriteConcreteBytes ref newBytes =
         concreteBytes[ref] <- newBytes
 
+    member x.UnmarshallAddress addr =
+        unmarshalledAddresses.Add addr
+
     interface IConcreteMemory with
         // TODO: support non-vector arrays
         member x.Contains address =

@@ -243,7 +243,10 @@ type ClientMachine(entryPoint : Method, cmdArgs : string[] option, requestMakeSt
         | _ -> internalfailf "TypeOfConcolicThisRef: unexpected 'this' %O" thisRef
         
     member private x.Unmarshall ref dataBytes = 
-        let dataAddress = cilState.state.concreteMemory.GetVirtualAddress ref |> ConcreteHeapAddress
+        let cm = cilState.state.concreteMemory
+        let virtAddress = cm.GetVirtualAddress ref
+        let dataAddress = virtAddress |> ConcreteHeapAddress
+        assert((cm :?> ConcolicMemory).UnmarshallAddress virtAddress)
         let dataTyp = TypeOfAddress cilState.state dataAddress
         match dataTyp with
         | _ when dataTyp.IsSZArray ->
@@ -256,12 +259,12 @@ type ClientMachine(entryPoint : Method, cmdArgs : string[] option, requestMakeSt
         | _ when dataTyp = typeof<String> ->
             let chars = parseString dataBytes
             Memory.UnmarshallString cilState.state dataAddress chars
-        | _ when dataTyp.IsValueType ->
+        | _ when not dataTyp.IsValueType ->
             let fieldOffsets = fieldsWithOffsets dataTyp
             let fields = parseFields dataBytes fieldOffsets
             Memory.UnmarshallClass cilState.state dataAddress fields
         | _ ->
-            internalfailf "received unmarshalled object ref, but its type is not String, SZArray nor ValueType!"
+            __unreachable__()
 
     member x.SynchronizeStates (c : execCommand) =
         Logger.trace "Synchronizing states with Concolic"
