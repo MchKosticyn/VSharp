@@ -318,7 +318,7 @@ void initCommand(OFFSET offset, bool isBranch, unsigned opsCount, EvalStackOpera
         command.newAddressesTypeLengths[i] = (UINT64) typeSize;
         if (typeSize != 0) memcpy(command.newAddressesTypes, pair.first, typeSize);
         command.newAddressesTypes += typeSize;
-        delete pair.first;
+        // delete pair.first;
         i++;
     }
     command.newAddressesTypes = begin;
@@ -607,6 +607,7 @@ void getObjectDataR(INT_PTR ptr, std::vector<ConcreteBytes> &data, bool toUnmars
     int elemSize;
     bool isArray = obj->isArrayData();
 
+    // TODO: add refOffsets caching for types to reuse already retrieved data?
     if (isArray) {
         if (!protocol->getArrayInfo(ptr, objID, elemSize, offsetsLength, offsets, obj->getType(), obj->getTypeLength())) FAIL_LOUD("Could not get array parameters from SILI!");
     }

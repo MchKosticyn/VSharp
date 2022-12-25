@@ -298,7 +298,6 @@ module public Reflection =
                 Struct(info, memoryFieldOffset info, fields) |> k)
             | _ ->
                 assert(not fieldType.IsValueType)
-                Logger.error "field=%O" info
                 Ref(info, memoryFieldOffset info) |> k
         Cps.Seq.mapk getFieldOffset fields (Array.ofSeq >> k)
 

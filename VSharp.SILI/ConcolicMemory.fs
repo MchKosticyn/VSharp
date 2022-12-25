@@ -16,6 +16,7 @@ type ConcolicMemory(communicator : Communicator) =
     let mutable virtualAddresses = Dictionary<concreteHeapAddress, UIntPtr>()
     let mutable unmarshalledAddresses = HashSet()
     let mutable concreteBytes = Dictionary<UIntPtr, byte[]>()
+    let mutable unmarshalledObjects = Dictionary<UIntPtr, byte[]>()
 
     let zeroHeapAddress = VectorTime.zero
             
@@ -42,6 +43,11 @@ type ConcolicMemory(communicator : Communicator) =
         and set newData =
             concreteBytes <- newData
     
+    member private x.UnmarshalledObjects
+        with get() = concreteBytes
+        and set newData =
+            unmarshalledObjects <- newData
+    
     member private x.PhysicalAddresses
         with get() = physicalAddresses
         and set anotherPhysicalAddresses =
@@ -62,12 +68,13 @@ type ConcolicMemory(communicator : Communicator) =
         x.VirtualAddresses <- Dictionary(anotherConcolicMemory.VirtualAddresses)
         x.UnmarshalledAddresses <- HashSet(anotherConcolicMemory.UnmarshalledAddresses)
         x.ConcreteBytes <- Dictionary(anotherConcolicMemory.ConcreteBytes)
+        x.UnmarshalledObjects <- Dictionary(anotherConcolicMemory.UnmarshalledObjects)
         
     member x.WriteConcreteBytes ref newBytes =
         concreteBytes[ref] <- newBytes
 
-    member x.UnmarshallAddress addr =
-        unmarshalledAddresses.Add addr
+    member x.WriteUnmarshalledObject ref newBytes =
+        unmarshalledObjects.Add(ref, newBytes)
 
     interface IConcreteMemory with
         // TODO: support non-vector arrays
@@ -139,8 +146,24 @@ type ConcolicMemory(communicator : Communicator) =
             else internalfailf "GetAllArrayData: getting array data from non-vector array (rank = %O) is not implemented!" dims
 
         // NOTE: 'Unmarshall' function gets all bytes from concolic memory and gives control of 'address' to SILI
-        member x.Unmarshall address typ =
-            internalfailf "Unmarshalling should be done from concolic now! unexpected call on address: %O" address
+        member x.Unmarshall virtAddress dataTyp =
+            assert(unmarshalledAddresses.Add virtAddress)
+            let physAddr = (x :> IConcreteMemory).GetPhysicalAddress virtAddress
+            let dataBytes = unmarshalledObjects[physAddr]
+            match dataTyp with
+            | _ when dataTyp.IsSZArray ->
+                let elemTyp = dataTyp.GetElementType()
+                parseVectorArray dataBytes elemTyp |> VectorData
+            | _ when dataTyp.IsArray ->
+                let rank = dataTyp.GetArrayRank()
+                internalfailf "Unmarshalling non-vector array (rank = %O) is not implemented!" rank
+            | _ when dataTyp = typeof<String> ->
+                parseString dataBytes |> StringData
+            | _ when not dataTyp.IsValueType ->
+                let fieldOffsets = fieldsWithOffsets dataTyp
+                parseFields dataBytes fieldOffsets |> FieldsData
+            | _ ->
+                __unreachable__()
 
         member x.Allocate physAddress virtAddress =
             physicalAddresses.Add(physAddress, virtAddress)
