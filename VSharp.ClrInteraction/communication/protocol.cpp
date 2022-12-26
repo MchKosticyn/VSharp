@@ -7,11 +7,13 @@
 
 ArrayGetterType arrayInfoGetter = nullptr;
 ObjectGetterType objectInfoGetter = nullptr;
+InstrumentType instrument = nullptr;
 
-void SyncInfoGettersPointers(long arrayInfoPtr, long objectInfoPtr) {
+void SyncInfoGettersPointers(long arrayInfoPtr, long objectInfoPtr, long instrumentPtr) {
     LOG(tout << "received function pointers: " << arrayInfoPtr << " for arrays and " << objectInfoPtr << " for objects" << std::endl);
     arrayInfoGetter = (ArrayGetterType)arrayInfoPtr;
     objectInfoGetter = (ObjectGetterType)objectInfoPtr;
+    instrument = (InstrumentType) instrumentPtr;
 }
 
 using namespace vsharp;

@@ -61,7 +61,7 @@ type evalStackArgType =
     | OpRef = 6
     | OpStruct = 7
     | OpEmpty = 8
-    
+
 type concreteDataFromConcolic =
     | NoData
     | UnmarshalledData of UIntPtr * byte[]
@@ -261,7 +261,7 @@ type Communicator(pipeFile) =
     override x.Finalize() =
         server.Close()
 
-    member private x.Deserialize<'a> (bytes : byte array, startIndex : int) =
+    static member public Deserialize<'a> (bytes : byte array, startIndex : int) =
         let result = Reflection.createObject typeof<'a> :?> 'a
         let size = Marshal.SizeOf(typeof<'a>)
         let unmanagedPtr = Marshal.AllocHGlobal(size)
@@ -270,19 +270,19 @@ type Communicator(pipeFile) =
         Marshal.FreeHGlobal(unmanagedPtr)
         result
 
-    member private x.Deserialize<'a> (bytes : byte array) = x.Deserialize<'a>(bytes, 0)
+    static member public Deserialize<'a> (bytes : byte array) = Communicator.Deserialize<'a>(bytes, 0)
 
-    member private x.Serialize<'a> (structure : 'a, bytes : byte array, startIndex : int) =
+    static member public Serialize<'a> (structure : 'a, bytes : byte array, startIndex : int) =
         let size = Marshal.SizeOf(typeof<'a>)
         let unmanagedPtr = Marshal.AllocHGlobal(size)
         Marshal.StructureToPtr(structure, unmanagedPtr, false)
         Marshal.Copy(unmanagedPtr, bytes, startIndex, size)
         Marshal.FreeHGlobal(unmanagedPtr)
 
-    member private x.Serialize<'a> (structure : 'a) =
+    static member public Serialize<'a> (structure : 'a) =
         let size = Marshal.SizeOf(typeof<'a>)
         let result = Array.zeroCreate size
-        x.Serialize<'a>(structure, result, 0)
+        Communicator.Serialize<'a>(structure, result, 0)
         result
 
     member private x.SerializeCommand command =
@@ -341,13 +341,13 @@ type Communicator(pipeFile) =
         | ConcretePush -> [| 2uy |]
         | StructPush (structSize, structSymbolicFields) ->
             let bytes : byte[] = Array.zeroCreate <| x.StackPushSize stackPush
-            x.Serialize<byte>(3uy, bytes, 0)
-            x.Serialize<int>(structSize, bytes, sizeof<byte>)
-            x.Serialize<int>(structSymbolicFields.Length, bytes, sizeof<byte> + sizeof<int32>)
+            Communicator.Serialize<byte>(3uy, bytes, 0)
+            Communicator.Serialize<int>(structSize, bytes, sizeof<byte>)
+            Communicator.Serialize<int>(structSymbolicFields.Length, bytes, sizeof<byte> + sizeof<int32>)
             Array.iteri (fun i (offset, size) ->
                 let idx = sizeof<byte> + sizeof<int32> * 2 + i * sizeof<int32> * 2
-                x.Serialize<int>(offset, bytes, idx)
-                x.Serialize<int>(size, bytes, idx + sizeof<int32>)
+                Communicator.Serialize<int>(offset, bytes, idx)
+                Communicator.Serialize<int>(size, bytes, idx + sizeof<int32>)
                 ) structSymbolicFields
             bytes
 
@@ -356,10 +356,10 @@ type Communicator(pipeFile) =
 
     member private x.SerializeCoverageLocation (loc : coverageLocation) =
         let staticBytes : byte[] = Array.zeroCreate <| 4 * sizeof<int32>
-        x.Serialize<int>(loc.moduleToken, staticBytes, 0)
-        x.Serialize<int>(loc.methodToken, staticBytes, sizeof<int32>)
-        x.Serialize<int>(loc.offset, staticBytes, 2 * sizeof<int32>)
-        x.Serialize<int>(loc.threadToken, staticBytes, 3 * sizeof<int32>)
+        Communicator.Serialize<int>(loc.moduleToken, staticBytes, 0)
+        Communicator.Serialize<int>(loc.methodToken, staticBytes, sizeof<int32>)
+        Communicator.Serialize<int>(loc.offset, staticBytes, 2 * sizeof<int32>)
+        Communicator.Serialize<int>(loc.threadToken, staticBytes, 3 * sizeof<int32>)
         Array.concat [ staticBytes; x.SerializeStackPush loc.stackPush ]
 
     member private x.DeserializeCoverageLocation (bytes : byte array, offset : int byref) =
@@ -384,7 +384,7 @@ type Communicator(pipeFile) =
 
     member private x.ReadStructure<'a>() =
         match readBuffer() with
-        | Some bytes -> x.Deserialize<'a> bytes
+        | Some bytes -> Communicator.Deserialize<'a> bytes
         | None -> unexpectedlyTerminated()
 
     member x.ReadProbes() = x.ReadStructure<probes>()
@@ -414,7 +414,7 @@ type Communicator(pipeFile) =
 
     member x.SendMethodTokenAndParseTypes (methodToken : int) : uint32[] =
         x.SendCommand ParseTypesInfoFromMethod
-        x.Serialize<int> methodToken |> writeBuffer
+        Communicator.Serialize<int> methodToken |> writeBuffer
         match readBuffer() with
         | Some bytes ->
             let typesSize = Array.length bytes / sizeof<uint32>
@@ -442,28 +442,28 @@ type Communicator(pipeFile) =
 
     member x.ReadHeapBytes (address : UIntPtr) offset size refOffsets : byte[] =
         x.SendCommand ReadHeapBytes
-        let refOffsetBytes = Array.collect x.Serialize<int> refOffsets
-        let offsetsLength = Array.length refOffsets |> x.Serialize<int>
+        let refOffsetBytes = Array.collect Communicator.Serialize<int> refOffsets
+        let offsetsLength = Array.length refOffsets |> Communicator.Serialize<int>
         Array.concat [
-            x.Serialize<UIntPtr> address; x.Serialize<int> offset
-            x.Serialize<int> size; offsetsLength; refOffsetBytes
+            Communicator.Serialize<UIntPtr> address; Communicator.Serialize<int> offset
+            Communicator.Serialize<int> size; offsetsLength; refOffsetBytes
         ] |> writeBuffer
         match readBuffer() with
         | Some bytes -> bytes
         | None -> internalfail "Reading bytes from concolic: got nothing"
 
     member private x.SendParametersAndReadObject (address : UIntPtr) refOffsets : byte[] =
-        let refOffsetBytes = Array.collect x.Serialize<int> refOffsets
-        let offsetsLength = Array.length refOffsets |> x.Serialize<int>
-        Array.concat [x.Serialize<UIntPtr> address; offsetsLength; refOffsetBytes] |> writeBuffer
+        let refOffsetBytes = Array.collect Communicator.Serialize<int> refOffsets
+        let offsetsLength = Array.length refOffsets |> Communicator.Serialize<int>
+        Array.concat [Communicator.Serialize<UIntPtr> address; offsetsLength; refOffsetBytes] |> writeBuffer
         match readBuffer() with
         | Some bytes -> bytes
         | None -> internalfail "Reading bytes from concolic: got nothing"
 
     member private x.SendParametersAndReadArray (address : UIntPtr) elemSize refOffsets : byte[] =
-        let refOffsetBytes = Array.collect x.Serialize<int> refOffsets
-        let offsetsLength = Array.length refOffsets |> x.Serialize<int>
-        Array.concat [x.Serialize<UIntPtr> address; x.Serialize<int32> elemSize; offsetsLength; refOffsetBytes] |> writeBuffer
+        let refOffsetBytes = Array.collect Communicator.Serialize<int> refOffsets
+        let offsetsLength = Array.length refOffsets |> Communicator.Serialize<int>
+        Array.concat [Communicator.Serialize<UIntPtr> address; Communicator.Serialize<int32> elemSize; offsetsLength; refOffsetBytes] |> writeBuffer
         match readBuffer() with
         | Some bytes -> bytes
         | None -> internalfail "Reading bytes from concolic: got nothing"
@@ -493,22 +493,22 @@ type Communicator(pipeFile) =
 
     member x.ParseFieldRefTypeToken (fieldRef : int) : uint32 =
         x.SendCommand ParseFieldRefTypeToken
-        x.Serialize<int> fieldRef |> writeBuffer
+        Communicator.Serialize<int> fieldRef |> writeBuffer
         x.ReadTypeToken()
 
     member x.ParseFieldDefTypeToken (fieldDef : int) : uint32 =
         x.SendCommand ParseFieldDefTypeToken
-        x.Serialize<int> fieldDef |> writeBuffer
+        Communicator.Serialize<int> fieldDef |> writeBuffer
         x.ReadTypeToken()
 
     member x.ParseArgTypeToken (methodToken : int) (argIndex : int) : uint32 =
         x.SendCommand ParseArgTypeToken
-        Array.concat [x.Serialize<int> methodToken; x.Serialize<int> argIndex] |> writeBuffer
+        Array.concat [Communicator.Serialize<int> methodToken; Communicator.Serialize<int> argIndex] |> writeBuffer
         x.ReadTypeToken()
 
     member x.ParseLocalTypeToken (localIndex : int) : uint32 =
         x.SendCommand ParseLocalTypeToken
-        x.Serialize<int> localIndex |> writeBuffer
+        Communicator.Serialize<int> localIndex |> writeBuffer
         x.ReadTypeToken()
 
     member x.ParseReturnTypeToken () : uint32 =
@@ -517,27 +517,27 @@ type Communicator(pipeFile) =
 
     member x.ParseDeclaringTypeToken (methodToken : int) : uint32 =
         x.SendCommand ParseDeclaringTypeToken
-        x.Serialize<int> methodToken |> writeBuffer
+        Communicator.Serialize<int> methodToken |> writeBuffer
         x.ReadTypeToken()
 
     member x.ReadMethodBody() =
         match readBuffer() with
         | Some bytes ->
             let propertiesBytes, rest = Array.splitAt (Marshal.SizeOf typeof<rawMethodProperties>) bytes
-            let properties = x.Deserialize<rawMethodProperties> propertiesBytes
+            let properties = Communicator.Deserialize<rawMethodProperties> propertiesBytes
             let sizeOfSignatureTokens = Marshal.SizeOf typeof<signatureTokens>
             if int properties.signatureTokensLength <> sizeOfSignatureTokens then
                 fail "Size of received signature tokens buffer mismatch the expected! Probably you've altered the client-side signatures, but forgot to alter the server-side structure (or vice-versa)"
             let signatureTokenBytes, rest = Array.splitAt sizeOfSignatureTokens rest
             let assemblyNameBytes, rest = Array.splitAt (int properties.assemblyNameLength) rest
             let moduleNameBytes, rest = Array.splitAt (int properties.moduleNameLength) rest
-            let signatureTokens = x.Deserialize<signatureTokens> signatureTokenBytes
+            let signatureTokens = Communicator.Deserialize<signatureTokens> signatureTokenBytes
             let assemblyName = Encoding.Unicode.GetString(assemblyNameBytes)
             let moduleName = Encoding.Unicode.GetString(moduleNameBytes)
             let ilBytes, ehBytes  = Array.splitAt (int properties.ilCodeSize) rest
             let ehSize = Marshal.SizeOf typeof<rawExceptionHandler>
             let ehCount = Array.length ehBytes / ehSize
-            let ehs = Array.init ehCount (fun i -> x.Deserialize<rawExceptionHandler>(ehBytes, i * ehSize))
+            let ehs = Array.init ehCount (fun i -> Communicator.Deserialize<rawExceptionHandler>(ehBytes, i * ehSize))
             {properties = properties; tokens = signatureTokens; assembly = assemblyName; moduleName = moduleName; il = ilBytes; ehs = ehs}
         | None -> unexpectedlyTerminated()
 
@@ -634,7 +634,7 @@ type Communicator(pipeFile) =
         | Some bytes ->
             let staticSize = Marshal.SizeOf typeof<execCommandStatic>
             let staticBytes, dynamicBytes = Array.splitAt staticSize bytes
-            let staticPart = x.Deserialize<execCommandStatic> staticBytes
+            let staticPart = Communicator.Deserialize<execCommandStatic> staticBytes
             let exceptionIsConcrete = staticPart.exceptionIsConcrete = 1uy
             let exceptionRegister =
                 match staticPart.exceptionKind with
@@ -821,17 +821,17 @@ type Communicator(pipeFile) =
             | None -> 0uy, Array.empty
         let lastPushBytes = x.SerializeStackPush lastPush
         let staticPart = { opsLength = len; hasResult = hasInternalCallResult }
-        let staticPartBytes = x.Serialize<execResponseStaticPart> staticPart
+        let staticPartBytes = Communicator.Serialize<execResponseStaticPart> staticPart
         let message = Array.concat [ staticPartBytes; lastPushBytes; opsBytes; resultBytes ]
         Logger.trace "Sending exec response! Total %d bytes" message.Length
         writeBuffer message
 
     member x.SendMethodBody (mb : instrumentedMethodBody) =
         x.SendCommand ReadMethodBody
-        let propBytes = x.Serialize mb.properties
+        let propBytes = Communicator.Serialize mb.properties
         let ehSize = Marshal.SizeOf typeof<rawExceptionHandler>
         let ehBytes : byte[] = Array.zeroCreate (ehSize * mb.ehs.Length)
-        Array.iteri (fun i eh -> x.Serialize<rawExceptionHandler>(eh, ehBytes, i * ehSize)) mb.ehs
+        Array.iteri (fun i eh -> Communicator.Serialize<rawExceptionHandler>(eh, ehBytes, i * ehSize)) mb.ehs
         let message = Array.concat [propBytes; mb.il; ehBytes]
         Logger.trace "Sending method body! Total %d bytes" message.Length
         writeBuffer message

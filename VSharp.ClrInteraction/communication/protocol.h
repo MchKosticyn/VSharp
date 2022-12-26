@@ -23,6 +23,10 @@
 
 typedef void (*ArrayGetterType)(INT_PTR, OBJID&, int&, int&, int*&, char*, unsigned long);
 typedef void (*ObjectGetterType)(INT_PTR, OBJID&, int&, int*&, char*, unsigned long);
+typedef void (*InstrumentType)(unsigned, unsigned, unsigned, unsigned, unsigned, unsigned, unsigned, char*,
+        const WCHAR*, const WCHAR*, char*, char*,
+        // result
+        char**, int*, int*, char**, int*);
 
 extern "C" IMAGEHANDLER_API void SyncInfoGettersPointers(long arrayInfoPtr, long objectInfoPtr);
 

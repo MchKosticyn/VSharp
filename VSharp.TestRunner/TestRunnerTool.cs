@@ -5,6 +5,8 @@ using System.IO;
 using System.Reflection;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text;
+using VSharp.Concolic;
 using VSharp.Utils;
 using static VSharp.Reflection;
 
@@ -13,7 +15,7 @@ namespace VSharp.TestRunner
     public static unsafe class TestRunner
     {
         [DllImport("libvsharpConcolic", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
-        public static extern void SyncInfoGettersPointers(Int64 arrayGetterPtr, Int64 objectGetterPtr);
+        public static extern void SyncInfoGettersPointers(Int64 arrayGetterPtr, Int64 objectGetterPtr, Int64 instrumentPtr);
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         public delegate void ArrayInfoSender(IntPtr arrayPtr, UIntPtr *objID, int *elemSize, int *refOffsetsLength,
@@ -23,10 +25,19 @@ namespace VSharp.TestRunner
         public delegate void ObjectInfoSender(IntPtr arrayPtr, UIntPtr *objID, int *refOffsetsLength, int **refOffsets,
             byte *typ, UInt64 typeLength);
 
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        public delegate void InstrumentSender(uint token, uint codeSize, uint assemblyNameLength, uint moduleNameLength,
+            uint maxStackSize, uint ehsSize, uint signatureTokensLength, byte* signatureTokensPtr, char* assemblyNamePtr,
+            char* moduleNamePtr, byte* byteCodePtr, byte* ehsPtr,
+            // result
+            byte **instrumentedBody, int *length, int *resultMaxStackSize, byte **resultEhs, int *ehsLength);
+
         public static IntPtr ArrayInfoAction;
         public static IntPtr ObjectInfoAction;
+        public static IntPtr InstrumentAction;
         public static ArrayInfoSender ArraySender;
         public static ObjectInfoSender ObjectSender;
+        public static InstrumentSender Instrument;
 
         private static IEnumerable<string> _extraAssemblyLoadDirs;
 
@@ -132,7 +143,7 @@ namespace VSharp.TestRunner
             Marshal.Copy((IntPtr)typ, type, 0, (int)typeLength);
             var offset = 0;
             var realType = ConcolicUtils.parseType(type, ref offset);
-            
+
             if (realType == typeof(String) || realType.IsEnum || realType.IsPrimitive)
             {
                 *refOffsetsLength = 0;
@@ -151,13 +162,68 @@ namespace VSharp.TestRunner
             *refOffsetsLength = offsets.Length;
         }
 
+        private static void Instrumenter(uint token, uint codeSize, uint assemblyNameLength, uint moduleNameLength,
+            uint maxStackSize, uint ehsSize, uint signatureTokensLength, byte* signatureTokensPtr, char* assemblyNamePtr,
+            char* moduleNamePtr, byte* byteCodePtr, byte* ehsPtr,
+            // result
+            byte **instrumentedBody, int *length, int *resultMaxStackSize, byte **resultEhs, int *ehsLength)
+        {
+            // Serialization
+            var tokensLength = Marshal.SizeOf(typeof(signatureTokens));
+            if (signatureTokensLength != tokensLength)
+                throw new NotImplementedException(
+                    "Size of received signature tokens buffer mismatch the expected! Probably you've altered the client-side signatures, but forgot to alter the server-side structure (or vice-versa)");
+            var signatureTokensBytes = new byte[tokensLength];
+            Marshal.Copy((IntPtr)signatureTokensPtr, signatureTokensBytes, 0, tokensLength);
+            var tokens = Communicator.Deserialize<signatureTokens>(signatureTokensBytes);
+            var assemblyNameBytes = new byte[assemblyNameLength];
+            Marshal.Copy((IntPtr)assemblyNamePtr, assemblyNameBytes, 0, (int)assemblyNameLength);
+            var assembly = Encoding.Unicode.GetString(assemblyNameBytes);
+            var moduleNameBytes = new byte[moduleNameLength];
+            Marshal.Copy((IntPtr)moduleNamePtr, moduleNameBytes, 0, (int)moduleNameLength);
+            var module = Encoding.Unicode.GetString(assemblyNameBytes);
+            var codeBytes = new byte[codeSize];
+            Marshal.Copy((IntPtr)byteCodePtr, codeBytes, 0, (int)codeSize);
+            var ehsBytes = new byte[ehsSize];
+            Marshal.Copy((IntPtr)ehsPtr, ehsBytes, 0, (int)ehsSize);
+            var ehSize = Marshal.SizeOf(typeof(rawExceptionHandler));
+            var count = ehsSize / ehSize;
+            var ehs = new rawExceptionHandler[count];
+            for (var i = 0; i < count; i++)
+            {
+                ehs[i] = Communicator.Deserialize<rawExceptionHandler>(ehsBytes, i * ehSize);
+            }
+
+            // Instrumentation
+            var properties = new rawMethodProperties(token, codeSize, assemblyNameLength, moduleNameLength,
+                maxStackSize, signatureTokensLength);
+            var methodBody = new rawMethodBody(properties, assembly, module, tokens, codeBytes, ehs);
+            var instrumenter = new Instrumenter(null!, null!, null!);
+            var instrumented = instrumenter.Instrument(methodBody);
+
+            // Deserialization
+            *instrumentedBody = (byte*)Marshal.UnsafeAddrOfPinnedArrayElement(instrumented.il, 0);
+            *length = instrumented.il.Length;
+            *resultMaxStackSize = (int)instrumented.properties.maxStackSize;
+            var ehBytes = new byte[ehSize * instrumented.ehs.Length];
+            var instrumentedEhs = instrumented.ehs;
+            for (int i = 0; i < instrumentedEhs.Length; i++)
+            {
+                Communicator.Serialize(instrumentedEhs[i], ehBytes, i * ehSize);
+            }
+            *resultEhs = (byte*)Marshal.UnsafeAddrOfPinnedArrayElement(ehBytes, 0);
+            *ehsLength = ehBytes.Length;
+        }
+
         private static bool ReproduceTests(IEnumerable<FileInfo> tests, bool shouldReproduceError, bool checkResult)
         {
             ArraySender = new ArrayInfoSender(GetArrayInfo);
             ObjectSender = new ObjectInfoSender(GetObjectInfo);
+            Instrument = new InstrumentSender(Instrumenter);
             ArrayInfoAction = Marshal.GetFunctionPointerForDelegate(ArraySender);
             ObjectInfoAction = Marshal.GetFunctionPointerForDelegate(ObjectSender);
-            SyncInfoGettersPointers(ArrayInfoAction.ToInt64(), ObjectInfoAction.ToInt64());
+            InstrumentAction = Marshal.GetFunctionPointerForDelegate(Instrument);
+            SyncInfoGettersPointers(ArrayInfoAction.ToInt64(), ObjectInfoAction.ToInt64(), InstrumentAction.ToInt64());
 
             AppDomain.CurrentDomain.AssemblyResolve += TryLoadAssemblyFrom;
 
