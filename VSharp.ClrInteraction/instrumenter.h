@@ -85,6 +85,12 @@ public:
     unsigned signatureTokensLength() const { return m_signatureTokensLength; }
 
     void configureEntryPoint();
+    mdToken FieldRefTypeToken(mdToken fieldRef);
+    mdToken FieldDefTypeToken(mdToken fieldDef);
+    mdToken ArgTypeToken(mdToken method, INT32 argIndex);
+    mdToken LocalTypeToken(INT32 localIndex);
+    mdToken ReturnTypeToken();
+    mdToken DeclaringTypeToken(mdToken method);
 
     HRESULT instrument(FunctionID functionId);
     HRESULT reInstrument(FunctionID functionId);

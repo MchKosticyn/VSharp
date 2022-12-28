@@ -140,6 +140,11 @@ bool Protocol::sendProbes() {
     return writeBuffer((char*)ProbesAddresses.data(), bytesCount);
 }
 
+char *GetProbes(unsigned *bytesCount) {
+    *bytesCount = ProbesAddresses.size() * sizeof(unsigned long long);
+    return (char*)ProbesAddresses.data();
+}
+
 void Protocol::acceptEntryPoint(char *&entryPointBytes, int &length) {
     if (!readBuffer(entryPointBytes, length)) {
         FAIL_LOUD("Exec response validation failed!");
@@ -327,6 +332,18 @@ bool Protocol::getObjectInfo(INT_PTR objectPtr, OBJID &objID, int &refOffsetsLen
     objectInfoGetter(objectPtr, objID, refOffsetsLength, refOffsets, type, typeLength);
     enableProbesThread();
     return true;
+}
+
+void Protocol::instrumentR(unsigned token, unsigned codeSize, unsigned assemblyNameLength, unsigned moduleNameLength, unsigned maxStackSize, unsigned ehsSize, unsigned signatureTokensLength, char *signatureTokensPtr,
+    const WCHAR *assemblyNamePtr, const WCHAR *moduleNamePtr, char *byteCodePtr, char *ehsPtr,
+    // result
+    char **instrumentedBody, int *length, int *resultMaxStackSize, char **resultEhs, int *ehsLength)
+{
+    disableProbesThread();
+    instrument(token, codeSize, assemblyNameLength, moduleNameLength, maxStackSize, ehsSize, signatureTokensLength,
+               signatureTokensPtr, assemblyNamePtr, moduleNamePtr, byteCodePtr, ehsPtr, instrumentedBody, length,
+               resultMaxStackSize, resultEhs, ehsLength);
+    enableProbesThread();
 }
 
 bool Protocol::sendStringsPoolIndex(const unsigned index) {

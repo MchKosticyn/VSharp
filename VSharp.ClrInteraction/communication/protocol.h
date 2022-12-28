@@ -29,6 +29,7 @@ typedef void (*InstrumentType)(unsigned, unsigned, unsigned, unsigned, unsigned,
         char**, int*, int*, char**, int*);
 
 extern "C" IMAGEHANDLER_API void SyncInfoGettersPointers(long arrayInfoPtr, long objectInfoPtr);
+extern "C" IMAGEHANDLER_API char *GetProbes(unsigned *bytesCount);
 
 #define sizeOfDelegate (2 * sizeof(UINT_PTR) + sizeof(INT32))
 
@@ -89,6 +90,10 @@ public:
     CoverageNode *acceptCoverageInformation();
     bool getArrayInfo(INT_PTR arrayPtr, OBJID &objID, int &elemSize, int &refOffsetsLength, int *&refOffsets, char *type, unsigned long typeLength);
     bool getObjectInfo(INT_PTR objectPtr, OBJID &objID, int &refOffsetsLength, int *&refOffsets, char *type, unsigned long typeLength);
+    void instrumentR(unsigned token, unsigned codeSize, unsigned assemblyNameLength, unsigned moduleNameLength, unsigned maxStackSize, unsigned ehsSize, unsigned signatureTokensLength, char *signatureTokensPtr,
+                    const WCHAR *assemblyNamePtr, const WCHAR *moduleNamePtr, char *byteCodePtr, char *ehsPtr,
+                    // result
+                    char **instrumentedBody, int *length, int *resultMaxStackSize, char **resultEhs, int *ehsLength);
     bool sendToken(mdToken token);
     bool sendBytes(char *bytes, int size);
     bool sendStringsPoolIndex(unsigned index);

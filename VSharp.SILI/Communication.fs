@@ -151,6 +151,7 @@ type commandForConcolic =
     | ParseReturnTypeToken
     | ParseDeclaringTypeToken
 
+[<AbstractClass>]
 type Communicator(pipeFile) =
 
     let confirmationByte = byte(0x55)
@@ -412,33 +413,12 @@ type Communicator(pipeFile) =
         | Some bytes -> BitConverter.ToUInt32(bytes, 0)
         | None -> unexpectedlyTerminated()
 
-    member x.SendMethodTokenAndParseTypes (methodToken : int) : uint32[] =
-        x.SendCommand ParseTypesInfoFromMethod
-        Communicator.Serialize<int> methodToken |> writeBuffer
-        match readBuffer() with
-        | Some bytes ->
-            let typesSize = Array.length bytes / sizeof<uint32>
-            Array.init typesSize (fun i -> BitConverter.ToUInt32(bytes, i * sizeof<uint32>))
-        | None -> Array.empty
-
     member private x.ReadTypeToken() : uint32 =
         match readBuffer() with
         | Some bytes ->
             assert(Array.length bytes = sizeof<uint32>)
             BitConverter.ToUInt32(bytes)
         | None -> internalfail "expected type token, but got nothing"
-
-    member private x.SendStringAndParseTypeToken (string : string) : uint32 =
-        Encoding.Unicode.GetBytes string |> writeBuffer
-        x.ReadTypeToken()
-
-    member x.SendStringAndParseTypeRef (string : string) : uint32 =
-        x.SendCommand ParseTypeRef
-        x.SendStringAndParseTypeToken string
-
-    member x.SendStringAndParseTypeSpec (string : string) : uint32 =
-        x.SendCommand ParseTypeSpec
-        x.SendStringAndParseTypeToken string
 
     member x.ReadHeapBytes (address : UIntPtr) offset size refOffsets : byte[] =
         x.SendCommand ReadHeapBytes

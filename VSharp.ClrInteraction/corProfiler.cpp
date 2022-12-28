@@ -15,6 +15,30 @@
 
 using namespace vsharp;
 
+Instrumenter* instr = nullptr;
+
+unsigned AddString(char *string) {
+    return allocateString(string);
+}
+mdToken FieldRefTypeToken(mdToken fieldRef) {
+    return instr->FieldRefTypeToken(fieldRef);
+}
+mdToken FieldDefTypeToken(mdToken fieldDef) {
+    return instr->FieldDefTypeToken(fieldDef);
+}
+mdToken ArgTypeToken(mdToken method, INT32 argIndex) {
+    return instr->ArgTypeToken(method, argIndex);
+}
+mdToken LocalTypeToken(INT32 localIndex) {
+    return instr->LocalTypeToken(localIndex);
+}
+mdToken ReturnTypeToken() {
+    return instr->ReturnTypeToken();
+}
+mdToken DeclaringTypeToken(mdToken method) {
+    return instr->DeclaringTypeToken(method);
+}
+
 CorProfiler::CorProfiler() : refCount(0), corProfilerInfo(nullptr), instrumenter(nullptr)
 {
 }
@@ -74,6 +98,8 @@ HRESULT STDMETHODCALLTYPE CorProfiler::Initialize(IUnknown *pICorProfilerInfoUnk
     instrumenter = new Instrumenter(*corProfilerInfo, *protocol);
     instrumenter->configureEntryPoint();
     setExpectedCoverage(protocol->acceptCoverageInformation());
+
+    instr = instrumenter;
 
     return S_OK;
 }

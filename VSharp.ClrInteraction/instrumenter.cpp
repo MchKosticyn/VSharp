@@ -382,6 +382,54 @@ HRESULT Instrumenter::startReJitSkipped() {
     return hr;
 }
 
+mdToken Instrumenter::FieldRefTypeToken(mdToken fieldRef) {
+    auto *reflection = new Reflection(m_profilerInfo);
+    reflection->configure(m_moduleId, m_jittedToken);
+    mdToken typeSpec = reflection->getTypeTokenFromFieldRef(fieldRef);
+    delete reflection;
+    return typeSpec;
+}
+
+mdToken Instrumenter::FieldDefTypeToken(mdToken fieldDef) {
+    auto *reflection = new Reflection(m_profilerInfo);
+    reflection->configure(m_moduleId, m_jittedToken);
+    mdToken typeSpec = reflection->getTypeTokenFromFieldDef(fieldDef);
+    delete reflection;
+    return typeSpec;
+}
+
+mdToken Instrumenter::ArgTypeToken(mdToken method, INT32 argIndex) {
+    auto *reflection = new Reflection(m_profilerInfo);
+    reflection->configure(m_moduleId, m_jittedToken);
+    mdToken typeSpec = reflection->getTypeTokenFromParameter(method, argIndex);
+    delete reflection;
+    return typeSpec;
+}
+
+mdToken Instrumenter::LocalTypeToken(INT32 localIndex) {
+    auto *reflection = new Reflection(m_profilerInfo);
+    reflection->configure(m_moduleId, m_jittedToken);
+    mdToken typeSpec = reflection->getTypeTokenFromLocal(m_tkLocalVarSig, localIndex);
+    delete reflection;
+    return typeSpec;
+}
+
+mdToken Instrumenter::ReturnTypeToken() {
+    auto *reflection = new Reflection(m_profilerInfo);
+    reflection->configure(m_moduleId, m_jittedToken);
+    mdToken typeToken = reflection->getTypeTokenOfReturnType(m_jittedToken);
+    delete reflection;
+    return typeToken;
+}
+
+mdToken Instrumenter::DeclaringTypeToken(mdToken method) {
+    auto *reflection = new Reflection(m_profilerInfo);
+    reflection->configure(m_moduleId, m_jittedToken);
+    mdToken typeToken = reflection->getTypeTokenOfDeclaringType(method);
+    delete reflection;
+    return typeToken;
+}
+
 CommandType Instrumenter::getAndHandleCommand() {
     CommandType command;
     if (!m_protocol.acceptCommand(command)) FAIL_LOUD("Instrumenting: accepting command failed!");
@@ -391,38 +439,6 @@ CommandType Instrumenter::getAndHandleCommand() {
             if (!m_protocol.acceptString(string)) FAIL_LOUD("Instrumenting: accepting string failed!");
             unsigned index = allocateString(string);
             if (!m_protocol.sendStringsPoolIndex(index)) FAIL_LOUD("Instrumenting: sending strings internal pool index failed!");
-            break;
-        }
-        case GetTypeTokenFromTypeRef: {
-            WCHAR *wstring;
-            if (!m_protocol.acceptWString(wstring)) FAIL_LOUD("Instrumenting: accepting name of typeRef failed!");
-            auto *reflection = new Reflection(m_profilerInfo);
-            reflection->configure(m_moduleId, m_jittedToken);
-            mdToken typeSpec = reflection->getTypeRefByName(wstring);
-            if (!m_protocol.sendToken(typeSpec)) FAIL_LOUD("Instrumenting: sending typeRef token failed!");
-            delete reflection;
-            delete[] wstring;
-            break;
-        }
-        case GetTypeTokenFromTypeSpec: {
-            WCHAR *wstring;
-            if (!m_protocol.acceptWString(wstring)) FAIL_LOUD("Instrumenting: accepting name of typeSpec failed!");
-            auto *reflection = new Reflection(m_profilerInfo);
-            reflection->configure(m_moduleId, m_jittedToken);
-            mdToken typeSpec = reflection->getTypeSpecByName(wstring);
-            if (!m_protocol.sendToken(typeSpec)) FAIL_LOUD("Instrumenting: sending typeSpec token failed!");
-            delete reflection;
-            delete[] wstring;
-            break;
-        }
-        case ParseTypeInfoFromMethod: {
-            mdToken method;
-            if (!m_protocol.acceptToken(method)) FAIL_LOUD("Instrumenting: accepting token of method to parse failed!");
-            auto *reflection = new Reflection(m_profilerInfo);
-            reflection->configure(m_moduleId, m_jittedToken);
-            std::vector<mdToken> types = reflection->getTypeInfoFromMethod(method);
-            delete reflection;
-            if (!m_protocol.sendTypeInfoFromMethod(types)) FAIL_LOUD("Instrumenting: sending type info of method failed!");
             break;
         }
         case ParseFieldRefTypeToken: {
@@ -520,32 +536,37 @@ HRESULT Instrumenter::doInstrumentation(ModuleID oldModuleId, const WCHAR *assem
     MethodInfo mi = MethodInfo{m_jittedToken, bytes, codeLength, maxStackSize(), ehcs, ehCount()};
     instrumentedFunctions[{m_moduleId, m_jittedToken}] = mi;
 
-    MethodBodyInfo info{
-        (unsigned)m_jittedToken,
-        (unsigned)codeSize(),
-        (unsigned)(assemblyNameLength - 1) * sizeof(WCHAR),
-        (unsigned)(moduleNameLength - 1) * sizeof(WCHAR),
-        (unsigned)maxStackSize(),
-        (unsigned)ehCount(),
-        m_signatureTokensLength,
-        m_signatureTokens,
-        assemblyName,
-        moduleName,
-        code(),
-        (char*)ehs()
-    };
-    if (!m_protocol.sendSerializable(InstrumentCommand, info)) FAIL_LOUD("Instrumenting: serialization of method failed!");
+//    MethodBodyInfo info{
+//        (unsigned)m_jittedToken,
+//        (unsigned)codeSize(),
+//        (unsigned)(assemblyNameLength - 1) * sizeof(WCHAR),
+//        (unsigned)(moduleNameLength - 1) * sizeof(WCHAR),
+//        (unsigned)maxStackSize(),
+//        (unsigned)ehCount(),
+//        m_signatureTokensLength,
+//        m_signatureTokens,
+//        assemblyName,
+//        moduleName,
+//        code(),
+//        (char*)ehs()
+//    };
+//    if (!m_protocol.sendSerializable(InstrumentCommand, info)) FAIL_LOUD("Instrumenting: serialization of method failed!");
     LOG(tout << "Successfully sent method body!");
-    char *bytecode; int length; unsigned maxStackSize; char *ehs; unsigned ehsLength;
-    CommandType command;
-    do {
-        command = getAndHandleCommand();
-    } while (command != ReadMethodBody);
+    char *bytecodeR; int lengthR; int maxStackSizeR; char *ehsR; int ehsLengthR;
+//    CommandType command;
+//    do {
+//        command = getAndHandleCommand();
+//    } while (command != ReadMethodBody);
     LOG(tout << "Reading method body back...");
-    if (!m_protocol.acceptMethodBody(bytecode, length, maxStackSize, ehs, ehsLength))
-        FAIL_LOUD("Instrumenting: accepting method body failed!");
-    LOG(tout << "Exporting " << length << " IL bytes!");
-    IfFailRet(exportIL(bytecode, length, maxStackSize, ehs, ehsLength));
+    m_protocol.instrumentR((unsigned)m_jittedToken, (unsigned)codeSize(), (unsigned)(assemblyNameLength - 1) * sizeof(WCHAR),
+                          (unsigned)(moduleNameLength - 1) * sizeof(WCHAR),(unsigned)maxStackSize(),(unsigned)ehCount(),
+                          m_signatureTokensLength,m_signatureTokens,assemblyName,moduleName,code(),(char*)ehs(),
+                          // result
+                          &bytecodeR, &lengthR, &maxStackSizeR, &ehsR, &ehsLengthR);
+//    if (!m_protocol.acceptMethodBody(bytecode, length, maxStackSize, ehs, ehsLength))
+//        FAIL_LOUD("Instrumenting: accepting method body failed!");
+    LOG(tout << "Exporting " << lengthR << " IL bytes!");
+    IfFailRet(exportIL(bytecodeR, lengthR, maxStackSizeR, ehsR, ehsLengthR));
 
     return S_OK;
 }

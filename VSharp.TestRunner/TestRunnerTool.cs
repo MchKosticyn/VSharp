@@ -17,6 +17,24 @@ namespace VSharp.TestRunner
         [DllImport("libvsharpConcolic", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         public static extern void SyncInfoGettersPointers(Int64 arrayGetterPtr, Int64 objectGetterPtr, Int64 instrumentPtr);
 
+        [DllImport("libvsharpConcolic", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        public static extern byte* GetProbes(uint* byteCount);
+
+        [DllImport("libvsharpConcolic", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        public static extern uint AddString(byte *str);
+        [DllImport("libvsharpConcolic", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        public static extern uint FieldRefTypeToken(uint fieldRef);
+        [DllImport("libvsharpConcolic", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        public static extern uint FieldDefTypeToken(uint fieldDef);
+        [DllImport("libvsharpConcolic", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        public static extern uint ArgTypeToken(uint method, uint argIndex);
+        [DllImport("libvsharpConcolic", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        public static extern uint LocalTypeToken(int localIndex);
+        [DllImport("libvsharpConcolic", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        public static extern uint ReturnTypeToken();
+        [DllImport("libvsharpConcolic", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        public static extern uint DeclaringTypeToken(uint method);
+
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         public delegate void ArrayInfoSender(IntPtr arrayPtr, UIntPtr *objID, int *elemSize, int *refOffsetsLength,
             int **refOffsets, byte *typ, UInt64 typeLength);
@@ -38,6 +56,7 @@ namespace VSharp.TestRunner
         public static ArrayInfoSender ArraySender;
         public static ObjectInfoSender ObjectSender;
         public static InstrumentSender Instrument;
+        private static Instrumenter _instrumenter = null!;
 
         private static IEnumerable<string> _extraAssemblyLoadDirs;
 
@@ -215,15 +234,42 @@ namespace VSharp.TestRunner
             *ehsLength = ehBytes.Length;
         }
 
+        private class InternalCommunicator : Communicator
+        {
+            public InternalCommunicator()
+            {
+
+            }
+        }
         private static bool ReproduceTests(IEnumerable<FileInfo> tests, bool shouldReproduceError, bool checkResult)
         {
-            ArraySender = new ArrayInfoSender(GetArrayInfo);
-            ObjectSender = new ObjectInfoSender(GetObjectInfo);
-            Instrument = new InstrumentSender(Instrumenter);
-            ArrayInfoAction = Marshal.GetFunctionPointerForDelegate(ArraySender);
-            ObjectInfoAction = Marshal.GetFunctionPointerForDelegate(ObjectSender);
-            InstrumentAction = Marshal.GetFunctionPointerForDelegate(Instrument);
-            SyncInfoGettersPointers(ArrayInfoAction.ToInt64(), ObjectInfoAction.ToInt64(), InstrumentAction.ToInt64());
+            if (!checkResult)
+            {
+                ArraySender = new ArrayInfoSender(GetArrayInfo);
+                ObjectSender = new ObjectInfoSender(GetObjectInfo);
+                Instrument = new InstrumentSender(Instrumenter);
+                ArrayInfoAction = Marshal.GetFunctionPointerForDelegate(ArraySender);
+                ObjectInfoAction = Marshal.GetFunctionPointerForDelegate(ObjectSender);
+                InstrumentAction = Marshal.GetFunctionPointerForDelegate(Instrument);
+                SyncInfoGettersPointers(ArrayInfoAction.ToInt64(), ObjectInfoAction.ToInt64(), InstrumentAction.ToInt64());
+                testInfo ti;
+                var methodFile = tests.Single();
+                using (FileStream stream = new FileStream(methodFile.FullName, FileMode.Open, FileAccess.Read))
+                {
+                    ti = UnitTest.DeserializeTestInfo(stream);
+                }
+
+                _extraAssemblyLoadDirs = ti.extraAssemblyLoadDirs;
+                UnitTest test = UnitTest.DeserializeFromTestInfo(ti);
+                // _extraAssemblyLoadDirs = test.ExtraAssemblyLoadDirs;
+                uint bytesCount;
+                var probesPtr = GetProbes(&bytesCount);
+                var probesBytes = new byte[bytesCount];
+                Marshal.Copy((IntPtr) probesPtr, probesBytes, 0, (int)bytesCount);
+                var probes = Communicator.Deserialize<probes>(probesBytes);
+                var method = test.Method;
+                _instrumenter = new Instrumenter(null!, method, probes);
+            }
 
             AppDomain.CurrentDomain.AssemblyResolve += TryLoadAssemblyFrom;
 
@@ -241,7 +287,7 @@ namespace VSharp.TestRunner
                     UnitTest test = UnitTest.DeserializeFromTestInfo(ti);
                     // _extraAssemblyLoadDirs = test.ExtraAssemblyLoadDirs;
 
-                        var method = test.Method;
+                    var method = test.Method;
 
                     Console.Out.WriteLine("Starting test reproducing for method {0}", method);
                     if (!checkResult)
