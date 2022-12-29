@@ -388,16 +388,19 @@ type public SILI(options : SiliOptions) =
     member x.Fuzz (methods : Method seq) =
         try
             let fuzzOne method =
-                let fuzzer = Fuzzer.Fuzzer(method)
-                let states = fuzzer.Fuzz()
-                Seq.map (withFst method) states
-            let states = Seq.collect fuzzOne methods
+                try
+                    let fuzzer = Fuzzer.Fuzzer(method)
+                    let states = fuzzer.Fuzz()
+                    Seq.map (withFst method) states |> Some
+                with e ->
+                    Logger.error "Fuzzing method %O failed with %O" method e
+                    None
+            let states = Seq.choose fuzzOne methods |> Seq.concat
             let cilStates = Seq.map (fun (m, s) -> makeInitialState m s) states |> Seq.toList
             Logger.info "Fuzzer finished with %O states" (Seq.length states)
             x.AnswerPobs cilStates
             methods |> Seq.iter (fun m -> Logger.info "Statistics: %O coverage is %O" m (statistics.GetApproximateCoverage(m, ByTest)))
-        with
-        | e -> Logger.error "Fuzzing before symbolic execution failed with %O" e
+        with e -> Logger.error "Fuzzing before symbolic execution failed with %O" e
 
     member x.Interpret (isolated : MethodBase seq) (entryPoints : (MethodBase * string[]) seq) (onFinished : Action<UnitTest>)
                        (onException : Action<UnitTest>) (onIIE : Action<InsufficientInformationException>)
