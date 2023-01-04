@@ -13,13 +13,11 @@
 
 #define UNUSED(x) (void)x
 
-using namespace vsharp;
-
-Instrumenter* instr = nullptr;
+vsharp::Instrumenter* instr = nullptr;
 
 unsigned AddString(char *string) {
     tout << "AddString" << std::endl;
-    return allocateString(string);
+    return vsharp::allocateString(string);
 }
 mdToken FieldRefTypeToken(mdToken fieldRef) {
     tout << "FieldRefTypeToken" << std::endl;
@@ -45,6 +43,9 @@ mdToken DeclaringTypeToken(mdToken method) {
     tout << "DeclaringTypeToken" << std::endl;
     return instr->DeclaringTypeToken(method);
 }
+
+using namespace vsharp;
+
 
 CorProfiler::CorProfiler() : refCount(0), corProfilerInfo(nullptr), instrumenter(nullptr)
 {
@@ -255,15 +256,13 @@ bool jitInProcess = false;
 
 HRESULT STDMETHODCALLTYPE CorProfiler::JITCompilationStarted(FunctionID functionId, BOOL fIsSafeToBlock)
 {
-    getLock();
     UNUSED(fIsSafeToBlock);
     LOG(tout << "JITCompilationStarted, threadID = " << currentThread() << std::endl);
 
-    if (jitInProcess) FAIL_LOUD("Handling JIT event, when previous was not finished!");
+//    if (jitInProcess) FAIL_LOUD("Handling JIT event, when previous was not finished!");
     jitInProcess = true;
     HRESULT hr = instrumenter->instrument(functionId);
     jitInProcess = false;
-    freeLock();
     return hr;
 //    return S_OK;
 }

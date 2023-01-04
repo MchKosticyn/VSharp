@@ -7,11 +7,6 @@
 #include "corprof.h"
 #include "communication/protocol.h"
 
-namespace vsharp {
-
-class Instrumenter;
-class Protocol;
-
 extern "C" IMAGEHANDLER_API unsigned AddString(char *string);
 extern "C" IMAGEHANDLER_API mdToken FieldRefTypeToken(mdToken fieldRef);
 extern "C" IMAGEHANDLER_API mdToken FieldDefTypeToken(mdToken fieldDef);
@@ -20,7 +15,12 @@ extern "C" IMAGEHANDLER_API mdToken LocalTypeToken(INT32 localIndex);
 extern "C" IMAGEHANDLER_API mdToken ReturnTypeToken();
 extern "C" IMAGEHANDLER_API mdToken DeclaringTypeToken(mdToken method);
 
-    class CorProfiler : public ICorProfilerCallback8
+namespace vsharp {
+
+class Instrumenter;
+class Protocol;
+
+class CorProfiler : public ICorProfilerCallback8
 {
 private:
     std::atomic<int> refCount;

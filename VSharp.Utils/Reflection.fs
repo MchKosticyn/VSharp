@@ -294,7 +294,7 @@ module public Reflection =
             | _ when fieldType.IsPrimitive || fieldType.IsEnum ->
                 Primitive(info, memoryFieldOffset info) |> k
             | _ when TypeUtils.isStruct fieldType ->
-                fieldsWithOffsetsHelper fieldType (fun fields -> 
+                fieldsWithOffsetsHelper fieldType (fun fields ->
                 Struct(info, memoryFieldOffset info, fields) |> k)
             | _ ->
                 assert(not fieldType.IsValueType)

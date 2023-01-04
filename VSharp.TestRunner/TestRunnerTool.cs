@@ -248,23 +248,31 @@ namespace VSharp.TestRunner
             var assembly = Encoding.Unicode.GetString(assemblyNameBytes);
             var moduleNameBytes = new byte[moduleNameLength];
             Marshal.Copy((IntPtr)moduleNamePtr, moduleNameBytes, 0, (int)moduleNameLength);
-            var module = Encoding.Unicode.GetString(assemblyNameBytes);
+            var module = Encoding.Unicode.GetString(moduleNameBytes);
             var codeBytes = new byte[codeSize];
             Marshal.Copy((IntPtr)byteCodePtr, codeBytes, 0, (int)codeSize);
-            var ehsBytes = new byte[ehsSize];
-            Marshal.Copy((IntPtr)ehsPtr, ehsBytes, 0, (int)ehsSize);
+
+            // Deserializing exception handlers
             var ehSize = Marshal.SizeOf(typeof(rawExceptionHandler));
             var count = ehsSize / ehSize;
             var ehs = new rawExceptionHandler[count];
-            for (var i = 0; i < count; i++)
+            if (count > 0)
             {
-                ehs[i] = Communicator.Deserialize<rawExceptionHandler>(ehsBytes, i * ehSize);
+                Debug.Assert(ehsPtr != null);
+                var ehsBytes = new byte[ehsSize];
+                Marshal.Copy((IntPtr)ehsPtr, ehsBytes, 0, (int)ehsSize);
+                for (var i = 0; i < count; i++)
+                {
+                    ehs[i] = Communicator.Deserialize<rawExceptionHandler>(ehsBytes, i * ehSize);
+                }
             }
 
             // Instrumentation
             var properties = new rawMethodProperties(token, codeSize, assemblyNameLength, moduleNameLength,
                 maxStackSize, signatureTokensLength);
             var methodBody = new rawMethodBody(properties, assembly, module, tokens, codeBytes, ehs);
+            Logger.writeLineString(Logger.Error, assembly);
+            Logger.writeLineString(Logger.Error, module);
             var instrumented = _instrumenter.Instrument(methodBody);
 
             // Deserialization

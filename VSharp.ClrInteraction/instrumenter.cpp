@@ -558,11 +558,17 @@ HRESULT Instrumenter::doInstrumentation(ModuleID oldModuleId, const WCHAR *assem
 //        command = getAndHandleCommand();
 //    } while (command != ReadMethodBody);
     LOG(tout << "Reading method body back...");
+    disableInstrumentation();
+    disableProbesThread();
+//    getLock();
     m_protocol.instrumentR((unsigned)m_jittedToken, (unsigned)codeSize(), (unsigned)(assemblyNameLength - 1) * sizeof(WCHAR),
                           (unsigned)(moduleNameLength - 1) * sizeof(WCHAR),(unsigned)maxStackSize(),(unsigned)ehCount(),
                           m_signatureTokensLength,m_signatureTokens,assemblyName,moduleName,code(),(char*)ehs(),
                           // result
                           &bytecodeR, &lengthR, &maxStackSizeR, &ehsR, &ehsLengthR);
+//    freeLock();
+    enableProbesThread();
+    enableInstrumentation();
 //    if (!m_protocol.acceptMethodBody(bytecode, length, maxStackSize, ehs, ehsLength))
 //        FAIL_LOUD("Instrumenting: accepting method body failed!");
     LOG(tout << "Exporting " << lengthR << " IL bytes!");
