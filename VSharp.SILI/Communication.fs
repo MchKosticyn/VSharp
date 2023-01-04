@@ -151,7 +151,15 @@ type commandForConcolic =
     | ParseReturnTypeToken
     | ParseDeclaringTypeToken
 
-[<AbstractClass>]
+type ICommunicator =
+    abstract ParseFieldRefTypeToken : int -> uint32
+    abstract ParseFieldDefTypeToken : int -> uint32
+    abstract ParseArgTypeToken : int -> int -> uint32
+    abstract ParseLocalTypeToken : int -> uint32
+    abstract ParseReturnTypeToken : unit -> uint32
+    abstract ParseDeclaringTypeToken : int -> uint32
+    abstract SendStringAndReadItsIndex : string -> uint32
+
 type Communicator(pipeFile) =
 
     let confirmationByte = byte(0x55)
@@ -406,13 +414,6 @@ type Communicator(pipeFile) =
         let bytes = x.SerializeCommand command
         writeBuffer bytes
 
-    member x.SendStringAndReadItsIndex (str : string) : uint32 =
-        x.SendCommand ReadString
-        writeString str
-        match readBuffer() with
-        | Some bytes -> BitConverter.ToUInt32(bytes, 0)
-        | None -> unexpectedlyTerminated()
-
     member private x.ReadTypeToken() : uint32 =
         match readBuffer() with
         | Some bytes ->
@@ -471,34 +472,42 @@ type Communicator(pipeFile) =
         x.SendCommand ReadArray
         x.SendParametersAndReadArray address elemSize refOffsets
 
-    member x.ParseFieldRefTypeToken (fieldRef : int) : uint32 =
-        x.SendCommand ParseFieldRefTypeToken
-        Communicator.Serialize<int> fieldRef |> writeBuffer
-        x.ReadTypeToken()
+    interface ICommunicator with
+        override x.SendStringAndReadItsIndex (str : string) : uint32 =
+            x.SendCommand ReadString
+            writeString str
+            match readBuffer() with
+            | Some bytes -> BitConverter.ToUInt32(bytes, 0)
+            | None -> unexpectedlyTerminated()
 
-    member x.ParseFieldDefTypeToken (fieldDef : int) : uint32 =
-        x.SendCommand ParseFieldDefTypeToken
-        Communicator.Serialize<int> fieldDef |> writeBuffer
-        x.ReadTypeToken()
+        override x.ParseFieldRefTypeToken (fieldRef : int) : uint32 =
+            x.SendCommand ParseFieldRefTypeToken
+            Communicator.Serialize<int> fieldRef |> writeBuffer
+            x.ReadTypeToken()
 
-    member x.ParseArgTypeToken (methodToken : int) (argIndex : int) : uint32 =
-        x.SendCommand ParseArgTypeToken
-        Array.concat [Communicator.Serialize<int> methodToken; Communicator.Serialize<int> argIndex] |> writeBuffer
-        x.ReadTypeToken()
+        override x.ParseFieldDefTypeToken (fieldDef : int) : uint32 =
+            x.SendCommand ParseFieldDefTypeToken
+            Communicator.Serialize<int> fieldDef |> writeBuffer
+            x.ReadTypeToken()
 
-    member x.ParseLocalTypeToken (localIndex : int) : uint32 =
-        x.SendCommand ParseLocalTypeToken
-        Communicator.Serialize<int> localIndex |> writeBuffer
-        x.ReadTypeToken()
+        override x.ParseArgTypeToken (methodToken : int) (argIndex : int) : uint32 =
+            x.SendCommand ParseArgTypeToken
+            Array.concat [Communicator.Serialize<int> methodToken; Communicator.Serialize<int> argIndex] |> writeBuffer
+            x.ReadTypeToken()
 
-    member x.ParseReturnTypeToken () : uint32 =
-        x.SendCommand ParseReturnTypeToken
-        x.ReadTypeToken()
+        override x.ParseLocalTypeToken (localIndex : int) : uint32 =
+            x.SendCommand ParseLocalTypeToken
+            Communicator.Serialize<int> localIndex |> writeBuffer
+            x.ReadTypeToken()
 
-    member x.ParseDeclaringTypeToken (methodToken : int) : uint32 =
-        x.SendCommand ParseDeclaringTypeToken
-        Communicator.Serialize<int> methodToken |> writeBuffer
-        x.ReadTypeToken()
+        override x.ParseReturnTypeToken () : uint32 =
+            x.SendCommand ParseReturnTypeToken
+            x.ReadTypeToken()
+
+        override x.ParseDeclaringTypeToken (methodToken : int) : uint32 =
+            x.SendCommand ParseDeclaringTypeToken
+            Communicator.Serialize<int> methodToken |> writeBuffer
+            x.ReadTypeToken()
 
     member x.ReadMethodBody() =
         match readBuffer() with

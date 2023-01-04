@@ -18,24 +18,31 @@ using namespace vsharp;
 Instrumenter* instr = nullptr;
 
 unsigned AddString(char *string) {
+    tout << "AddString" << std::endl;
     return allocateString(string);
 }
 mdToken FieldRefTypeToken(mdToken fieldRef) {
+    tout << "FieldRefTypeToken" << std::endl;
     return instr->FieldRefTypeToken(fieldRef);
 }
 mdToken FieldDefTypeToken(mdToken fieldDef) {
+    tout << "FieldDefTypeToken" << std::endl;
     return instr->FieldDefTypeToken(fieldDef);
 }
 mdToken ArgTypeToken(mdToken method, INT32 argIndex) {
+    tout << "ArgTypeToken" << std::endl;
     return instr->ArgTypeToken(method, argIndex);
 }
 mdToken LocalTypeToken(INT32 localIndex) {
+    tout << "LocalTypeToken" << std::endl;
     return instr->LocalTypeToken(localIndex);
 }
 mdToken ReturnTypeToken() {
+    tout << "ReturnTypeToken" << std::endl;
     return instr->ReturnTypeToken();
 }
 mdToken DeclaringTypeToken(mdToken method) {
+    tout << "DeclaringTypeToken" << std::endl;
     return instr->DeclaringTypeToken(method);
 }
 

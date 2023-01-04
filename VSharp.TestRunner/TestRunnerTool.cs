@@ -56,6 +56,54 @@ namespace VSharp.TestRunner
         public static ArrayInfoSender ArraySender;
         public static ObjectInfoSender ObjectSender;
         public static InstrumentSender Instrument;
+
+        private class InternalCommunicator : ICommunicator
+        {
+            public InternalCommunicator()
+            {
+            }
+
+            public uint ParseFieldRefTypeToken(int fieldRef)
+            {
+                return FieldRefTypeToken((uint)fieldRef);
+            }
+
+            public uint ParseFieldDefTypeToken(int fieldDef)
+            {
+                return FieldDefTypeToken((uint)fieldDef);
+            }
+
+            public uint ParseArgTypeToken(int methodToken, int argIndex)
+            {
+                return ArgTypeToken((uint)methodToken, (uint)argIndex);
+            }
+
+            public uint ParseLocalTypeToken(int localIndex)
+            {
+                return LocalTypeToken(localIndex);
+            }
+
+            public uint ParseReturnTypeToken()
+            {
+                return ReturnTypeToken();
+            }
+
+            public uint ParseDeclaringTypeToken(int methodToken)
+            {
+                return DeclaringTypeToken((uint)methodToken);
+            }
+
+            public uint SendStringAndReadItsIndex(string str)
+            {
+                uint i;
+                fixed (char* ptr = str)
+                {
+                    i = AddString((byte*)ptr);
+                }
+                return i;
+            }
+        }
+
         private static Instrumenter _instrumenter = null!;
 
         private static IEnumerable<string> _extraAssemblyLoadDirs;
@@ -217,8 +265,7 @@ namespace VSharp.TestRunner
             var properties = new rawMethodProperties(token, codeSize, assemblyNameLength, moduleNameLength,
                 maxStackSize, signatureTokensLength);
             var methodBody = new rawMethodBody(properties, assembly, module, tokens, codeBytes, ehs);
-            var instrumenter = new Instrumenter(null!, null!, null!);
-            var instrumented = instrumenter.Instrument(methodBody);
+            var instrumented = _instrumenter.Instrument(methodBody);
 
             // Deserialization
             *instrumentedBody = (byte*)Marshal.UnsafeAddrOfPinnedArrayElement(instrumented.il, 0);
@@ -234,13 +281,6 @@ namespace VSharp.TestRunner
             *ehsLength = ehBytes.Length;
         }
 
-        private class InternalCommunicator : Communicator
-        {
-            public InternalCommunicator()
-            {
-
-            }
-        }
         private static bool ReproduceTests(IEnumerable<FileInfo> tests, bool shouldReproduceError, bool checkResult)
         {
             if (!checkResult)
@@ -268,7 +308,7 @@ namespace VSharp.TestRunner
                 Marshal.Copy((IntPtr) probesPtr, probesBytes, 0, (int)bytesCount);
                 var probes = Communicator.Deserialize<probes>(probesBytes);
                 var method = test.Method;
-                _instrumenter = new Instrumenter(null!, method, probes);
+                _instrumenter = new Instrumenter(new InternalCommunicator(), method, probes);
             }
 
             AppDomain.CurrentDomain.AssemblyResolve += TryLoadAssemblyFrom;
@@ -293,7 +333,7 @@ namespace VSharp.TestRunner
                     if (!checkResult)
                         Console.Out.WriteLine("Result check is disabled");
                     object[] parameters = test.Args ?? method.GetParameters()
-                        .Select(t => Reflection.defaultOf(t.ParameterType)).ToArray();
+                        .Select(t => defaultOf(t.ParameterType)).ToArray();
                     object thisArg = test.ThisArg;
                     if (thisArg == null && !method.IsStatic)
                         thisArg = Reflection.createObject(method.DeclaringType);

@@ -7,7 +7,7 @@ open System.Collections.Generic
 open VSharp.Concolic
 open VSharp.Interpreter.IL
 
-type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes : probes) =
+type Instrumenter(communicator : ICommunicator, entryPoint : MethodBase, probes : probes) =
     // TODO: should we consider executed assembly build options here?
     let ldc_i : opcode = (if System.Environment.Is64BitOperatingSystem then OpCodes.Ldc_I8 else OpCodes.Ldc_I4) |> VSharp.OpCode
     let mutable currentStaticFieldID = 0
@@ -1252,7 +1252,7 @@ type Instrumenter(communicator : Communicator, entryPoint : MethodBase, probes :
 
                     x.PrependMem_p(1, &prependTarget)
                     x.PrependMem_p(0, &prependTarget)
-                    
+
                     x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 0)], x.tokens.i_i1_sig, &prependTarget) |> ignore
                     x.PrependProbe(probes.unmem_p, [(OpCodes.Ldc_I4, Arg32 1)], x.tokens.i_i1_sig, &prependTarget) |> ignore
                     x.PrependProbe(unmem3Probe, [(OpCodes.Ldc_I4, Arg32 2)], unmem3Sig, &prependTarget) |> ignore
