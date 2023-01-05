@@ -558,17 +558,16 @@ HRESULT Instrumenter::doInstrumentation(ModuleID oldModuleId, const WCHAR *assem
 //        command = getAndHandleCommand();
 //    } while (command != ReadMethodBody);
     LOG(tout << "Reading method body back...");
+    tout << "imported " << codeSize() << " bytes" << std::endl;
+    getLock();
     disableInstrumentation();
-    disableProbesThread();
-//    getLock();
     m_protocol.instrumentR((unsigned)m_jittedToken, (unsigned)codeSize(), (unsigned)(assemblyNameLength - 1) * sizeof(WCHAR),
                           (unsigned)(moduleNameLength - 1) * sizeof(WCHAR),(unsigned)maxStackSize(),(unsigned)ehCount(),
                           m_signatureTokensLength,m_signatureTokens,assemblyName,moduleName,code(),(char*)ehs(),
                           // result
                           &bytecodeR, &lengthR, &maxStackSizeR, &ehsR, &ehsLengthR);
-//    freeLock();
-    enableProbesThread();
     enableInstrumentation();
+    freeLock();
 //    if (!m_protocol.acceptMethodBody(bytecode, length, maxStackSize, ehs, ehsLength))
 //        FAIL_LOUD("Instrumenting: accepting method body failed!");
     LOG(tout << "Exporting " << lengthR << " IL bytes!");
@@ -577,14 +576,16 @@ HRESULT Instrumenter::doInstrumentation(ModuleID oldModuleId, const WCHAR *assem
     return S_OK;
 }
 
-HRESULT Instrumenter::instrument(FunctionID functionId) {
+HRESULT Instrumenter::instrument(FunctionID functionId, bool reJIT) {
     HRESULT hr = S_OK;
     ModuleID newModuleId;
     ClassID classId;
     IfFailRet(m_profilerInfo.GetFunctionInfo(functionId, &classId, &newModuleId, &m_jittedToken));
     assert((m_jittedToken & 0xFF000000L) == mdtMethodDef);
 
-    if (!instrumentingEnabled()) {
+    if (!instrumentingEnabled() && !reJIT) {
+        tout << "instrumentingEnabled = " << instrumentingEnabled() << std::endl;
+        tout << "reJIT = " << reJIT << std::endl;
         // TODO: unify mainReached and instrumentingEnabled #do
 //        skippedBeforeMain.insert({m_moduleId, m_jittedToken});
         LOG(tout << "Instrumentation of token " << HEX(m_jittedToken) << " is skipped" << std::endl);
@@ -638,6 +639,8 @@ HRESULT Instrumenter::instrument(FunctionID functionId) {
         m_moduleId = newModuleId;
         hr = doInstrumentation(oldModuleId, assemblyName, assemblyNameLength, moduleName, moduleNameLength);
     } else {
+        tout << "m_mainReached = " << m_mainReached << std::endl;
+        tout << "shouldInstrument = " << shouldInstrument << std::endl;
         LOG(tout << "Instrumentation of token " << HEX(m_jittedToken) << " is skipped" << std::endl);
         skippedBeforeMain.insert({newModuleId, m_jittedToken});
     }
@@ -668,6 +671,6 @@ HRESULT Instrumenter::reInstrument(FunctionID functionId) {
     // NOTE: otherwise, rejit needs to place probes
     if (isMainLeft())
         return undoInstrumentation(functionId);
-    else
-        return instrument(functionId);
+
+    return instrument(functionId, true);
 }

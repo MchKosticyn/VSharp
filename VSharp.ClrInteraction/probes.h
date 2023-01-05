@@ -453,6 +453,7 @@ void trackCoverage(OFFSET offset, StackPush &lastPushInfo, bool &stillExpectsCov
 }
 
 void sendCommandConcreteBytes(OFFSET offset, unsigned opsCount, EvalStackOperand *ops, std::vector<ConcreteBytes> &concreteData, bool mightFork = true) {
+    tout << "sendCommandConcreteBytes" << std::endl;
     getLock();
     StackPush lastStackPush;
     bool commandsDisabled;
@@ -1290,6 +1291,7 @@ PROBE(void, SetLocSize, (INT8 idx, SIZE size)) {
 }
 
 PROBE(void, Track_Enter, (mdMethodDef token, unsigned moduleToken, unsigned maxStackSize, unsigned argsCount, unsigned localsCount, INT8 isSpontaneous)) {
+    tout << "Track_Enter" << std::endl;
     if (!areProbesEnabled()) return;
     LOG(tout << "Track_Enter, token = " << HEX(token) << std::endl);
     Stack &stack = vsharp::stack();
@@ -1331,6 +1333,7 @@ PROBE(void, Track_StructCtor, (ADDR address)) {
 }
 
 PROBE(void, Track_Virtual, (ADDR thisAddress)) {
+    tout << "Track_Virtual" << std::endl;
     if (!areProbesEnabled()) return;
     VirtualAddress virtualAddress{};
     heap.physToVirtAddress(thisAddress, virtualAddress);
@@ -1338,6 +1341,7 @@ PROBE(void, Track_Virtual, (ADDR thisAddress)) {
 }
 
 PROBE(void, Track_EnterMain, (mdMethodDef token, unsigned moduleToken, UINT16 argsCount, bool argsConcreteness, unsigned maxStackSize, unsigned localsCount)) {
+    tout << "Track_EnterMain" << std::endl;
     if (!areProbesEnabled()) return;
     Stack &stack = vsharp::stack();
     assert(stack.isEmpty());
@@ -1350,6 +1354,7 @@ PROBE(void, Track_EnterMain, (mdMethodDef token, unsigned moduleToken, UINT16 ar
 }
 
 PROBE(void, Track_Leave, (UINT8 returnValues, OFFSET offset)) {
+    tout << "Track_Leave" << std::endl;
     if (!areProbesEnabled()) return;
     Stack &stack = vsharp::stack();
     StackFrame &top = stack.topFrame();
@@ -1396,6 +1401,7 @@ PROBE(void, Track_Leave, (UINT8 returnValues, OFFSET offset)) {
 }
 
 void leaveMain(OFFSET offset, UINT8 opsCount, EvalStackOperand *ops, INT_PTR ptr=UNKNOWN_ADDRESS) {
+    tout << "leaveMain" << std::endl;
     Stack &stack = vsharp::stack();
     StackFrame &top = stack.topFrame();
     LOG(tout << "Main left!");
@@ -1618,6 +1624,7 @@ PROBE(void, PopOpmem, (OFFSET offset)) {
 }
 
 PROBE(void, DumpInstruction, (UINT32 index)) {
+    tout << "are probes enabled: " << areProbesEnabled() << std::endl;
 #ifdef _DEBUG
     const char *&s = stringsPool[index];
     if (!s) {

@@ -257,12 +257,13 @@ bool jitInProcess = false;
 HRESULT STDMETHODCALLTYPE CorProfiler::JITCompilationStarted(FunctionID functionId, BOOL fIsSafeToBlock)
 {
     UNUSED(fIsSafeToBlock);
-    LOG(tout << "JITCompilationStarted, threadID = " << currentThread() << std::endl);
+//    LOG(tout << "JITCompilationStarted, threadID = " << currentThread() << std::endl);
 
 //    if (jitInProcess) FAIL_LOUD("Handling JIT event, when previous was not finished!");
-    jitInProcess = true;
-    HRESULT hr = instrumenter->instrument(functionId);
-    jitInProcess = false;
+//    jitInProcess = true;
+    HRESULT hr = instrumenter->instrument(functionId, false);
+//    tout << "JITCompilationStarted end" << std::endl;
+//    jitInProcess = false;
     return hr;
 //    return S_OK;
 }
@@ -584,6 +585,8 @@ void CorProfiler::serializeType(const std::vector<bool> &isValid, const std::vec
 
 HRESULT STDMETHODCALLTYPE CorProfiler::ObjectAllocated(ObjectID objectId, ClassID classId)
 {
+    if (!areProbesEnabled()) return S_OK;
+
     ULONG size;
     this->corProfilerInfo->GetObjectSize(objectId, &size);
 
@@ -932,9 +935,9 @@ HRESULT STDMETHODCALLTYPE CorProfiler::ReJITCompilationStarted(FunctionID functi
     UNUSED(functionId);
     UNUSED(rejitId);
     UNUSED(fIsSafeToBlock);
-    getLock();
+//    getLock();
     HRESULT hr = instrumenter->reInstrument(functionId);
-    freeLock();
+//    freeLock();
     return hr;
 }
 

@@ -271,11 +271,9 @@ namespace VSharp.TestRunner
             var properties = new rawMethodProperties(token, codeSize, assemblyNameLength, moduleNameLength,
                 maxStackSize, signatureTokensLength);
             var methodBody = new rawMethodBody(properties, assembly, module, tokens, codeBytes, ehs);
-            Logger.writeLineString(Logger.Error, assembly);
-            Logger.writeLineString(Logger.Error, module);
             var instrumented = _instrumenter.Instrument(methodBody);
 
-            // Deserialization
+            // Serialization of result
             *instrumentedBody = (byte*)Marshal.UnsafeAddrOfPinnedArrayElement(instrumented.il, 0);
             *length = instrumented.il.Length;
             *resultMaxStackSize = (int)instrumented.properties.maxStackSize;

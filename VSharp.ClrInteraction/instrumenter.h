@@ -92,7 +92,7 @@ public:
     mdToken ReturnTypeToken();
     mdToken DeclaringTypeToken(mdToken method);
 
-    HRESULT instrument(FunctionID functionId);
+    HRESULT instrument(FunctionID functionId, bool reJIT);
     HRESULT reInstrument(FunctionID functionId);
 };
 
