@@ -1530,14 +1530,9 @@ type Instrumenter(communicator : ICommunicator, entryPoint : MethodBase, probes 
                 try
                     x.rewriter.Import()
                     x.rewriter.PrintInstructions "before instrumentation" probes
-    //                Logger.trace "Placing probes..."
                     x.PlaceProbes()
-    //                Logger.trace "Done placing probes!"
                     x.rewriter.PrintInstructions "after instrumentation" probes
-    //                Logger.trace "Exporting..."
-                    let result = x.rewriter.Export()
-    //                Logger.trace "Exported!"
-                    result
+                    x.rewriter.Export()
                 with e ->
                     Logger.error "Instrumentation failed: in method %O got exception %O" x.m e
                     x.Skip body

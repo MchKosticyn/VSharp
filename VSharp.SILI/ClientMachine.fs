@@ -215,7 +215,7 @@ type ClientMachine(entryPoint : Method, cmdArgs : string[] option, requestMakeSt
             assert(opCode = OpCodes.Call || opCode = OpCodes.Callvirt || opCode = OpCodes.Newobj)
             let isNewObj = opCode = OpCodes.Newobj
             let argTypes = callee.GetParameters() |> Array.map (fun p -> p.ParameterType)
-            if Reflection.hasThis callee && not isNewObj then
+            if hasThis callee && not isNewObj then
                 Array.append [|callee.DeclaringType|] argTypes
             else argTypes
         | None -> internalfail "CalleeParamsIfPossible: could not get offset"
@@ -332,7 +332,7 @@ type ClientMachine(entryPoint : Method, cmdArgs : string[] option, requestMakeSt
         cilState.state.evaluationStack <- evalStack
         cilState.lastPushInfo <- None
         cilState.path <- c.newCoveragePath @ cilState.path
-        
+
         let cmInstance = concreteMemory :?> ConcolicMemory
         let evalConcreteData concreteBytes =
             match concreteBytes with

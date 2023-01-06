@@ -584,8 +584,6 @@ HRESULT Instrumenter::instrument(FunctionID functionId, bool reJIT) {
     assert((m_jittedToken & 0xFF000000L) == mdtMethodDef);
 
     if (!instrumentingEnabled() && !reJIT) {
-        tout << "instrumentingEnabled = " << instrumentingEnabled() << std::endl;
-        tout << "reJIT = " << reJIT << std::endl;
         // TODO: unify mainReached and instrumentingEnabled #do
 //        skippedBeforeMain.insert({m_moduleId, m_jittedToken});
         LOG(tout << "Instrumentation of token " << HEX(m_jittedToken) << " is skipped" << std::endl);
@@ -639,8 +637,6 @@ HRESULT Instrumenter::instrument(FunctionID functionId, bool reJIT) {
         m_moduleId = newModuleId;
         hr = doInstrumentation(oldModuleId, assemblyName, assemblyNameLength, moduleName, moduleNameLength);
     } else {
-        tout << "m_mainReached = " << m_mainReached << std::endl;
-        tout << "shouldInstrument = " << shouldInstrument << std::endl;
         LOG(tout << "Instrumentation of token " << HEX(m_jittedToken) << " is skipped" << std::endl);
         skippedBeforeMain.insert({newModuleId, m_jittedToken});
     }

@@ -59,10 +59,6 @@ namespace VSharp.TestRunner
 
         private class InternalCommunicator : ICommunicator
         {
-            public InternalCommunicator()
-            {
-            }
-
             public uint ParseFieldRefTypeToken(int fieldRef)
             {
                 return FieldRefTypeToken((uint)fieldRef);
@@ -342,7 +338,7 @@ namespace VSharp.TestRunner
                         .Select(t => defaultOf(t.ParameterType)).ToArray();
                     object thisArg = test.ThisArg;
                     if (thisArg == null && !method.IsStatic)
-                        thisArg = Reflection.createObject(method.DeclaringType);
+                        thisArg = createObject(method.DeclaringType);
 
                     var ex = test.Exception;
                     try
