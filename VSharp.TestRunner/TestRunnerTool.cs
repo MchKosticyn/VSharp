@@ -271,7 +271,7 @@ namespace VSharp.TestRunner
 
             // Serialization of result
             *instrumentedBody = (byte*)Marshal.UnsafeAddrOfPinnedArrayElement(instrumented.il, 0);
-            *length = instrumented.il.Length;
+            *length = (int)instrumented.properties.ilCodeSize;
             *resultMaxStackSize = (int)instrumented.properties.maxStackSize;
             var ehBytes = new byte[ehSize * instrumented.ehs.Length];
             var instrumentedEhs = instrumented.ehs;

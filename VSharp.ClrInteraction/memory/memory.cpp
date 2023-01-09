@@ -81,12 +81,10 @@ bool vsharp::areProbesEnabled() {
 }
 
 void vsharp::enableProbesThread() {
-    tout << "enableProbesThread" << std::endl;
     disabledThreadProbes.erase(currentThread());
 }
 
 void vsharp::disableProbesThread() {
-    tout << "disableProbesThread" << std::endl;
     disabledThreadProbes.insert(currentThread());
 }
 
@@ -97,14 +95,12 @@ bool vsharp::instrumentingEnabled() {
 }
 
 void vsharp::enableInstrumentation() {
-    tout << "enableInstrumentation" << std::endl;
     if (instrumentationEnabled)
         LOG(tout << "WARNING: enableInstrumentation, instrumentation already enabled" << std::endl);
     instrumentationEnabled = true;
 }
 
 void vsharp::disableInstrumentation() {
-    tout << "disableInstrumentation" << std::endl;
     if (!instrumentationEnabled)
         LOG(tout << "WARNING: disableInstrumentation, instrumentation already disabled" << std::endl);
     instrumentationEnabled = false;

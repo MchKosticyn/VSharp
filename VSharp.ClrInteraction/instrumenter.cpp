@@ -536,6 +536,8 @@ HRESULT Instrumenter::doInstrumentation(ModuleID oldModuleId, const WCHAR *assem
     MethodInfo mi = MethodInfo{m_jittedToken, bytes, codeLength, maxStackSize(), ehcs, ehCount()};
     instrumentedFunctions[{m_moduleId, m_jittedToken}] = mi;
 
+    getLock();
+
 //    MethodBodyInfo info{
 //        (unsigned)m_jittedToken,
 //        (unsigned)codeSize(),
@@ -551,15 +553,11 @@ HRESULT Instrumenter::doInstrumentation(ModuleID oldModuleId, const WCHAR *assem
 //        (char*)ehs()
 //    };
 //    if (!m_protocol.sendSerializable(InstrumentCommand, info)) FAIL_LOUD("Instrumenting: serialization of method failed!");
-    LOG(tout << "Successfully sent method body!");
+
     char *bytecodeR; int lengthR; int maxStackSizeR; char *ehsR; int ehsLengthR;
-//    CommandType command;
-//    do {
-//        command = getAndHandleCommand();
-//    } while (command != ReadMethodBody);
-    LOG(tout << "Reading method body back...");
-    tout << "imported " << codeSize() << " bytes" << std::endl;
-    getLock();
+
+    ModuleID moduleId = m_moduleId;
+    mdMethodDef jittedToken = m_jittedToken;
     disableInstrumentation();
     m_protocol.instrumentR((unsigned)m_jittedToken, (unsigned)codeSize(), (unsigned)(assemblyNameLength - 1) * sizeof(WCHAR),
                           (unsigned)(moduleNameLength - 1) * sizeof(WCHAR),(unsigned)maxStackSize(),(unsigned)ehCount(),
@@ -567,11 +565,22 @@ HRESULT Instrumenter::doInstrumentation(ModuleID oldModuleId, const WCHAR *assem
                           // result
                           &bytecodeR, &lengthR, &maxStackSizeR, &ehsR, &ehsLengthR);
     enableInstrumentation();
-    freeLock();
-//    if (!m_protocol.acceptMethodBody(bytecode, length, maxStackSize, ehs, ehsLength))
+    m_moduleId = moduleId;
+    m_jittedToken = jittedToken;
+
+    LOG(tout << "Successfully sent method body!");
+
+//    CommandType command;
+//    do {
+//        command = getAndHandleCommand();
+//    } while (command != ReadMethodBody);
+//    LOG(tout << "Reading method body back...");
+//    if (!m_protocol.acceptMethodBody(bytecodeR, lengthR, maxStackSizeR, ehsR, ehsLengthR))
 //        FAIL_LOUD("Instrumenting: accepting method body failed!");
+
     LOG(tout << "Exporting " << lengthR << " IL bytes!");
     IfFailRet(exportIL(bytecodeR, lengthR, maxStackSizeR, ehsR, ehsLengthR));
+    freeLock();
 
     return S_OK;
 }

@@ -134,7 +134,8 @@ type Instrumenter(communicator : ICommunicator, entryPoint : MethodBase, probes 
         let hasThis = Reflection.hasThis x.m
         let argsCount = parameters.Length
         let totalArgsCount = if hasThis then argsCount + 1 else argsCount
-        if x.m.MethodHandle = entryPoint.MethodHandle then
+        // TODO: MethodHandles are not equal, fix it
+        if x.m.Name = entryPoint.Name then
             let args = [(OpCodes.Ldc_I4, Arg32 x.m.MetadataToken)
                         (OpCodes.Ldc_I4, Arg32 (Coverage.moduleToken x.m.Module))
                         (OpCodes.Ldc_I4, Arg32 totalArgsCount)
@@ -1529,9 +1530,9 @@ type Instrumenter(communicator : ICommunicator, entryPoint : MethodBase, probes 
                 Logger.trace "Instrumenting %s (token = %u)" (Reflection.methodToString x.m) body.properties.token
                 try
                     x.rewriter.Import()
-                    x.rewriter.PrintInstructions "before instrumentation" probes
+                    // x.rewriter.PrintInstructions "before instrumentation" probes
                     x.PlaceProbes()
-                    x.rewriter.PrintInstructions "after instrumentation" probes
+                    // x.rewriter.PrintInstructions "after instrumentation" probes
                     x.rewriter.Export()
                 with e ->
                     Logger.error "Instrumentation failed: in method %O got exception %O" x.m e
