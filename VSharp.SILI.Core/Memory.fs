@@ -40,6 +40,7 @@ module internal Memory =
         model = PrimitiveModel (Dictionary())
         complete = complete
         typeMocks = Dictionary<_,_>()
+        externMocks = Dictionary<_,_>()
     }
 
     type memoryMode =
@@ -1636,6 +1637,7 @@ module internal Memory =
             let delegates = composeConcreteDictionaries (composeTime state) id state.delegates state'.delegates
             let currentTime = composeTime state state'.currentTime
             let mocks = Dictionary<_,_>(state.typeMocks)
+            let externMocks = Dictionary<_,_>(state.externMocks)
             state'.typeMocks |> Seq.iter (fun kvp -> mocks.Add(kvp.Key, kvp.Value.Copy()))
             let g = g1 &&& g2 &&& g3 &&& g4 &&& g5 &&& g6
             if not <| isFalse g then
@@ -1661,6 +1663,7 @@ module internal Memory =
                     model = state.model // TODO: compose models?
                     complete = state.complete
                     typeMocks = mocks
+                    externMocks = externMocks
                 }
         }
 

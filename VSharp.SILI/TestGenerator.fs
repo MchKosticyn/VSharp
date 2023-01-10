@@ -155,6 +155,12 @@ module TestGenerator =
             freshMock
         Dict.getValueOrUpdate mockCache mock createMock
 
+    let encodeExternMock (model : model) state indices (mockCache : Dictionary<ITypeMock, Mocking.Type>) (test : UnitTest) (methodMock : IMethodMock) =
+        let eval = model.Eval >> term2obj model state indices mockCache test
+        let clauses = methodMock.GetImplementationClauses() |> Array.map eval
+        let methodRepr = methodRepr.Encode methodMock.BaseMethod
+        test.AllocateExternMock methodRepr clauses
+
     let private model2test (test : UnitTest) isError indices mockCache (m : Method) model cmdArgs (cilState : cilState) message =
         let suitableState cilState =
             let methodHasByRefParameter (m : Method) = m.Parameters |> Seq.exists (fun pi -> pi.ParameterType.IsByRef)
@@ -164,6 +170,9 @@ module TestGenerator =
             | _ -> Memory.CallStackSize cilState.state = 1
         if not <| suitableState cilState
             then internalfail "Finished state has many frames on stack! (possibly unhandled exception)"
+
+        let extMocks = cilState.state.externMocks.Values
+        extMocks |> Seq.iter (encodeExternMock cilState.state.model cilState.state indices mockCache test)
 
         match model with
         | StateModel(modelState, typeModel) ->
@@ -235,5 +244,4 @@ module TestGenerator =
         let indices = Dictionary<concreteHeapAddress, int>()
         let mockCache = Dictionary<ITypeMock, Mocking.Type>()
         let test = UnitTest((m :> IMethod).MethodBase)
-
         model2test test isError indices mockCache m cilState.state.model cmdArgs cilState message

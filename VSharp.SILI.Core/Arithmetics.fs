@@ -117,6 +117,21 @@ module Calculator1 =
         let shr = shr.CreateDelegate(typeof<binaryDelegateType>) :?> binaryDelegateType
         shr.Invoke(x, y)
 
+    let BitwiseAnd(x : obj, y : obj, t : System.Type) =
+        assert(isNumeric <| x.GetType() && isNumeric <| y.GetType())
+        let args = [| typeof<obj>; typeof<obj> |]
+        let band = DynamicMethod("BitwiseAnd", typeof<obj>, args)
+        let il = band.GetILGenerator(256)
+        il.Emit(OpCodes.Ldarg_0)
+        il.Emit(OpCodes.Unbox_Any, x.GetType())
+        il.Emit(OpCodes.Ldarg_1)
+        il.Emit(OpCodes.Unbox_Any, y.GetType())
+        il.Emit(OpCodes.And)
+        il.Emit(OpCodes.Box, t)
+        il.Emit(OpCodes.Ret)
+        let band = band.CreateDelegate(typeof<binaryDelegateType>) :?> binaryDelegateType
+        band.Invoke(x, y)
+
     type compareDelegateType = delegate of obj * obj -> int
 
     let Compare(x : obj, y : obj) : int =
@@ -637,7 +652,7 @@ module internal Arithmetics =
         match x.term, y.term with
         | Concrete(x, _), Concrete(y, _) ->
             match op with
-            | OperationType.BitwiseAnd -> k <| Concrete (Calculator.BitwiseAnd(x, y, t)) resType
+            | OperationType.BitwiseAnd -> k <| Concrete (Calculator1.BitwiseAnd(x, y, t)) resType
             | OperationType.BitwiseOr -> k <| Concrete (Calculator.BitwiseOr(x, y, t)) resType
             | OperationType.BitwiseXor -> k <| Concrete (Calculator.BitwiseXor(x, y, t)) resType
             | _ -> __notImplemented__()

@@ -20,12 +20,15 @@ with
         let args = x.args |> List.map toString |> join ", "
         $"{x.mock.Method.Name}({args}):{x.callIndex}"
 
-and MethodMock(method : IMethod, typeMock : ITypeMock) =
+and MethodMock(method : IMethod, typeMock : ITypeMock option) =
     let mutable callIndex = 0
     let callResults = ResizeArray<term>()
 
+    new(method, typ) = MethodMock(method, Some typ) // TypeMock constructor
+    new(method) = MethodMock(method, None) // ExternMock constructor
+
     member x.Method : IMethod = method
-    member x.Type : ITypeMock = typeMock
+    member x.Type : ITypeMock option = typeMock
     interface IMethodMock with
         override x.BaseMethod =
             match method.MethodBase with
@@ -34,13 +37,13 @@ and MethodMock(method : IMethod, typeMock : ITypeMock) =
 
         override x.Call concretizedThis args =
             let returnType = method.ReturnType
-            if returnType = typeof<Void> then None
-            else
-                let src : functionResultConstantSource = {mock = x; callIndex = callIndex; concreteThis = concretizedThis; args = args}
-                let result = Memory.makeSymbolicValue src (toString src) returnType
-                callIndex <- callIndex + 1
-                callResults.Add result
-                Some result
+            if returnType = typeof<Void> then
+                internalfailf "Mocked procedures cannot be called"
+            let src : functionResultConstantSource = {mock = x; callIndex = callIndex; concreteThis = concretizedThis; args = args}
+            let result = Memory.makeSymbolicValue src (toString src) returnType
+            callIndex <- callIndex + 1
+            callResults.Add result
+            result
 
         override x.GetImplementationClauses() = callResults.ToArray()
 
