@@ -42,6 +42,7 @@ module internal Memory =
         model = PrimitiveModel (Dictionary())
         complete = complete
         methodMocks = Dictionary()
+        externMocks = Dictionary<_,_>()
     }
 
     type memoryMode =
@@ -1666,6 +1667,13 @@ module internal Memory =
             methodMocks.Add(kvp.Key, kvp.Value)
         for kvp in state'.methodMocks do
             methodMocks.Add(kvp.Key, kvp.Value)
+            
+        let externMocks = Dictionary()
+        for kvp in state.externMocks do
+            externMocks.Add(kvp.Key, kvp.Value)
+        for kvp in state'.externMocks do
+            externMocks.Add(kvp.Key, kvp.Value)
+            
         // TODO: do nothing if state is empty!
         list {
             let pc = PC.mapPC (fillHoles state) state'.pc |> PC.union state.pc
@@ -1710,6 +1718,7 @@ module internal Memory =
                     model = state.model // TODO: compose models (for example, mocks)
                     complete = state.complete
                     methodMocks = methodMocks
+                    externMocks = externMocks
                 }
         }
 
