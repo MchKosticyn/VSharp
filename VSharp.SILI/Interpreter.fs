@@ -1093,10 +1093,10 @@ type internal ILInterpreter(isConcolicMode : bool) as this =
                 let symVal = mockMethod.Call VectorTime.zero []
                 push symVal cilState
             moveIpToExit cilState |> List.singleton |> k
-        elif x.IsNotImplementedIntrinsic method fullMethodName then
-            let stackTrace = Memory.StackTraceString cilState.state.stack
-            let message = sprintf "New intrinsic method: %s" fullMethodName
-            UnknownMethodException(message, method, stackTrace) |> raise
+        // elif x.IsNotImplementedIntrinsic method fullMethodName then
+        //     let stackTrace = Memory.StackTraceString cilState.state.stack
+        //     let message = sprintf "New intrinsic method: %s" fullMethodName
+        //     UnknownMethodException(message, method, stackTrace) |> raise
         elif method.HasBody then cilState |> List.singleton |> k
         else internalfailf "Non-extern method %s without body!" method.FullName
 

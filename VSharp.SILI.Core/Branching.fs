@@ -58,6 +58,9 @@ module Branching =
             merge2Results thenResult elseResult |> k))
         conditionInvocation state (fun (condition, conditionState) ->
         let pc = state.pc
+        if PC.toSeq pc |> conjunction |> state.model.Eval |> isTrue |> not then
+            let wrongPart = PC.toSeq pc |> Seq.toList |> List.filter (fun x -> x |> state.model.Eval |> isTrue |> not)
+            ()
         assert(PC.toSeq pc |> conjunction |> state.model.Eval |> isTrue)
         let evaled = state.model.Eval condition
         if isTrue evaled then
