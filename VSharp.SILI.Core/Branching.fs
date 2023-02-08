@@ -56,11 +56,14 @@ module Branching =
             thenBranch thenState (fun thenResult ->
             elseBranch elseState (fun elseResult ->
             merge2Results thenResult elseResult |> k))
+        let check state =
+            let pc = state.pc
+            if PC.toSeq pc |> conjunction |> state.model.Eval |> isTrue |> not then
+                let wrongPart = PC.toSeq pc |> Seq.toList |> List.filter (fun x -> x |> state.model.Eval |> isTrue |> not)
+                let wrongPart = wrongPart |> List.map (fun x -> x |> state.model.Eval)
+                internalfail $"wrongPart = {wrongPart}"
         conditionInvocation state (fun (condition, conditionState) ->
         let pc = state.pc
-        if PC.toSeq pc |> conjunction |> state.model.Eval |> isTrue |> not then
-            let wrongPart = PC.toSeq pc |> Seq.toList |> List.filter (fun x -> x |> state.model.Eval |> isTrue |> not)
-            ()
         assert(PC.toSeq pc |> conjunction |> state.model.Eval |> isTrue)
         let evaled = state.model.Eval condition
         if isTrue evaled then
@@ -81,6 +84,8 @@ module Branching =
                     let elseState = Memory.copy conditionState elsePc
                     elseState.model <- model.mdl
                     thenState.pc <- PC.add pc condition
+                    check thenState
+                    check elseState
                     execution thenState elseState condition k
             else
                 conditionState.pc <- PC.add pc condition
@@ -104,6 +109,8 @@ module Branching =
                     let elseState = Memory.copy conditionState (PC.add pc notCondition)
                     thenState.model <- model.mdl
                     elseState.pc <- PC.add pc notCondition
+                    check thenState
+                    check elseState
                     execution thenState elseState condition k
             else
                 conditionState.pc <- PC.add pc notCondition

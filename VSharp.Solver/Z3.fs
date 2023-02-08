@@ -427,6 +427,8 @@ module internal Z3 =
             {expr = constructor expressions; assumptions = assumptions}
 
         member internal x.EncodeTerms<'a when 'a :> Expr and 'a : equality> encCtx (ts : term seq) : BoolExpr list * 'a array =
+            let a = Seq.map toString ts |> join " "
+            Logger.error $"EncodeTerms: {a}"
             let encodeOne acc term =
                 let result = x.EncodeTerm encCtx term
                 result.expr :?> 'a, acc @ result.assumptions
