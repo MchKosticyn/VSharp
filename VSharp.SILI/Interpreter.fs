@@ -1129,9 +1129,9 @@ type internal ILInterpreter() as this =
                 let symVal = mockMethod.Call Nop []
                 push symVal cilState
             moveIpToExit cilState |> List.singleton |> k
-        elif method.IsExternalMethod then
+        elif method.IsInternalCall && (not <| method.IsImplementedInternalCall) then
             let stackTrace = Memory.StackTraceString cilState.state.stack
-            let message = sprintf "New extern method: %s" fullMethodName
+            let message = sprintf "New internal call: %s" fullMethodName
             UnknownMethodException(message, method, stackTrace) |> raise
         elif x.IsNotImplementedIntrinsic method fullMethodName then
             let stackTrace = Memory.StackTraceString cilState.state.stack
