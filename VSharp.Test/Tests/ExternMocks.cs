@@ -80,11 +80,20 @@ namespace IntegrationTests
             return x;
         }
 
+        [TestSvm]
+        public static bool LibcRandCmp()
+        {
+            var x = libc_rand();
+            var y = libc_rand();
+
+            return x < y;
+        }
+
         [DllImport("libc", EntryPoint = "rand", CallingConvention = CallingConvention.Cdecl)]
-        public static extern int libc_rand();
+        static extern int libc_rand();
         
         [Ignore("Writing to out arguments is not implemented")]
-        public static int dotnetRand()
+        public static int DotnetRand()
         {
             // ExtMock for GetNonCryptographicallySecureRandomBytes(byte*, Int32)
             var rand = new Random();

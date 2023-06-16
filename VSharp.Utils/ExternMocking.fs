@@ -90,9 +90,6 @@ module ExtMocking =
             ilGenerator.Emit(OpCodes.Ret)
             
             patchedName // return identifier
-        
-        member x.Build (typeBuilder : TypeBuilder) =
-            x.BuildPatch typeBuilder
 
     type private Type(repr : extMockRepr) =
         let method = PatchMethod(repr.baseMethod.Decode(), repr.methodImplementation.Length)
@@ -100,9 +97,9 @@ module ExtMocking =
         
         member x.Build(moduleBuilder : ModuleBuilder, testId) =
             let typeBuilder = moduleBuilder.DefineType($"test_{testId}_{repr.name}", TypeAttributes.Public)
-            let finalizerName = method.Build typeBuilder
+            let patchName = method.BuildPatch typeBuilder
             patchType <- typeBuilder.CreateType()
-            patchType, finalizerName
+            patchType, patchName
         
         // decode beforehand
         member x.SetClauses clauses =
@@ -131,7 +128,7 @@ module ExtMocking =
         let methodTo = patchType.GetMethod(patchName, BindingFlags.Static ||| BindingFlags.Public)
         let ptrTo = methodTo.MethodHandle.GetFunctionPointer()
 
-        let d = ExternMocker.buildAndApplyDetour(ptrFrom, ptrTo)
+        let d = ExternMocker.BuildAndApplyDetour(ptrFrom, ptrTo)
         detours <- d::detours
 
     let Unpatch () =

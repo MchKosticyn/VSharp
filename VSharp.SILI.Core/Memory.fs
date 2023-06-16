@@ -58,7 +58,12 @@ module internal Memory =
             let method = entry.Key
             let newMock = entry.Value.Copy()
             methodMocks.Add(method, newMock)
-        { state with pc = newPc; concreteMemory = cm; methodMocks = methodMocks }
+        let externMocks = Dictionary()
+        for entry in state.externMocks do
+            let method = entry.Key
+            let newExternMock = entry.Value.Copy()
+            externMocks.Add(method, newExternMock)
+        { state with pc = newPc; concreteMemory = cm; methodMocks = methodMocks; externMocks = externMocks }
 
     let private isZeroAddress (x : concreteHeapAddress) =
         x = VectorTime.zero

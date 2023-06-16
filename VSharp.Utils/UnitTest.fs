@@ -71,7 +71,6 @@ type UnitTest private (m : MethodBase, info : testInfo, mockStorage : MockStorag
     let mutable extraAssemblyLoadDirs : string list = [Directory.GetCurrentDirectory()]
     let mutable patchId = 0 
     let mutable externMocks = info.externMocks |> ResizeArray
-    let mutable detours = Seq.empty
 
     new(m : MethodBase) =
         UnitTest(m, testInfo.OfMethod m, MockStorage(), false)
