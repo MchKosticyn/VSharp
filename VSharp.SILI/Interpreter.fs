@@ -1582,7 +1582,7 @@ type internal ILInterpreter(isConcolicMode : bool) as this =
             k [cilState]
         x.NpeOrInvokeStatementCIL cilState this ldvirtftn id
 
-    member x.ldind t reportError (cilState : cilState) =
+    member x.Ldind t reportError (cilState : cilState) =
         // TODO: what about null pointers?
         let address = pop cilState
         let load cilState k =
@@ -2352,18 +2352,18 @@ type internal ILInterpreter(isConcolicMode : bool) as this =
             | OpCodeValues.Initobj -> initobj |> forkThrough m offset cilState
             | OpCodeValues.Ldarga -> ldarga (fun ilBytes offset -> NumberCreator.extractUnsignedInt16 ilBytes (offset + Offset.from OpCodes.Ldarga.Size) |> int) |> fallThrough m offset cilState
             | OpCodeValues.Ldarga_S -> ldarga (fun ilBytes offset -> NumberCreator.extractUnsignedInt8 ilBytes (offset + Offset.from OpCodes.Ldarga_S.Size) |> int) |> fallThrough m offset cilState
-            | OpCodeValues.Ldind_I4 -> (fun _ _ -> x.ldind TypeUtils.int32Type reportError) |> forkThrough m offset cilState
-            | OpCodeValues.Ldind_I1 -> (fun _ _ -> x.ldind TypeUtils.int8Type reportError) |> forkThrough m offset cilState
-            | OpCodeValues.Ldind_I2 -> (fun _ _ -> x.ldind TypeUtils.int16Type reportError) |> forkThrough m offset cilState
-            | OpCodeValues.Ldind_I8 -> (fun _ _ -> x.ldind TypeUtils.int64Type reportError) |> forkThrough m offset cilState
-            | OpCodeValues.Ldind_U1 -> (fun _ _ -> x.ldind TypeUtils.uint8Type reportError) |> forkThrough m offset cilState
-            | OpCodeValues.Ldind_U2 -> (fun _ _ -> x.ldind TypeUtils.uint16Type reportError) |> forkThrough m offset cilState
-            | OpCodeValues.Ldind_U4 -> (fun _ _ -> x.ldind TypeUtils.uint32Type reportError) |> forkThrough m offset cilState
-            | OpCodeValues.Ldind_R4 -> (fun _ _ -> x.ldind TypeUtils.float32Type reportError) |> forkThrough m offset cilState
-            | OpCodeValues.Ldind_R8 -> (fun _ _ -> x.ldind TypeUtils.float64Type reportError) |> forkThrough m offset cilState
-            | OpCodeValues.Ldind_Ref -> (fun _ _ -> x.ldind TypeUtils.nativeint reportError) |> forkThrough m offset cilState
+            | OpCodeValues.Ldind_I4 -> (fun _ _ -> x.Ldind TypeUtils.int32Type reportError) |> forkThrough m offset cilState
+            | OpCodeValues.Ldind_I1 -> (fun _ _ -> x.Ldind TypeUtils.int8Type reportError) |> forkThrough m offset cilState
+            | OpCodeValues.Ldind_I2 -> (fun _ _ -> x.Ldind TypeUtils.int16Type reportError) |> forkThrough m offset cilState
+            | OpCodeValues.Ldind_I8 -> (fun _ _ -> x.Ldind TypeUtils.int64Type reportError) |> forkThrough m offset cilState
+            | OpCodeValues.Ldind_U1 -> (fun _ _ -> x.Ldind TypeUtils.uint8Type reportError) |> forkThrough m offset cilState
+            | OpCodeValues.Ldind_U2 -> (fun _ _ -> x.Ldind TypeUtils.uint16Type reportError) |> forkThrough m offset cilState
+            | OpCodeValues.Ldind_U4 -> (fun _ _ -> x.Ldind TypeUtils.uint32Type reportError) |> forkThrough m offset cilState
+            | OpCodeValues.Ldind_R4 -> (fun _ _ -> x.Ldind TypeUtils.float32Type reportError) |> forkThrough m offset cilState
+            | OpCodeValues.Ldind_R8 -> (fun _ _ -> x.Ldind TypeUtils.float64Type reportError) |> forkThrough m offset cilState
+            | OpCodeValues.Ldind_Ref -> (fun _ _ -> x.Ldind TypeUtils.nativeint reportError) |> forkThrough m offset cilState
             // TODO: need to cast to nativeint? #do
-            | OpCodeValues.Ldind_I -> (fun _ _ -> x.ldind TypeUtils.nativeint reportError) |> forkThrough m offset cilState
+            | OpCodeValues.Ldind_I -> (fun _ _ -> x.Ldind TypeUtils.nativeint reportError) |> forkThrough m offset cilState
             | OpCodeValues.Isinst -> isinst |> forkThrough m offset cilState
             | OpCodeValues.Stobj -> (stobj reportError) |> forkThrough m offset cilState
             | OpCodeValues.Ldobj -> ldobj |> fallThrough m offset cilState
