@@ -11,7 +11,7 @@ type functionResultConstantSource =
     {
         mock : MethodMock
         callIndex : int
-        this : term
+        this : term option
         args : term list
     }
 with
@@ -23,10 +23,9 @@ with
         let args = x.args |> List.map toString |> join ", "
         $"{x.mock.Method.Name}({args}):{x.callIndex}"
 
-and MethodMock(method : IMethod, isExtern : bool) =
+and MethodMock(method : IMethod) =
     let mutable callIndex = 0
     let callResults = ResizeArray<term>()
-    let isExt = isExtern
 
     member x.Method : IMethod = method
 
@@ -42,14 +41,18 @@ and MethodMock(method : IMethod, isExtern : bool) =
             | :? MethodInfo as mi -> mi
             | _ -> __notImplemented__()
 
-        override x.IsExtern =
-            isExtern
+        override x.IsExtern = method.IsExternalMethod
 
         override x.Call this args =
             let returnType = method.ReturnType
             if returnType = typeof<Void> then
                 internalfailf "Mocked procedures cannot be called"
-            let src : functionResultConstantSource = {mock = x; callIndex = callIndex; this = this; args = args}
+            let src : functionResultConstantSource = {
+                mock = x
+                callIndex = callIndex
+                this = this
+                args = args
+            }
             let result = Memory.makeSymbolicValue src (toString src) returnType
             callIndex <- callIndex + 1
             callResults.Add result
@@ -58,7 +61,7 @@ and MethodMock(method : IMethod, isExtern : bool) =
         override x.GetImplementationClauses() = callResults.ToArray()
 
         override x.Copy() =
-            let result = MethodMock(method, isExt)
+            let result = MethodMock(method)
             result.SetIndex callIndex
             result.SetClauses callResults
             result
@@ -74,11 +77,18 @@ module internal MethodMocking =
             override x.GetImplementationClauses() = empty()
             override x.Copy() = empty()
 
-    let mockMethod state method =
+    let private mockMethod state method =
         let methodMocks = state.methodMocks
         let mock = ref (EmptyMethodMock() :> IMethodMock)
         if methodMocks.TryGetValue(method, mock) then mock.Value
         else
-            let mock = MethodMock(method, false)
+            let mock = MethodMock(method)
             methodMocks.Add(method, mock)
             mock
+
+    let mockAndCall state method this args =
+        let mock = mockMethod state method
+        // extern procedures are ignored
+        if method.ReturnType <> typeof<Void> then
+            mock.Call this args |> Some
+        else None

@@ -9,6 +9,7 @@ open Microsoft.FSharp.Collections
 open VSharp.CSharpUtils
 open MonoMod.RuntimeDetour
 
+// TODO: serialize and deserialize in MemoryGraph #anya
 [<CLIMutable>]
 [<Serializable>]
 [<XmlInclude(typeof<structureRepr>)>]
@@ -37,101 +38,103 @@ module ExtMocking =
         let counterFieldName = counterFieldName baseMethod
         let returnType = baseMethod.ReturnType
         let callingConvention = baseMethod.CallingConvention
-        let arguments = baseMethod.GetParameters() |> Array.map (fun (p : ParameterInfo) -> p.GetType())
+        let arguments = baseMethod.GetParameters() |> Array.map (fun (p : ParameterInfo) -> p.ParameterType)
+
         member x.SetClauses (clauses : obj[]) =
-            clauses |> Array.iteri (fun i o -> returnValues.[i] <- o)
-        
+            clauses |> Array.iteri (fun i o -> returnValues[i] <- o)
+
         member x.InitializeType (typ : Type) =
             if returnType <> typeof<Void> then
                 let field = typ.GetField(storageFieldName, BindingFlags.NonPublic ||| BindingFlags.Static)
                 if field = null then
-                    internalfail $"Could not detect field %s{storageFieldName} of externMock!"
+                    internalfail $"Could not detect field {storageFieldName} of externMock!"
                 let storage = Array.CreateInstance(returnType, clausesCount)
                 Array.Copy(returnValues, storage, clausesCount)
                 field.SetValue(null, storage)
-                
+
         member x.BuildPatch (typeBuilder : TypeBuilder) =
             let methodAttributes = MethodAttributes.Public ||| MethodAttributes.HideBySig ||| MethodAttributes.Static
             let methodBuilder =
                 typeBuilder.DefineMethod(patchedName, methodAttributes, callingConvention)
-            
+
             methodBuilder.SetReturnType returnType
             methodBuilder.SetParameters(arguments)
-            
+
             let ilGenerator = methodBuilder.GetILGenerator()
-            
+
             if returnType = typeof<Void> then
                 ilGenerator.Emit(OpCodes.Ret)
                 patchedName
             else
-            let storageField = typeBuilder.DefineField(storageFieldName, returnType.MakeArrayType(), FieldAttributes.Private ||| FieldAttributes.Static)
-            let counterField = typeBuilder.DefineField(counterFieldName, typeof<int>, FieldAttributes.Private ||| FieldAttributes.Static)
-            let normalCase = ilGenerator.DefineLabel()
-            let count = returnValues.Length
+                // TODO: to private function #anya
+                let storageField = typeBuilder.DefineField(storageFieldName, returnType.MakeArrayType(), FieldAttributes.Private ||| FieldAttributes.Static)
+                let counterField = typeBuilder.DefineField(counterFieldName, typeof<int>, FieldAttributes.Private ||| FieldAttributes.Static)
+                let normalCase = ilGenerator.DefineLabel()
+                let count = returnValues.Length
 
-            ilGenerator.Emit(OpCodes.Ldsfld, counterField)
-            ilGenerator.Emit(OpCodes.Ldc_I4, count)
-            ilGenerator.Emit(OpCodes.Blt, normalCase)
-            
-            ilGenerator.Emit(OpCodes.Ldstr, patchedName)
-            ilGenerator.Emit(OpCodes.Newobj, typeof<UnexpectedExternCallException>.GetConstructor([|typeof<string>|]))
-            ilGenerator.Emit(OpCodes.Ret)
-            
-            ilGenerator.MarkLabel(normalCase)
-            ilGenerator.Emit(OpCodes.Ldsfld, storageField)
-            ilGenerator.Emit(OpCodes.Ldsfld, counterField)
-            ilGenerator.Emit(OpCodes.Ldelem, returnType) // Load storage[counter] on stack
+                ilGenerator.Emit(OpCodes.Ldsfld, counterField)
+                ilGenerator.Emit(OpCodes.Ldc_I4, count)
+                ilGenerator.Emit(OpCodes.Blt, normalCase)
 
-            ilGenerator.Emit(OpCodes.Ldsfld, counterField)
-            ilGenerator.Emit(OpCodes.Ldc_I4_1)
-            ilGenerator.Emit(OpCodes.Add)
-            ilGenerator.Emit(OpCodes.Stsfld, counterField)
+                ilGenerator.Emit(OpCodes.Ldstr, patchedName)
+                ilGenerator.Emit(OpCodes.Newobj, typeof<UnexpectedExternCallException>.GetConstructor([|typeof<string>|]))
+                ilGenerator.Emit(OpCodes.Ret)
 
-            ilGenerator.Emit(OpCodes.Ret)
-            
-            patchedName // return identifier
+                ilGenerator.MarkLabel(normalCase)
+                ilGenerator.Emit(OpCodes.Ldsfld, storageField)
+                ilGenerator.Emit(OpCodes.Ldsfld, counterField)
+                ilGenerator.Emit(OpCodes.Ldelem, returnType) // Load storage[counter] on stack
+
+                ilGenerator.Emit(OpCodes.Ldsfld, counterField)
+                ilGenerator.Emit(OpCodes.Ldc_I4_1)
+                ilGenerator.Emit(OpCodes.Add)
+                ilGenerator.Emit(OpCodes.Stsfld, counterField)
+
+                ilGenerator.Emit(OpCodes.Ret)
+
+                patchedName // return identifier
 
     type private Type(repr : extMockRepr) =
         let method = PatchMethod(repr.baseMethod.Decode(), repr.methodImplementation.Length)
         let mutable patchType = null
-        
+
         member x.Build(moduleBuilder : ModuleBuilder, testId) =
             let typeBuilder = moduleBuilder.DefineType($"test_{testId}_{repr.name}", TypeAttributes.Public)
             let patchName = method.BuildPatch typeBuilder
             patchType <- typeBuilder.CreateType()
             patchType, patchName
-        
+
         // decode beforehand
         member x.SetClauses clauses =
             method.SetClauses clauses
             method.InitializeType patchType
-    
-    let mBuilder = lazy(
+
+    let moduleBuilder = lazy(
         let dynamicAssemblyName = "VSharpExternMocks"
-        let assemblyBuilder = AssemblyBuilder.DefineDynamicAssembly(AssemblyName dynamicAssemblyName, AssemblyBuilderAccess.Run)
+        let assemblyName = AssemblyName(dynamicAssemblyName)
+        let assemblyBuilder = AssemblyBuilder.DefineDynamicAssembly(assemblyName, AssemblyBuilderAccess.Run)
         assemblyBuilder.DefineDynamicModule dynamicAssemblyName)
 
+    let detours = ResizeArray<NativeDetour>()
 
-    let mutable detours = List.empty : NativeDetour list
-    
-    let BuildAndPatch (testId : string) decode (repr : extMockRepr) =
+    let buildAndPatch (testId : string) decode (repr : extMockRepr) =
         let mockType = Type(repr)
         let methodToPatch = repr.baseMethod.Decode()
 
-        let ptrFrom = 
+        let ptrFrom =
             if repr.isExtern then ExternMocker.GetExternPtr(methodToPatch)
             else methodToPatch.MethodHandle.GetFunctionPointer()
 
-        let moduleBuilder = mBuilder.Force()
+        let moduleBuilder = moduleBuilder.Value
         let patchType, patchName = mockType.Build(moduleBuilder, testId)
         repr.methodImplementation |> Array.map decode |> mockType.SetClauses
         let methodTo = patchType.GetMethod(patchName, BindingFlags.Static ||| BindingFlags.Public)
         let ptrTo = methodTo.MethodHandle.GetFunctionPointer()
 
         let d = ExternMocker.BuildAndApplyDetour(ptrFrom, ptrTo)
-        detours <- d::detours
+        detours.Add d
 
-    let Unpatch () =
-        List.iter (fun (d : NativeDetour) -> d.Undo()) detours
-        detours <- List.Empty
-
+    let unPatch () =
+        for d in detours do
+            d.Undo()
+        detours.Clear()

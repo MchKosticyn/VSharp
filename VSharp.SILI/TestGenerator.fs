@@ -203,12 +203,11 @@ module TestGenerator =
                         freshMock.AddMethod(method, Array.map eval values)
             freshMock
 
-    let encodeExternMock (model : model) state indices (mockCache : Dictionary<ITypeMock, Mocking.Type>) (implementations : IDictionary<MethodInfo, term[]>) (test : UnitTest) (methodMock : IMethodMock) =
+    let encodeExternMock (model : model) state indices mockCache implementations test (methodMock : IMethodMock) =
         let eval = model.Eval >> term2obj model state indices mockCache implementations test
         let clauses = methodMock.GetImplementationClauses() |> Array.map eval
         let methodRepr = methodRepr.Encode methodMock.BaseMethod
-        let isExtern = methodMock.IsExtern
-        test.AllocateExternMock methodRepr isExtern clauses
+        test.AllocateExternMock methodRepr methodMock.IsExtern clauses
 
     let private model2test (test : UnitTest) isError indices mockCache (m : Method) model (cilState : cilState) message =
         let state = cilState.state
@@ -245,8 +244,10 @@ module TestGenerator =
                 test.SetTypeGenericParameters concreteClassParams mockedClassParams
                 test.SetMethodGenericParameters concreteMethodParams mockedMethodParams
 
-                let extMocks = cilState.state.externMocks.Values
-                extMocks |> Seq.iter (encodeExternMock cilState.state.model cilState.state indices mockCache implementations test)
+                for entry in state.externMocks do
+                    let externMock = entry.Value
+                    encodeExternMock model state indices mockCache implementations test externMock
+
                 let parametersInfo = m.Parameters
                 if state.complete then
                     for pi in parametersInfo do
