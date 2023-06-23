@@ -3,8 +3,6 @@ using System.Reflection;
 
 namespace VSharp.CSharpUtils;
 
-using System.Collections.Generic;
-using System.Reflection.Emit;
 using System;
 using System.Runtime.InteropServices;
 using MonoMod.RuntimeDetour;
@@ -13,15 +11,19 @@ using System.ComponentModel;
 
 public static class ExternMocker
 {
-    public static bool ExtMocksSupported = !OperatingSystem.IsMacOS() ||
-                                          RuntimeInformation.OSArchitecture == Architecture.X86 ||
-                                          RuntimeInformation.OSArchitecture == Architecture.X64;
+    public static bool ExtMocksSupported =
+        !OperatingSystem.IsMacOS()
+        || RuntimeInformation.OSArchitecture == Architecture.X86
+        || RuntimeInformation.OSArchitecture == Architecture.X64;
 
     public static IntPtr GetExternPtr(MethodInfo mInfo)
     {
         var libName = "";
         var methodName = "";
 
+        // TODO: mInfo.GetCustomAttribute #anya
+        // Look to collectImplementations
+        // mInfo.GetCustomAttributes(typeof(DllImportAttribute));
         foreach (var attr in mInfo.CustomAttributes)
         {
             if (attr.AttributeType.Name == "DllImportAttribute")
@@ -41,26 +43,24 @@ public static class ExternMocker
         libName = libName.Replace("\"", "");
         methodName = methodName.Replace("\"", "");
 
-        if (!NativeLibrary.TryLoad(libName, Assembly.GetCallingAssembly(), null, out IntPtr libref))
+        var assembly = Assembly.GetCallingAssembly();
+        if (!NativeLibrary.TryLoad(libName, assembly, null, out IntPtr libRef))
         {
             throw new Exception("Could not open extern library");
         }
 
-        return libref.GetFunction(methodName);
+        return libRef.GetFunction(methodName);
     }
 
     public static NativeDetour BuildAndApplyDetour(IntPtr from, IntPtr to)
     {
         bool manualApply = PlatformHelper.Is(Platform.MacOS);
 
-        NativeDetour d = new NativeDetour(
-            from,
-            to,
-            new NativeDetourConfig()
-            {
-                ManualApply = manualApply
-            }
-        );
+        var config = new NativeDetourConfig
+        {
+            ManualApply = manualApply
+        };
+        NativeDetour d = new NativeDetour(from, to, config);
 
         if (manualApply) {
             try {

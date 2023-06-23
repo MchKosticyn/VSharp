@@ -187,6 +187,8 @@ type MethodWithBody internal (m : MethodBase) =
         // Method should not contain varargs
         (m.CallingConvention &&& CallingConventions.VarArgs) <> CallingConventions.VarArgs
 
+    member x.IsExternalMethod with get() = Reflection.isExternalMethod m
+
     interface VSharp.Core.IMethod with
         override x.Name = name
         override x.FullName = fullName
@@ -197,6 +199,7 @@ type MethodWithBody internal (m : MethodBase) =
         override x.LocalVariables = localVariables
         override x.HasThis = hasThis
         override x.IsConstructor = isConstructor
+        override x.IsExternalMethod with get() = x.IsExternalMethod
         override x.GenericArguments with get() = genericArguments.Value
         override x.SubstituteTypeVariables subst =
             Reflection.concretizeMethodBase m subst |> MethodWithBody.InstantiateNew :> VSharp.Core.IMethod
@@ -220,8 +223,6 @@ type MethodWithBody internal (m : MethodBase) =
 
     member x.IsInternalCall with get() = isInternalCall.Value
     member x.IsImplementedInternalCall with get () = isImplementedInternalCall.Value
-
-    member x.IsExternalMethod with get() = Reflection.isExternalMethod m
 
     member x.CanBeOverriden targetType =
         match m with

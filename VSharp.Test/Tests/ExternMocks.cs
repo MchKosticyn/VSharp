@@ -23,6 +23,7 @@ namespace IntegrationTests
             return t1;
         }
 
+        // TODO: which method? #anya
         [Ignore("Method not implemented")]
         public static int DtNowCompareTo()
         {
@@ -63,6 +64,7 @@ namespace IntegrationTests
             return s[1] == 'A';
         }
 
+        // TODO: try on master #anya
         [Ignore("String.Equals works only for concrete length strings right now")]
         public static bool ReadLineToUpper()
         {
@@ -91,10 +93,11 @@ namespace IntegrationTests
 
         [DllImport("libc", EntryPoint = "rand", CallingConvention = CallingConvention.Cdecl)]
         static extern int libc_rand();
-        
+
         [Ignore("Writing to out arguments is not implemented")]
         public static int DotnetRand()
         {
+            // TODO: add comment #anya
             // ExtMock for GetNonCryptographicallySecureRandomBytes(byte*, Int32)
             var rand = new Random();
 

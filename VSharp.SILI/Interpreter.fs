@@ -403,7 +403,7 @@ module internal InstructionsSet =
         let typ = resolveTypeFromMetadata m (offset + Offset.from OpCodes.Initobj.Size)
         let states = Memory.Write cilState.state targetAddress (Memory.DefaultOf typ)
         states |> List.map (changeState cilState)
- 
+
 
     let clt = binaryOperationWithBoolResult OperationType.Less idTransformation idTransformation
     let cgt = binaryOperationWithBoolResult OperationType.Greater idTransformation idTransformation
@@ -579,7 +579,8 @@ type internal ILInterpreter() as this =
         ]
     // NOTE: adding implementation names into Loader
     do Loader.CilStateImplementations <- cilStateImplementations.Keys
-    
+
+    // TODO: move to Loader #anya
     let shimImplementations : string list =
         [
             "System.DateTime System.DateTime.get_Now()"
@@ -1098,6 +1099,10 @@ type internal ILInterpreter() as this =
                 true
         else false
 
+    // TODO: move to Loader #anya
+    member private x.ShouldMock (method : Method) fullMethodName =
+        method.IsExternalMethod || List.contains fullMethodName shimImplementations
+
     member private x.InlineMethodBaseCallIfNeeded (method : Method) (cilState : cilState) k =
         // [NOTE] Asserting correspondence between ips and frames
         assert(currentMethod cilState = method && currentOffset cilState = Some 0<offsets>)
@@ -1121,15 +1126,15 @@ type internal ILInterpreter() as this =
         elif x.IsArrayGetOrSet method then
             let cilStates = x.InvokeArrayGetOrSet cilState method thisOption args
             List.map moveIpToExit cilStates |> k
-        elif ExternMocker.ExtMocksSupported &&
-             (method.IsExternalMethod || List.contains fullMethodName shimImplementations) then
-            let externMocks = cilState.state.externMocks
-            let mockMethod = Dict.getValueOrUpdate externMocks method.FullName (fun () -> MethodMock(method, method.IsExternalMethod))
-            if method.ReturnType <> typeof<Void> then // extern procedures are ignored
-                let symVal = mockMethod.Call Nop []
+        elif ExternMocker.ExtMocksSupported && x.ShouldMock method fullMethodName then
+            let mockMethod = MockAndCall cilState.state method None []
+            match mockMethod with
+            | Some symVal ->
                 push symVal cilState
+            | None -> ()
             moveIpToExit cilState |> List.singleton |> k
-        elif method.IsInternalCall && (not <| method.IsImplementedInternalCall) then
+        elif method.IsInternalCall then
+            assert(not <| method.IsImplementedInternalCall)
             let stackTrace = Memory.StackTraceString cilState.state.stack
             let message = sprintf "New internal call: %s" fullMethodName
             UnknownMethodException(message, method, stackTrace) |> raise
@@ -1206,10 +1211,11 @@ type internal ILInterpreter() as this =
                 let overriden =
                     if ancestorMethod.DeclaringType.IsInterface then ancestorMethod
                     else x.ResolveVirtualMethod targetType ancestorMethod
-                let methodMock = MockMethod cilState.state overriden
-                if ancestorMethod.ReturnType <> typeof<Void> then
-                    let result = methodMock.Call this []
-                    push result cilState
+                let mockMethod = MockAndCall cilState.state overriden (Some this) []
+                match mockMethod with
+                | Some symVal ->
+                    push symVal cilState
+                | None -> ()
                 match tryCurrentLoc cilState with
                 | Some loc ->
                     // Moving ip to next instruction after mocking method result
@@ -1586,7 +1592,6 @@ type internal ILInterpreter() as this =
         x.NpeOrInvokeStatementCIL cilState this ldvirtftn id
 
     member x.Ldind t reportError (cilState : cilState) =
-        // TODO: what about null pointers?
         let address = pop cilState
         let load cilState k =
             let castedAddress = if TypeOfLocation address = t then address else Types.Cast address (t.MakePointerType())
@@ -1595,7 +1600,7 @@ type internal ILInterpreter() as this =
             push value cilState
             k (List.singleton cilState)
         x.NpeOrInvokeStatementCIL cilState address load id
-        
+
     member x.BoxNullable (t : Type) (v : term) (cilState : cilState) : cilState list =
         // TODO: move it to Reflection.fs; add more validation in case if .NET implementation does not have these fields
         let boxValue (cilState : cilState) =
