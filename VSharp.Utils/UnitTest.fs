@@ -129,18 +129,13 @@ type UnitTest private (m : MethodBase, info : testInfo, mockStorage : MockStorag
         patchId <- patchId + 1
         name
 
-    member x.AllocateExternMock methodRepr results =
-        let extMock =
-            {
-                name = x.GetPatchId
-                baseMethod = methodRepr
-                methodImplementation = results
-            }
+    member x.AddExternMock extMock =
         externMocks.Add extMock
 
     member x.ApplyExternMocks(testName: string) =
         for externMock in externMocks do
-            ExtMocking.buildAndPatch testName memoryGraph.DecodeValue externMock
+            let extMock = externMock.Decode()
+            ExtMocking.buildAndPatch testName memoryGraph.DecodeValue extMock
 
     member x.ReverseExternMocks() =
         if x.HasExternMocks then

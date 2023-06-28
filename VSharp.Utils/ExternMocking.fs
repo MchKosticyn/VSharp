@@ -1,7 +1,6 @@
 namespace VSharp
 
 open System
-open System.Xml.Serialization
 open VSharp
 open System.Reflection
 open System.Reflection.Emit
@@ -9,28 +8,13 @@ open Microsoft.FSharp.Collections
 open VSharp.CSharpUtils
 open MonoMod.RuntimeDetour
 
-// TODO: serialize and deserialize in MemoryGraph #anya
-[<CLIMutable>]
-[<Serializable>]
-[<XmlInclude(typeof<structureRepr>)>]
-[<XmlInclude(typeof<referenceRepr>)>]
-[<XmlInclude(typeof<pointerRepr>)>]
-[<XmlInclude(typeof<arrayRepr>)>]
-[<XmlInclude(typeof<enumRepr>)>]
-[<XmlInclude(typeof<methodRepr>)>]
-type extMockRepr = {
-    name : string
-    baseMethod : methodRepr
-    methodImplementation : obj array
-}
-
 exception UnexpectedExternCallException of string
 
 module ExtMocking =
     let storageFieldName (method : MethodInfo) = $"{method.Name}{method.MethodHandle.Value}_<Storage>"
     let counterFieldName (method : MethodInfo) = $"{method.Name}{method.MethodHandle.Value}_<Counter>"
 
-    type private PatchMethod(baseMethod : MethodInfo, clausesCount : int) =
+    type PatchMethod(baseMethod : MethodInfo, clausesCount : int) =
         let returnValues : obj[] = Array.zeroCreate clausesCount
         let patchedName = $"{baseMethod.Name}_<patched>"
         let storageFieldName = storageFieldName baseMethod
@@ -93,20 +77,47 @@ module ExtMocking =
 
                 patchedName // return identifier
 
-    type private Type(repr : extMockRepr) =
-        let method = PatchMethod(repr.baseMethod.Decode(), repr.methodImplementation.Length)
+    type Type(name: string) =
         let mutable patchType = null
+        let mutable mockedMethod = null
+        let mutable mockImplementations = null
+        let mutable patchMethod = None
+
+        static member Deserialize name (baseMethod : MethodInfo) (methodImplementations : obj[]) =
+            let mockType = Type(name)
+            mockType.MockedMethod <- baseMethod
+            mockType.MockImplementations <- methodImplementations
+            mockType.PatchMethod <- PatchMethod(baseMethod, methodImplementations.Length)
+            mockType
+
+        member x.MockedMethod
+            with get() = mockedMethod
+            and private set(method) =
+                mockedMethod <- method
+
+        member x.MockImplementations
+            with get() = mockImplementations
+            and private set(methodImplementations) =
+                mockImplementations <- methodImplementations
+
+        member x.PatchMethod
+            with get() =
+                match patchMethod with
+                | Some pm -> pm
+                | None -> internalfail "ExternMocking patch method called before initialization"
+            and private set(m) =
+                patchMethod <- Some m
 
         member x.Build(moduleBuilder : ModuleBuilder, testId) =
-            let typeBuilder = moduleBuilder.DefineType($"test_{testId}_{repr.name}", TypeAttributes.Public)
-            let patchName = method.BuildPatch typeBuilder
+            let typeBuilder = moduleBuilder.DefineType($"test_{testId}_{name}", TypeAttributes.Public)
+            let patchName = x.PatchMethod.BuildPatch typeBuilder
             patchType <- typeBuilder.CreateType()
             patchType, patchName
 
-        // decode beforehand
-        member x.SetClauses clauses =
-            method.SetClauses clauses
-            method.InitializeType patchType
+        member x.SetClauses decode =
+            let decodedClauses = x.MockImplementations |> Array.map decode
+            x.PatchMethod.SetClauses decodedClauses
+            x.PatchMethod.InitializeType patchType
 
     let moduleBuilder = lazy(
         let dynamicAssemblyName = "VSharpExternMocks"
@@ -116,9 +127,8 @@ module ExtMocking =
 
     let detours = ResizeArray<NativeDetour>()
 
-    let buildAndPatch (testId : string) decode (repr : extMockRepr) =
-        let mockType = Type(repr)
-        let methodToPatch = repr.baseMethod.Decode()
+    let buildAndPatch (testId : string) decode (mockType : Type) =
+        let methodToPatch = mockType.MockedMethod
 
         let isExtern = Reflection.isExternalMethod methodToPatch
         let ptrFrom =
@@ -127,7 +137,7 @@ module ExtMocking =
 
         let moduleBuilder = moduleBuilder.Value
         let patchType, patchName = mockType.Build(moduleBuilder, testId)
-        repr.methodImplementation |> Array.map decode |> mockType.SetClauses
+        mockType.SetClauses decode
         let methodTo = patchType.GetMethod(patchName, BindingFlags.Static ||| BindingFlags.Public)
         let ptrTo = methodTo.MethodHandle.GetFunctionPointer()
 
