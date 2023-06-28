@@ -110,7 +110,7 @@ namespace IntegrationTests
             return upper == str;
         }
 
-        [Ignore("memmove not implemented")]
+        [Ignore("takes too much time")]
         public static bool SymbolicStringToUpper(char c)
         {
             string s = c + "c";

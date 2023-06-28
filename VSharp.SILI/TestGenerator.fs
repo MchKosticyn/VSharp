@@ -217,7 +217,7 @@ module TestGenerator =
         let eval = model.Eval >> term2obj model state indices mockCache implementations test
         let clauses = methodMock.GetImplementationClauses() |> Array.map eval
         let methodRepr = methodRepr.Encode methodMock.BaseMethod
-        test.AllocateExternMock methodRepr methodMock.IsExtern clauses
+        test.AllocateExternMock methodRepr clauses
 
     let private model2test (test : UnitTest) isError indices mockCache (m : Method) model (cilState : cilState) message =
         let state = cilState.state
@@ -238,8 +238,12 @@ module TestGenerator =
                 let implementations = Dictionary<MethodInfo, term[]>()
                 for entry in state.methodMocks do
                     let mock = entry.Value
-                    let values = mock.GetImplementationClauses()
-                    implementations.Add(mock.BaseMethod, values)
+                    match mock.MockingType with
+                    | Mock ->
+                        let values = mock.GetImplementationClauses()
+                        implementations.Add(mock.BaseMethod, values)
+                    | ExternMock ->
+                        encodeExternMock model state indices mockCache implementations test mock
 
                 let concreteClassParams = Array.zeroCreate classParams.Length
                 let mockedClassParams = Array.zeroCreate classParams.Length
@@ -253,10 +257,6 @@ module TestGenerator =
                 methodParams |> Seq.iteri (processSymbolicType concreteMethodParams mockedMethodParams)
                 test.SetTypeGenericParameters concreteClassParams mockedClassParams
                 test.SetMethodGenericParameters concreteMethodParams mockedMethodParams
-
-                for entry in state.externMocks do
-                    let externMock = entry.Value
-                    encodeExternMock model state indices mockCache implementations test externMock
 
                 let parametersInfo = m.Parameters
                 if state.complete then

@@ -20,7 +20,6 @@ open MonoMod.RuntimeDetour
 [<XmlInclude(typeof<methodRepr>)>]
 type extMockRepr = {
     name : string
-    isExtern : bool
     baseMethod : methodRepr
     methodImplementation : obj array
 }
@@ -121,8 +120,9 @@ module ExtMocking =
         let mockType = Type(repr)
         let methodToPatch = repr.baseMethod.Decode()
 
+        let isExtern = Reflection.isExternalMethod methodToPatch
         let ptrFrom =
-            if repr.isExtern then ExternMocker.GetExternPtr(methodToPatch)
+            if isExtern then ExternMocker.GetExternPtr(methodToPatch)
             else methodToPatch.MethodHandle.GetFunctionPointer()
 
         let moduleBuilder = moduleBuilder.Value

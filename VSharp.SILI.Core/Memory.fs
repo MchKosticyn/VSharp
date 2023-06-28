@@ -42,7 +42,6 @@ module internal Memory =
         model = PrimitiveModel (Dictionary())
         complete = complete
         methodMocks = Dictionary()
-        externMocks = Dictionary()
     }
 
     type memoryMode =
@@ -58,12 +57,7 @@ module internal Memory =
             let method = entry.Key
             let newMock = entry.Value.Copy()
             methodMocks.Add(method, newMock)
-        let externMocks = Dictionary()
-        for entry in state.externMocks do
-            let method = entry.Key
-            let newExternMock = entry.Value.Copy()
-            externMocks.Add(method, newExternMock)
-        { state with pc = newPc; concreteMemory = cm; methodMocks = methodMocks; externMocks = externMocks }
+        { state with pc = newPc; concreteMemory = cm; methodMocks = methodMocks }
 
     let private isZeroAddress (x : concreteHeapAddress) =
         x = VectorTime.zero
@@ -1673,12 +1667,6 @@ module internal Memory =
         for kvp in state'.methodMocks do
             methodMocks.Add(kvp.Key, kvp.Value)
 
-        let externMocks = Dictionary()
-        for kvp in state.externMocks do
-            externMocks.Add(kvp.Key, kvp.Value)
-        for kvp in state'.externMocks do
-            externMocks.Add(kvp.Key, kvp.Value)
-
         // TODO: do nothing if state is empty!
         list {
             let pc = PC.mapPC (fillHoles state) state'.pc |> PC.union state.pc
@@ -1723,7 +1711,6 @@ module internal Memory =
                     model = state.model // TODO: compose models (for example, mocks)
                     complete = state.complete
                     methodMocks = methodMocks
-                    externMocks = externMocks
                 }
         }
 

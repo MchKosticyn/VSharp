@@ -1127,7 +1127,7 @@ type internal ILInterpreter() as this =
             let cilStates = x.InvokeArrayGetOrSet cilState method thisOption args
             List.map moveIpToExit cilStates |> k
         elif ExternMocker.ExtMocksSupported && x.ShouldMock method fullMethodName then
-            let mockMethod = MockAndCall cilState.state method None []
+            let mockMethod = ExternMockAndCall cilState.state method None []
             match mockMethod with
             | Some symVal ->
                 push symVal cilState
@@ -1211,7 +1211,7 @@ type internal ILInterpreter() as this =
                 let overriden =
                     if ancestorMethod.DeclaringType.IsInterface then ancestorMethod
                     else x.ResolveVirtualMethod targetType ancestorMethod
-                let mockMethod = MockAndCall cilState.state overriden (Some this) []
+                let mockMethod = MethodMockAndCall cilState.state overriden (Some this) []
                 match mockMethod with
                 | Some symVal ->
                     push symVal cilState

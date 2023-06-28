@@ -23,10 +23,11 @@ namespace IntegrationTests
             return t1;
         }
 
-        // TODO: which method? #anya
         [Ignore("Method not implemented")]
         public static int DtNowCompareTo()
         {
+            // Something weird
+            // Fails Z3 x.Decode System.DateTime (BitVecNum 1)
             var t1 = DateTime.Now;
             var t2 = DateTime.Now;
             if (t1.CompareTo(t2) > 0)
@@ -64,8 +65,7 @@ namespace IntegrationTests
             return s[1] == 'A';
         }
 
-        // TODO: try on master #anya
-        [Ignore("String.Equals works only for concrete length strings right now")]
+        [Ignore("takes too much time")]
         public static bool ReadLineToUpper()
         {
             string str = Console.ReadLine();
@@ -97,8 +97,8 @@ namespace IntegrationTests
         [Ignore("Writing to out arguments is not implemented")]
         public static int DotnetRand()
         {
-            // TODO: add comment #anya
-            // ExtMock for GetNonCryptographicallySecureRandomBytes(byte*, Int32)
+            // Extern method with out parameters:
+            // GetNonCryptographicallySecureRandomBytes(byte*, Int32)
             var rand = new Random();
 
             return rand.Next(1000);
