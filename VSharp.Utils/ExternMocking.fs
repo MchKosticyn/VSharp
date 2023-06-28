@@ -35,21 +35,7 @@ module ExtMocking =
                 Array.Copy(returnValues, storage, clausesCount)
                 field.SetValue(null, storage)
 
-        member x.BuildPatch (typeBuilder : TypeBuilder) =
-            let methodAttributes = MethodAttributes.Public ||| MethodAttributes.HideBySig ||| MethodAttributes.Static
-            let methodBuilder =
-                typeBuilder.DefineMethod(patchedName, methodAttributes, callingConvention)
-
-            methodBuilder.SetReturnType returnType
-            methodBuilder.SetParameters(arguments)
-
-            let ilGenerator = methodBuilder.GetILGenerator()
-
-            if returnType = typeof<Void> then
-                ilGenerator.Emit(OpCodes.Ret)
-                patchedName
-            else
-                // TODO: to private function #anya
+        member private x.GenerateNonVoidIL (typeBuilder : TypeBuilder) (ilGenerator : ILGenerator) =
                 let storageField = typeBuilder.DefineField(storageFieldName, returnType.MakeArrayType(), FieldAttributes.Private ||| FieldAttributes.Static)
                 let counterField = typeBuilder.DefineField(counterFieldName, typeof<int>, FieldAttributes.Private ||| FieldAttributes.Static)
                 let normalCase = ilGenerator.DefineLabel()
@@ -75,7 +61,22 @@ module ExtMocking =
 
                 ilGenerator.Emit(OpCodes.Ret)
 
-                patchedName // return identifier
+        member x.BuildPatch (typeBuilder : TypeBuilder) =
+            let methodAttributes = MethodAttributes.Public ||| MethodAttributes.HideBySig ||| MethodAttributes.Static
+            let methodBuilder =
+                typeBuilder.DefineMethod(patchedName, methodAttributes, callingConvention)
+
+            methodBuilder.SetReturnType returnType
+            methodBuilder.SetParameters(arguments)
+
+            let ilGenerator = methodBuilder.GetILGenerator()
+
+            if returnType = typeof<Void> then
+                ilGenerator.Emit(OpCodes.Ret)
+            else
+                x.GenerateNonVoidIL typeBuilder ilGenerator
+
+            patchedName // return identifier
 
     type Type(name: string) =
         let mutable patchType = null
