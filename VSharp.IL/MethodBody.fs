@@ -91,6 +91,7 @@ type MethodWithBody internal (m : MethodBase) =
                  ehcType = ehcType }
             Some result.il, Some (Array.map parseEH result.ehs), Some rewriter, Some rewriter.Instructions)
 
+    member x.MethodBase : MethodBase = m
     member x.Name = name
     member x.FullName = fullName
     member x.FullGenericMethodName with get() = fullGenericMethodName.Force()

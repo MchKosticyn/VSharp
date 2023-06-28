@@ -580,18 +580,6 @@ type internal ILInterpreter() as this =
     // NOTE: adding implementation names into Loader
     do Loader.CilStateImplementations <- cilStateImplementations.Keys
 
-    // TODO: move to Loader #anya
-    let shimImplementations : string list =
-        [
-            "System.DateTime System.DateTime.get_Now()"
-            "System.String System.IO.File.ReadAllText(System.String)"
-            "System.String[] System.IO.File.ReadAllLines(System.String)"
-            "System.String[] System.IO.File.ReadLines(System.String)"
-            "System.Byte[] System.IO.File.ReadAllBytes(System.String)"
-            "System.String System.Console.ReadLine()"
-            // Socket.Read  TODO: writing to the out parameters
-        ]
-
     member x.ConfigureErrorReporter reporter =
         reportError <- reporter
 
@@ -1099,10 +1087,6 @@ type internal ILInterpreter() as this =
                 true
         else false
 
-    // TODO: move to Loader #anya
-    member private x.ShouldMock (method : Method) fullMethodName =
-        method.IsExternalMethod || List.contains fullMethodName shimImplementations
-
     member private x.InlineMethodBaseCallIfNeeded (method : Method) (cilState : cilState) k =
         // [NOTE] Asserting correspondence between ips and frames
         assert(currentMethod cilState = method && currentOffset cilState = Some 0<offsets>)
@@ -1126,7 +1110,7 @@ type internal ILInterpreter() as this =
         elif x.IsArrayGetOrSet method then
             let cilStates = x.InvokeArrayGetOrSet cilState method thisOption args
             List.map moveIpToExit cilStates |> k
-        elif ExternMocker.ExtMocksSupported && x.ShouldMock method fullMethodName then
+        elif ExternMocker.ExtMocksSupported && Loader.shouldMock method.MethodBase fullMethodName then
             let mockMethod = ExternMockAndCall cilState.state method None []
             match mockMethod with
             | Some symVal ->
