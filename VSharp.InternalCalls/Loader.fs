@@ -1,38 +1,9 @@
 namespace VSharp
 
-open System.Runtime.InteropServices
 open global.System
 open System.Reflection
 
 module Loader =
-
-    let private dllImportAttribute = lazy AssemblyManager.NormalizeType(typeof<DllImportAttribute>)
-
-    let private getDllImportNameAndEntry (attr : Attribute) =
-        let dllNameField = dllImportAttribute.Value.GetField("dllName")
-        let entryPointField = dllImportAttribute.Value.GetField("EntryPoint")
-        dllNameField.GetValue(attr) :?> string, entryPointField.GetValue(attr) :?> string
-
-    let private parseDllImport (m : MethodBase) =
-        // Case for assembly, loaded via default load context (F# internal calls)
-        let findViaDefault (attr : Attribute) =
-            match attr with
-            | :? DllImportAttribute as attr ->
-                Some (attr.Value, attr.EntryPoint)
-            | _ -> None
-
-        // Case for assembly, loaded via VSharp load context (C# internal calls)
-        let findViaVSharpLoadContext (attr : Attribute) = Some (getDllImportNameAndEntry attr)
-        let attrFromDefaultContext = m.GetCustomAttributes<DllImportAttribute>() |> Seq.tryPick findViaDefault
-        match attrFromDefaultContext with
-        | Some info -> Some info
-        | None -> m.GetCustomAttributes(dllImportAttribute.Value) |> Seq.tryPick findViaVSharpLoadContext
-
-    let private notQCall (m : MethodBase) =
-        match parseDllImport m with
-        | Some(libName, _) -> not <| libName.Equals("QCall")
-        | None -> true
-
     let private shimImplementations : string list =
         [
             "System.DateTime System.DateTime.get_Now()"
@@ -46,7 +17,7 @@ module Loader =
 
     let shouldMock (method : MethodBase) fullMethodName =
         List.contains fullMethodName shimImplementations
-        || (Reflection.isExternalMethod method && notQCall method)
+        || (Reflection.isExternalMethod method && DllManager.notQCall method)
 
     let private implementsAttribute = lazy AssemblyManager.NormalizeType(typeof<ImplementsAttribute>)
 

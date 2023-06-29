@@ -6,9 +6,37 @@ open System.Reflection
 open System.Reflection.Emit
 open Microsoft.FSharp.Collections
 open VSharp.CSharpUtils
-open MonoMod.RuntimeDetour
+open System.Runtime.InteropServices
 
 exception UnexpectedExternCallException of string
+
+module DllManager =
+    let private dllImportAttribute = lazy AssemblyManager.NormalizeType(typeof<DllImportAttribute>)
+
+    let private getDllImportNameAndEntry (attr : Attribute) =
+        let dllNameField = dllImportAttribute.Value.GetField("dllName")
+        let entryPointField = dllImportAttribute.Value.GetField("EntryPoint")
+        dllNameField.GetValue(attr) :?> string, entryPointField.GetValue(attr) :?> string
+
+    let parseDllImport (m : MethodBase) =
+        // Case for assembly, loaded via default load context (F# internal calls)
+        let findViaDefault (attr : Attribute) =
+            match attr with
+            | :? DllImportAttribute as attr ->
+                Some (attr.Value, attr.EntryPoint)
+            | _ -> None
+
+        // Case for assembly, loaded via VSharp load context (C# internal calls)
+        let findViaVSharpLoadContext (attr : Attribute) = Some (getDllImportNameAndEntry attr)
+        let attrFromDefaultContext = m.GetCustomAttributes<DllImportAttribute>() |> Seq.tryPick findViaDefault
+        match attrFromDefaultContext with
+        | Some info -> Some info
+        | None -> m.GetCustomAttributes(dllImportAttribute.Value) |> Seq.tryPick findViaVSharpLoadContext
+
+    let notQCall (m : MethodBase) =
+        match parseDllImport m with
+        | Some(libName, _) -> not <| libName.Equals("QCall")
+        | None -> true
 
 module ExtMocking =
     let storageFieldName (method : MethodInfo) = $"{method.Name}{method.MethodHandle.Value}_<Storage>"
@@ -126,26 +154,24 @@ module ExtMocking =
         let assemblyBuilder = AssemblyBuilder.DefineDynamicAssembly(assemblyName, AssemblyBuilderAccess.Run)
         assemblyBuilder.DefineDynamicModule dynamicAssemblyName)
 
-    let detours = ResizeArray<NativeDetour>()
-
     let buildAndPatch (testId : string) decode (mockType : Type) =
         let methodToPatch = mockType.MockedMethod
-
-        let isExtern = Reflection.isExternalMethod methodToPatch
         let ptrFrom =
-            if isExtern then ExternMocker.GetExternPtr(methodToPatch)
-            else methodToPatch.MethodHandle.GetFunctionPointer()
+            if Reflection.isExternalMethod methodToPatch then
+                let libName, methodName =
+                    match DllManager.parseDllImport methodToPatch with
+                    | Some p -> p 
+                    | None -> internalfail "External method without DllImport attribute"
+                ExternMocker.GetExternPtr(libName, methodName)
+            else
+                methodToPatch.MethodHandle.GetFunctionPointer()
 
         let moduleBuilder = moduleBuilder.Value
         let patchType, patchName = mockType.Build(moduleBuilder, testId)
         mockType.SetClauses decode
         let methodTo = patchType.GetMethod(patchName, BindingFlags.Static ||| BindingFlags.Public)
         let ptrTo = methodTo.MethodHandle.GetFunctionPointer()
-
-        let d = ExternMocker.BuildAndApplyDetour(ptrFrom, ptrTo)
-        detours.Add d
+        ExternMocker.BuildAndApplyDetour(ptrFrom, ptrTo)        
 
     let unPatch () =
-        for d in detours do
-            d.Undo()
-        detours.Clear()
+        ExternMocker.UnPatch()

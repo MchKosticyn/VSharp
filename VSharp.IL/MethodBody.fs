@@ -48,7 +48,8 @@ type MethodWithBody internal (m : MethodBase) =
     let isImplementedInternalCall =
         lazy(isFSharpInternalCall.Value || isCSharpInternalCall.Value || isCilStateInternalCall.Value)
     let isInternalCall =
-        lazy (int (m.GetMethodImplementationFlags() &&& MethodImplAttributes.InternalCall) <> 0)
+        lazy (int (m.GetMethodImplementationFlags() &&& MethodImplAttributes.InternalCall) <> 0
+              || (not <| DllManager.notQCall m))
 
     let actualMethod =
         if not isCSharpInternalCall.Value then m

@@ -4,6 +4,8 @@ using System.Reflection;
 namespace VSharp.CSharpUtils;
 
 using System;
+using System.Reflection;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using MonoMod.RuntimeDetour;
 using MonoMod.Utils;
@@ -16,33 +18,10 @@ public static class ExternMocker
         || RuntimeInformation.OSArchitecture == Architecture.X86
         || RuntimeInformation.OSArchitecture == Architecture.X64;
 
-    public static IntPtr GetExternPtr(MethodInfo mInfo)
+    private static List<NativeDetour> _detours = new();
+
+    public static IntPtr GetExternPtr(string libName, string methodName)
     {
-        var libName = "";
-        var methodName = "";
-
-        // TODO: mInfo.GetCustomAttribute #anya
-        // Look to collectImplementations
-        // mInfo.GetCustomAttributes(typeof(DllImportAttribute));
-        foreach (var attr in mInfo.CustomAttributes)
-        {
-            if (attr.AttributeType.Name == "DllImportAttribute")
-            {
-                foreach (var arg in attr.NamedArguments)
-                {
-                    if (arg.MemberName == "EntryPoint")
-                    {
-                        libName = attr.ConstructorArguments.First().ToString();
-                        methodName = arg.TypedValue.ToString();
-                        break;
-                    }
-                }
-            }
-        }
-
-        libName = libName.Replace("\"", "");
-        methodName = methodName.Replace("\"", "");
-
         var assembly = Assembly.GetCallingAssembly();
         if (!NativeLibrary.TryLoad(libName, assembly, null, out IntPtr libRef))
         {
@@ -52,7 +31,7 @@ public static class ExternMocker
         return libRef.GetFunction(methodName);
     }
 
-    public static NativeDetour BuildAndApplyDetour(IntPtr from, IntPtr to)
+    public static void BuildAndApplyDetour(IntPtr from, IntPtr to)
     {
         bool manualApply = PlatformHelper.Is(Platform.MacOS);
 
@@ -80,6 +59,15 @@ public static class ExternMocker
         if (!d.IsApplied)
             throw new Exception("Could not apply extern mock");
 
-        return d;
+        _detours.Add(d);
+    }
+
+    public static void UnPatch()
+    {
+        foreach (var d in _detours)
+        {
+            d.Undo();
+        }
+        _detours.Clear();
     }
 }
