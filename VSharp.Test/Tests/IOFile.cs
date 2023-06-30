@@ -8,14 +8,14 @@ namespace IntegrationTests
     [TestSvmFixture]
     public sealed class IOFile
     {
-        [TestSvm]
+        [TestSvm(hasExternMocking: true)]
         public static string readFromEmptyFname()
         {
             var s1 = System.IO.File.ReadAllText("");
             return s1;
         }
 
-        [TestSvm]
+        [TestSvm(hasExternMocking: true)]
         public static bool readTwiceFromCorrectPath()
         {
             var s1 = System.IO.File.ReadAllText("/etc/inputrc");
@@ -23,7 +23,7 @@ namespace IntegrationTests
             return s1 == s2;
         }
 
-        [TestSvm]
+        [TestSvm(hasExternMocking: true)]
         public static bool readTwiceFromIncorrectPath()
         {
             var s1 = System.IO.File.ReadAllText("aVeryStrangeFileName");
@@ -31,14 +31,14 @@ namespace IntegrationTests
             return s1 == s2;
         }
 
-        [TestSvm]
+        [TestSvm(hasExternMocking: true)]
         public static int readToArray2()
         {
             var s1 = System.IO.File.ReadAllLines("/etc/inputrc");
             return s1.Length;
         }
 
-        [TestSvm]
+        [TestSvm(hasExternMocking: true)]
         public static bool readToArray()
         {
             var s1 = System.IO.File.ReadAllLines("aVeryStrangeFileName");

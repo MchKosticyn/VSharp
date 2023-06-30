@@ -16,7 +16,7 @@ namespace IntegrationTests
             return dt;
         }
 
-        [TestSvm]
+        [TestSvm(hasExternMocking: true)]
         public static DateTime DtNowRet()
         {
             var t1 = DateTime.Now;
@@ -35,14 +35,14 @@ namespace IntegrationTests
             return 0;
         }
 
-        [TestSvm]
+        [TestSvm(hasExternMocking: true)]
         public static string ReadLine()
         {
             var str = Console.ReadLine();
             return str;
         }
 
-        [TestSvm]
+        [TestSvm(hasExternMocking: true)]
         public static string ReadLineTwice()
         {
             var str = Console.ReadLine();
@@ -50,7 +50,7 @@ namespace IntegrationTests
             return str2;
         }
 
-        [TestSvm]
+        [TestSvm(hasExternMocking: true)]
         public static string ReadLineLength()
         {
             string s = Console.ReadLine();
@@ -58,7 +58,7 @@ namespace IntegrationTests
             return s;
         }
 
-        [TestSvm]
+        [TestSvm(hasExternMocking: true)]
         public static bool ReadLineCharEq()
         {
             string s = Console.ReadLine();
@@ -73,7 +73,7 @@ namespace IntegrationTests
             return upper == str;
         }
 
-        [TestSvm]
+        [TestSvm(hasExternMocking: true)]
         public static int LibcRand()
         {
             var x = libc_rand();
@@ -82,7 +82,7 @@ namespace IntegrationTests
             return x;
         }
 
-        [TestSvm]
+        [TestSvm(hasExternMocking: true)]
         public static bool LibcRandCmp()
         {
             var x = libc_rand();
