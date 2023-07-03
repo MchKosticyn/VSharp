@@ -23,10 +23,9 @@ with
         let args = x.args |> List.map toString |> join ", "
         $"{x.mock.Method.Name}({args}):{x.callIndex}"
 
-and MethodMock(method : IMethod, mType : MockingType) =
+and MethodMock(method : IMethod, mockingType : MockingType) =
     let mutable callIndex = 0
     let callResults = ResizeArray<term>()
-    let mockingType = mType
 
     member x.Method : IMethod = method
 

@@ -34,8 +34,8 @@ type IConcreteMemory =
     abstract Remove : concreteHeapAddress -> unit
 
 type MockingType =
-    | Mock
-    | ExternMock
+    | Default
+    | Extern
 
 type IMethodMock =
     abstract BaseMethod : System.Reflection.MethodInfo

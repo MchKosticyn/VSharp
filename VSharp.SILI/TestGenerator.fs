@@ -239,10 +239,10 @@ module TestGenerator =
                 for entry in state.methodMocks do
                     let mock = entry.Value
                     match mock.MockingType with
-                    | Mock ->
+                    | Default ->
                         let values = mock.GetImplementationClauses()
                         implementations.Add(mock.BaseMethod, values)
-                    | ExternMock ->
+                    | Extern ->
                         encodeExternMock model state indices mockCache implementations test mock
 
                 let concreteClassParams = Array.zeroCreate classParams.Length

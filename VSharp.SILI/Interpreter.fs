@@ -852,6 +852,10 @@ type internal ILInterpreter() as this =
             method.CustomAttributes |> Seq.exists (fun m -> m.AttributeType.ToString() = intrinsicAttr)
         isIntrinsic && (Array.contains fullMethodName x.TrustedIntrinsics |> not)
 
+    member private x.ShouldMock (method : Method) fullMethodName =
+        Loader.isShimmed fullMethodName
+        || method.IsExternalMethod && not method.IsQCall
+
     member private x.InstantiateThisIfNeed state thisOption (method : Method) =
         match thisOption with
         | Some this ->
@@ -1110,7 +1114,7 @@ type internal ILInterpreter() as this =
         elif x.IsArrayGetOrSet method then
             let cilStates = x.InvokeArrayGetOrSet cilState method thisOption args
             List.map moveIpToExit cilStates |> k
-        elif ExternMocker.ExtMocksSupported && Loader.shouldMock method.MethodBase fullMethodName then
+        elif ExternMocker.ExtMocksSupported && x.ShouldMock method fullMethodName then
             let mockMethod = ExternMockAndCall cilState.state method None []
             match mockMethod with
             | Some symVal ->
