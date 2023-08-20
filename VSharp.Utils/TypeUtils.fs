@@ -147,6 +147,8 @@ module TypeUtils =
     let private sizeOfs = Dictionary<Type, sizeOfType>()
 
     let private createSizeOf (typ : Type) =
+        if not (not typ.ContainsGenericParameters && typ <> typeof<Void>) then
+            internalfail ""
         assert(not typ.ContainsGenericParameters && typ <> typeof<Void>)
         let m = DynamicMethod("GetManagedSizeImpl", typeof<uint32>, null);
         let gen = m.GetILGenerator()
@@ -212,6 +214,16 @@ module TypeUtils =
             if isReferenceTypeParameter t then false
             else __insufficientInformation__ "Can't determine if %O is a nullable type or not!" t
         | t -> Nullable.GetUnderlyingType(t) <> null
+
+    let getGenericArgs (t: Type) =
+        if t.IsGenericType then t.GetGenericArguments() else [||]
+
+    let rec getSupertypes (t: Type) =
+        if t = null then []
+        else t :: getSupertypes t.BaseType
+
+    let getTypeDef (t: Type) =
+        if t.IsGenericType then t.GetGenericTypeDefinition() else t
 
     let (|Numeric|_|) = function
         | t when isNumeric t -> Some(t)
@@ -304,6 +316,12 @@ module TypeUtils =
         | ReferenceType
         | TypeVariable _ -> Some(ComplexType)
         | _ -> None
+
+    let (|Covariant|Invariant|Contravariant|) (parameter : Type) =
+        assert parameter.IsGenericParameter
+        if parameter.GenericParameterAttributes &&& GenericParameterAttributes.Contravariant = GenericParameterAttributes.Contravariant then Contravariant
+        elif parameter.GenericParameterAttributes &&& GenericParameterAttributes.Covariant = GenericParameterAttributes.Covariant then Covariant
+        else Invariant
 
 
     let elementType = function

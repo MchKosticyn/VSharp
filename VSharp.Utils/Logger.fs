@@ -16,7 +16,7 @@ module Logger =
     let Info = 4
     let Trace = 5
 
-    let mutable currentLogLevel = Error
+    let mutable currentLogLevel = Trace
     let mutable currentTextWriter = Console.Out
     let mutable writeTimestamps = true
 
