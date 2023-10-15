@@ -22,6 +22,14 @@ type explorationMode =
     | TestCoverageMode of coverageZone * searchMode
     | StackTraceReproductionMode of StackTrace
 
+type fuzzerIsolation =
+    | Process
+
+type FuzzerOptions = {
+    isolation: fuzzerIsolation
+    outputDirectory: DirectoryInfo
+}
+
 type SVMOptions = {
     explorationMode : explorationMode
     outputDirectory : DirectoryInfo

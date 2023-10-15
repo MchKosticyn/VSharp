@@ -46,34 +46,8 @@ type private TestRestorer () =
     member this.TrackExecutionInfo threadId executionData =
         executionInfo[threadId] <- executionData
 
-        // let restoreTest unhandledExceptionPath =
-    //     let text = File.ReadAllText(unhandledExceptionPath).Split()
-    //     assert (text.Length = 2)
-    //     let threadId = text[0] |> int
-    //     let exceptionName = text[1]
-    //
-    //     let invocationResult =
-    //         match exceptionName with
-    //         | "System.StackOverflowException" -> StackOverflowException() :> Exception |> Thrown
-    //         | "System.AccessViolationException" -> AccessViolationException() :> Exception |> Thrown
-    //         | _ -> internalfail $"Unexpected exception: {exceptionName}"
-    //
-    //     let executionData = executionInfo[threadId]
-    //     let typeSolver = TypeSolver()
-        // let method = Application.getMethod 
-        // match typeSolver.SolveGenericMethodParameters method (generator.GenerateObject typeSolverRnd) with
-        //         | Some(method, typeStorage) ->
-        //             traceFuzzing "Generics successfully solved"
-        //             stopwatch.Start()
-        //             while currentMillisecondsElapsed < fuzzerOptions.timeLimitPerMethod do
-        //                 traceFuzzing "Start fuzzing iteration"
-        //                 let results = fuzzBatch typeSolverSeed rnd method typeStorage
-        //                 do! handleResults results
-        //                 stopwatch.Stop()
-        //                 currentMillisecondsElapsed <- currentMillisecondsElapsed + int stopwatch.ElapsedMilliseconds
-        //         | None -> traceFuzzing "Generics solving failed"
-        //()
-    member this.RestoreTest threadId exceptionName =
+    // TODO: Add test restoring
+    member this.RestoreTest failReportPath =
         ()
 
 type Interactor (
@@ -83,6 +57,7 @@ type Interactor (
     onCancelled: unit -> unit
     ) =
 
+    // TODO: make options configurable (CLI & Tests) 
     let fuzzerOptions =
         {
             initialSeed = 42
@@ -102,29 +77,17 @@ type Interactor (
             sanitizersMode = Disabled
         }
 
+    
     let testRestorer = TestRestorer()
     let mutable fuzzerService = Unchecked.defaultof<IFuzzerService>
     let mutable fuzzerProcess = Unchecked.defaultof<Process>
     let mutable queued = System.Collections.Generic.Queue<MethodBase>()
 
-    let startFuzzer () =
-        fuzzerProcess <- startFuzzer fuzzerOptions fuzzerDeveloperOptions 
-        fuzzerService <- connectFuzzerService ()
-        waitFuzzerForReady fuzzerService
-
-    let initialize () =
-        startFuzzer ()
-        cancellationToken.Register(fun () ->
-            if not fuzzerProcess.HasExited  then
-                fuzzerProcess.Kill ()
-        ) |> ignore
-
-
 
     let handleExit () =
         let unhandledExceptionPath = $"{Directory.GetCurrentDirectory()}{Path.DirectorySeparatorChar}kek.info"
         if File.Exists(unhandledExceptionPath) then
-            testRestorer.RestoreTest 0 0 //unhandledExceptionPath
+            testRestorer.RestoreTest unhandledExceptionPath
 
     let setupFuzzer targetAssemblyPath =
         task {
@@ -171,42 +134,68 @@ type Interactor (
 
         MasterProcessService(onTrackCoverage, onTrackExecutionSeed, onFinished)
 
-    member this.StartFuzzing (targetAssemblyPath: string) (isolated: MethodBase seq) =
+    let startFuzzer () =
+        fuzzerProcess <- startFuzzer fuzzerOptions fuzzerDeveloperOptions 
+        fuzzerService <- connectFuzzerService ()
+        waitFuzzerForReady fuzzerService
 
-        initialize ()
-        queued <- System.Collections.Generic.Queue<_>(isolated)
+    let startMasterProcess () =
+        startMasterProcessService masterProcessService CancellationToken.None
+        |> ignore
 
-        let onFuzzerFailed () =
+    let initialize () =
+        cancellationToken.Register(fun () ->
+        if not fuzzerProcess.HasExited  then
+            fuzzerProcess.Kill ()
+        ) |> ignore
+        startMasterProcess ()
+        startFuzzer ()
+
+    let rec startFuzzingLoop (targetAssemblyPath: string) =
+
+        let startFuzzing () =
             task {
-                handleExit ()
                 startFuzzer ()
                 do! setupFuzzer targetAssemblyPath
                 do! fuzzNextMethod ()
             }
 
-        let pollFuzzer () =
+        let restartFuzzing () =
             task {
-                if queued.Count = 0 then
-                    return false
-                else
-                    if fuzzerProcess.HasExited then
-                        do! onFuzzerFailed ()
-                    return true
+                handleExit ()
+                do! startFuzzing ()
+            }
+
+        let finish () = fuzzerService.Finish (UnitData())
+
+        let waitForExit () =
+            task {
+                match fuzzerDeveloperOptions.sanitizersMode with
+                | Disabled ->  do! fuzzerProcess.WaitForExitAsync cancellationToken
+                | Enabled _ -> do fuzzerProcess.Kill()
             }
 
         task {
             try
-                do! fuzzNextMethod ()
+                do! startFuzzing ()
                 let mutable cont = false
                 while cont do
                     do! Task.Delay(100)
-                    let! contValue = pollFuzzer () 
-                    cont <- contValue
-
-                do! fuzzerService.Finish (UnitData())
-                match fuzzerDeveloperOptions.sanitizersMode with
-                | Disabled ->  do! fuzzerProcess.WaitForExitAsync cancellationToken
-                | Enabled _ -> do fuzzerProcess.Kill()
-
-            with :? TaskCanceledException -> onCancelled ()
+                    if queued.Count = 0 then
+                        cont <- false
+                    elif fuzzerProcess.HasExited then
+                        do! restartFuzzing ()
+                        do! startFuzzingLoop targetAssemblyPath
+                do! finish ()
+                do! waitForExit ()
+            with
+                | :? TaskCanceledException -> onCancelled ()
+                | :? System.Net.Http.HttpRequestException ->
+                        do! restartFuzzing ()
+                        do! startFuzzingLoop targetAssemblyPath
         }
+
+    member this.StartFuzzing (targetAssemblyPath: string) (isolated: MethodBase seq) =
+        initialize ()
+        queued <- System.Collections.Generic.Queue<_>(isolated)
+        startFuzzingLoop targetAssemblyPath

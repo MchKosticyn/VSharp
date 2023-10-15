@@ -58,7 +58,7 @@ internal static class Benchmarks
         var exploredMethodInfo = AssemblyManager.NormalizeMethod(target.Method);
 
         Logger.configureWriter(TestContext.Progress);
-        Logger.currentLogLevel = Logger.Warning;
+
 
         var unitTests = new UnitTests(Directory.GetCurrentDirectory());
         var options = new SVMOptions(

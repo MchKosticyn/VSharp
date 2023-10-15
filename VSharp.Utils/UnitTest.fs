@@ -201,6 +201,33 @@ type UnitTest private (m : MethodBase, info : testInfo, mockStorage : MockStorag
         use stream = File.Create(destination)
         serializer.Serialize(stream, info)
 
+    member x.SerializeToString() =
+        memoryGraph.Serialize info.memory
+        let t = typeof<testInfo>
+        let extraAssempliesProperty = t.GetProperty("extraAssemblyLoadDirs")
+        extraAssempliesProperty.SetValue(info, Array.ofList extraAssemblyLoadDirs)
+        let typeMocksProperty = t.GetProperty("typeMocks")
+        let typeMocks =
+            mockStorage.TypeMocks.ToArray()
+            |> Array.map (fun m -> typeMockRepr.Encode m memoryGraph.Encode)
+        typeMocksProperty.SetValue(info, typeMocks)
+        let extMocksProperty = t.GetProperty("externMocks")
+        extMocksProperty.SetValue(info, externMocks.ToArray())
+
+        let serializer = XmlSerializer t
+        let writer = new StringWriter()
+        serializer.Serialize(writer, info)
+        writer.GetStringBuilder().ToString()
+
+    static member DeserializeFromString(str: string) =
+        let serializer = XmlSerializer(typeof<testInfo>)
+        try
+            let testInfo = serializer.Deserialize(new StreamReader(str)) :?> testInfo
+            UnitTest.DeserializeFromTestInfo (testInfo, false)
+        with child ->
+            let exn = InvalidDataException("Input test is incorrect", child)
+            raise exn
+
     static member DeserializeTestInfo(stream : FileStream) =
         let serializer = XmlSerializer(typeof<testInfo>)
         try

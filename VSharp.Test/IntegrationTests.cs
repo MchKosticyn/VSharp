@@ -51,6 +51,18 @@ namespace VSharp.Test
         Unix
     }
 
+    public enum FuzzerIsolation
+    {
+        Process
+    }
+
+    public enum ExplorationMode
+    {
+        Sili,
+        Interleaving,
+        Fuzzer
+    }
+
     public class TestSvmFixtureAttribute : NUnitAttribute, IFixtureBuilder
     {
         public IEnumerable<TestSuite> BuildFrom(ITypeInfo typeInfo)
@@ -103,6 +115,8 @@ namespace VSharp.Test
         private readonly bool _checkAttributes;
         private readonly bool _hasExternMocking;
         private readonly OsType _supportedOs;
+        private readonly FuzzerIsolation _fuzzerIsolation;
+        private readonly ExplorationMode _explorationMode;
         private readonly int _randomSeed;
         private readonly uint _stepsLimit;
 
@@ -118,6 +132,8 @@ namespace VSharp.Test
             bool checkAttributes = true,
             bool hasExternMocking = false,
             OsType supportedOs = OsType.All,
+            FuzzerIsolation fuzzerIsolation = FuzzerIsolation.Process,
+            ExplorationMode explorationMode = ExplorationMode.Sili,
             int randomSeed = 0,
             uint stepsLimit = 0)
         {
@@ -136,6 +152,8 @@ namespace VSharp.Test
             _checkAttributes = checkAttributes;
             _hasExternMocking = hasExternMocking;
             _supportedOs = supportedOs;
+            _fuzzerIsolation = fuzzerIsolation;
+            _explorationMode = explorationMode;
             _randomSeed = randomSeed;
             _stepsLimit = stepsLimit;
         }
@@ -155,6 +173,8 @@ namespace VSharp.Test
                 _checkAttributes,
                 _hasExternMocking,
                 _supportedOs,
+                _fuzzerIsolation,
+                _explorationMode,
                 _randomSeed,
                 _stepsLimit
             );
@@ -176,6 +196,8 @@ namespace VSharp.Test
             private readonly bool _checkAttributes;
             private readonly bool _hasExternMocking;
             private readonly OsType _supportedOs;
+            private readonly fuzzerIsolation _fuzzerIsolation;
+            private readonly ExplorationMode _explorationMode;
             private readonly int _randomSeed;
             private readonly uint _stepsLimit;
 
@@ -192,6 +214,8 @@ namespace VSharp.Test
                 bool checkAttributes,
                 bool hasExternMocking,
                 OsType supportedOs,
+                FuzzerIsolation fuzzerIsolation,
+                ExplorationMode explorationMode,
                 int randomSeed,
                 uint stepsLimit) : base(innerCommand)
             {
@@ -238,6 +262,11 @@ namespace VSharp.Test
                 _checkAttributes = checkAttributes;
                 _hasExternMocking = hasExternMocking;
                 _supportedOs = supportedOs;
+                _fuzzerIsolation = fuzzerIsolation switch
+                {
+                    FuzzerIsolation.Process => SVM.fuzzerIsolation.Process
+                };
+                _explorationMode = explorationMode;
                 _randomSeed = randomSeed;
                 _stepsLimit = stepsLimit;
             }
@@ -247,26 +276,77 @@ namespace VSharp.Test
                 context.CurrentResult.SetResult(ResultState.Skipped);
                 return context.CurrentResult;
             }
-
-            private TestResult Explore(TestExecutionContext context)
+            
+            private bool RenderTests(
+                TestExecutionContext context,
+                TestStatistics statistics,
+                MethodInfo exploredMethodInfo,
+                IStatisticsReporter reporter,
+                DirectoryInfo testsDir)
             {
-                if (_hasExternMocking && !ExternMocker.ExtMocksSupported)
-                    return IgnoreTest(context);
+                if (!_renderTests || _hasExternMocking) return true;
 
-                switch (_supportedOs)
+                var tests = testsDir.EnumerateFiles("*.vst");
+                TestContext.Out.WriteLine("Starting tests renderer...");
+                try
                 {
-                    case OsType.Windows:
-                        if (!OperatingSystem.IsWindows())
-                            return IgnoreTest(context);
-                        break;
-                    case OsType.Unix:
-                        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
-                            return IgnoreTest(context);
-                        break;
-                    case OsType.All:
-                        break;
+                    Renderer.Render(tests, true, false, exploredMethodInfo.DeclaringType);
+                }
+                catch (UnexpectedExternCallException)
+                {
+                    // TODO: support rendering for extern mocks
+                }
+                catch (Exception e)
+                {
+                    context.CurrentResult.SetResult(ResultState.Failure,
+                        $"Test renderer failed: {e}");
+                    reporter?.Report(statistics with { Exception = e });
+                    return false;
                 }
 
+                return true;
+            }
+
+            private void CheckCoverage(
+                TestExecutionContext context,
+                TestStatistics statistics,
+                MethodInfo exploredMethodInfo,
+                IStatisticsReporter reporter,
+                DirectoryInfo testsDir
+            )
+            {
+                // NOTE: to disable coverage check TestResultsChecker's expected coverage should be null
+                //       to enable coverage check use _expectedCoverage
+                bool success;
+                var resultMessage = string.Empty;
+                uint? actualCoverage;
+                if (_expectedCoverage is {} expectedCoverage)
+                {
+                    TestContext.Out.WriteLine("Starting coverage tool...");
+                    success =
+                        TestResultChecker.Check(
+                            testsDir,
+                            exploredMethodInfo,
+                            expectedCoverage,
+                            out var coverage,
+                            out resultMessage);
+                    actualCoverage = (uint?)coverage;
+                }
+                else
+                {
+                    TestContext.Out.WriteLine("Starting tests checker...");
+                    success = TestResultChecker.Check(testsDir);
+                    actualCoverage = null;
+                }
+                if (success)
+                    context.CurrentResult.SetResult(ResultState.Success);
+                else
+                    context.CurrentResult.SetResult(ResultState.Failure, resultMessage);
+                reporter?.Report(statistics with { Coverage = actualCoverage });
+            }
+
+            private TestResult ExploreSili(TestExecutionContext context)
+            {
                 IStatisticsReporter reporter = null;
 
                 var csvReportPath = TestContext.Parameters[CsvPathParameterName];
@@ -308,7 +388,19 @@ namespace VSharp.Test
                         randomSeed: _randomSeed,
                         stepsLimit: _stepsLimit
                     );
-                    using var explorer = new SVM.SVM(_options);
+
+                    using var explorer = _explorationMode switch
+                    {
+                        ExplorationMode.Sili => new SVM.SVM(_options),
+                        ExplorationMode.Interleaving => new SVM.SVM(
+                            _options, 
+                            Microsoft.FSharp.Core.FSharpOption<FuzzerOptions>.Some(new FuzzerOptions(
+                                fuzzerIsolation.Process, 
+                                _options.outputDirectory
+                            ))
+                        ),
+                        ExplorationMode.Fuzzer => throw new Exception("Unreachable"),
+                    };
 
                     explorer.Interpret(
                         new [] { exploredMethodInfo },
@@ -339,56 +431,9 @@ namespace VSharp.Test
                     if (unitTests.UnitTestsCount != 0 || unitTests.ErrorsCount != 0)
                     {
                         var testsDir = unitTests.TestDirectory;
-                        // TODO: support rendering for extern mocks
-                        if (_renderTests && !_hasExternMocking)
-                        {
-                            var tests = testsDir.EnumerateFiles("*.vst");
-                            TestContext.Out.WriteLine("Starting tests renderer...");
-                            try
-                            {
-                                Renderer.Render(tests, true, false, exploredMethodInfo.DeclaringType);
-                            }
-                            catch (UnexpectedExternCallException)
-                            {
-                                // TODO: support rendering for extern mocks
-                            }
-                            catch (Exception e)
-                            {
-                                context.CurrentResult.SetResult(ResultState.Failure,
-                                    $"Test renderer failed: {e}");
-                                reporter?.Report(stats with { Exception = e });
-                                return context.CurrentResult;
-                            }
-                        }
-
-                        // NOTE: to disable coverage check TestResultsChecker's expected coverage should be null
-                        //       to enable coverage check use _expectedCoverage
-                        bool success;
-                        var resultMessage = string.Empty;
-                        uint? actualCoverage;
-                        if (_expectedCoverage is {} expectedCoverage)
-                        {
-                            TestContext.Out.WriteLine("Starting coverage tool...");
-                            success =
-                                TestResultChecker.Check(
-                                    testsDir,
-                                    exploredMethodInfo,
-                                    expectedCoverage,
-                                    out var coverage,
-                                    out resultMessage);
-                            actualCoverage = (uint?)coverage;
-                        }
-                        else
-                        {
-                            TestContext.Out.WriteLine("Starting tests checker...");
-                            success = TestResultChecker.Check(testsDir);
-                            actualCoverage = null;
-                        }
-                        if (success)
-                            context.CurrentResult.SetResult(ResultState.Success);
-                        else
-                            context.CurrentResult.SetResult(ResultState.Failure, resultMessage);
-                        reporter?.Report(stats with { Coverage = actualCoverage });
+                        var rendered = RenderTests(context, stats, exploredMethodInfo, reporter, testsDir);
+                        if (!rendered) return context.CurrentResult;
+                        CheckCoverage(context, stats, exploredMethodInfo, reporter, testsDir);
                     }
                     else
                     {
@@ -403,6 +448,65 @@ namespace VSharp.Test
                 }
 
                 return context.CurrentResult;
+            }
+
+            private TestResult ExploreFuzzer(TestExecutionContext context)
+            {
+                var originMethodInfo = innerCommand.Test.Method.MethodInfo;
+                var exploredMethodInfo = (MethodInfo) AssemblyManager.NormalizeMethod(originMethodInfo);
+
+                try
+                {
+                    var unitTests = new UnitTests(Directory.GetCurrentDirectory());
+                    var testsDir = unitTests.TestDirectory;
+
+                    var explorer = new StandaloneFuzzer(new FuzzerOptions(fuzzerIsolation.Process, testsDir));
+                    var cancellationTokenSource = new CancellationTokenSource();
+                    if (_timeout > 0) cancellationTokenSource.CancelAfter(_timeout);
+                    explorer
+                        .StartFuzzing(cancellationTokenSource.Token, new []{exploredMethodInfo})
+                        .Wait(cancellationTokenSource.Token);
+
+                    TestContext.Out.WriteLine($"Test results written to {unitTests.TestDirectory.FullName}");
+
+                    var rendered = RenderTests(context, null, exploredMethodInfo, null, testsDir);
+                    if (!rendered) return context.CurrentResult;
+                    
+                    CheckCoverage(context, null, exploredMethodInfo, null, testsDir);
+                }
+                catch (Exception e)
+                {
+                    context.CurrentResult.SetResult(ResultState.Error, e.Message, e.StackTrace);
+                }
+
+                return context.CurrentResult;
+            }
+
+            private TestResult Explore(TestExecutionContext context)
+            {
+                if (_hasExternMocking && !ExternMocker.ExtMocksSupported)
+                    return IgnoreTest(context);
+
+                switch (_supportedOs)
+                {
+                    case OsType.Windows:
+                        if (!OperatingSystem.IsWindows())
+                            return IgnoreTest(context);
+                        break;
+                    case OsType.Unix:
+                        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+                            return IgnoreTest(context);
+                        break;
+                    case OsType.All:
+                        break;
+                }
+
+                return _explorationMode switch
+                {
+                    ExplorationMode.Sili => ExploreSili(context),
+                    ExplorationMode.Interleaving => ExploreSili(context),
+                    ExplorationMode.Fuzzer => ExploreFuzzer(context),
+                };
             }
 
             public override TestResult Execute(TestExecutionContext context)

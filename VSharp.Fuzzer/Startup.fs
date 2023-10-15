@@ -105,7 +105,7 @@ let internal startFuzzer options developerOptions =
         proc.ErrorDataReceived.Add (fun x -> Logger.error $"[Fuzzer STDERR] {x.Data}")
         proc.BeginErrorReadLine ()
     if developerOptions.redirectStdout then
-        proc.OutputDataReceived.Add (fun x -> Logger.error $"[Fuzzer STDOUT] {x.Data}")
+        proc.OutputDataReceived.Add (fun x -> Logger.info $"[Fuzzer STDOUT] {x.Data}")
         proc.BeginOutputReadLine ()
 
     if

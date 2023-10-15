@@ -198,16 +198,19 @@ type public SVMStatistics(entryMethods : Method seq) =
 
     member x.SetBasicBlocksAsCoveredByTest (blocks : codeLocation seq) =
         let mutable coveredBlocks = ref null
+        let mutable hasNewCoverage = false
         let blocks = Seq.distinct blocks
         for block in blocks do
             if blocksCoveredByTests.TryGetValue(block.method, coveredBlocks) then
-                coveredBlocks.Value.TryAdd(block.offset, ()) |> ignore
+                hasNewCoverage <- hasNewCoverage || coveredBlocks.Value.TryAdd(block.offset, ())
             else
                 let coveredBlocks = ConcurrentDictionary()
+                hasNewCoverage <- true
                 coveredBlocks.TryAdd(block.offset, ()) |> ignore
                 blocksCoveredByTests[block.method] <- coveredBlocks
             if block.method.InCoverageZone then
                 Interlocked.Exchange(ref isVisitedBlocksNotCoveredByTestsRelevant, 0) |> ignore
+        hasNewCoverage
 
     member x.IsBasicBlockCoveredByTest (blockStart : codeLocation) =
         let mutable coveredBlocks = ref null
@@ -261,9 +264,8 @@ type public SVMStatistics(entryMethods : Method seq) =
         ()
 
     member x.TrackFork (parent : cilState) (children : cilState seq) =
-        if Logger.isTagEnabled Logger.stateTraceTag then
-            for child in children do
-                Logger.traceWithTag Logger.stateTraceTag $"BRANCH: {parent.id} -> {child.id}"
+        for child in children do
+            Logger.traceWithTag Logger.stateTraceTag $"BRANCH: {parent.id} -> {child.id}"
 
         let blocks = ref Set.empty
         // TODO: check why 'parent' may not be in 'visitedBlocksNotCoveredByTests'
