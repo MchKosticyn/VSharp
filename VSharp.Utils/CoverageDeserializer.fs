@@ -1,6 +1,8 @@
 namespace VSharp
 
 open System
+open System.Runtime.InteropServices
+open System.Runtime.Serialization
 open System.Text
 
 type CoverageLocation = {
@@ -8,79 +10,185 @@ type CoverageLocation = {
     moduleName: string
     methodToken: int
     offset: int
-} with
-        static member serialize x =
-            $"%s{x.assemblyName}|%s{x.moduleName}|%d{x.methodToken}|%d{x.offset}"
+}
 
-        static member deserialize (x: string) =
-            let parts = x.Split "|"
-            {
-                assemblyName = parts[0]
-                moduleName = parts[1]
-                methodToken = int parts[2]
-                offset = int parts[3]
-            }
+type CoverageReport = {
+    threadId: int
+    coverageLocations: CoverageLocation[]
+}
+
+#nowarn "9"
+[<Struct; CLIMutable; DataContract>]
+[<StructLayout(LayoutKind.Explicit, Size = 20)>]
+type RawCoverageLocation = {
+    [<FieldOffset(00); DataMember(Order = 1)>] offset: uint32
+    [<FieldOffset(04); DataMember(Order = 2)>] event: int32
+    [<FieldOffset(08); DataMember(Order = 3)>] methodId: int32
+    [<FieldOffset(12); DataMember(Order = 4)>] threadId: uint64
+}
+
+type RawMethodInfo = {
+    methodToken: uint32 
+    moduleName: string
+    assemblyName: string
+}
+
+type RawCoverageReport = {
+    threadId: int
+    rawCoverageLocations: RawCoverageLocation[]
+}
+
+type RawCoverageReports = {
+    methods: System.Collections.Generic.Dictionary<int, RawMethodInfo>
+    reports: RawCoverageReport[]
+}
+
+
 
 module CoverageDeserializer =
-    let mutable private dataOffset = 0
 
-    let private increaseOffset i =
+    let mutable private data = [||]
+    let mutable private dataOffset = 0
+    let mutable private deserializedMethods = System.Collections.Generic.Dictionary()
+
+
+    let trace x =
+        Logger.traceWithTag Logger.deserializationTraceTag x
+
+    let traceValue name x =
+        Logger.traceWithTag Logger.deserializationTraceTag $"{name}: {x}"
+        x
+
+    let inline private increaseOffset i =
         dataOffset <- dataOffset + i
 
-    let private readInt32 data =
+    let inline private readInt32 () =
         let result = BitConverter.ToInt32(data, dataOffset)
         increaseOffset sizeof<int32>
         result
 
-    let private readUInt32 data =
+    let inline private readUInt32 () =
         let result = BitConverter.ToUInt32(data, dataOffset)
         increaseOffset sizeof<uint32>
         result
 
-    let private readString data =
-        let size = readUInt32 data |> int
+    let inline private readUInt64 () =
+        let result = BitConverter.ToUInt64(data, dataOffset)
+        increaseOffset sizeof<uint64>
+        result
+
+    let inline private readString () =
+        let size = readUInt32 () |> int
         let result = Array.sub data dataOffset (2 * size - 2)
         increaseOffset (2 * size)
-        Encoding.Unicode.GetString(result)
+        let result = Encoding.Unicode.GetString(result)
+        result
 
-    let private deserializeMethodData data =
-        let methodToken = readUInt32 data
-        let assemblyName = readString data
-        let moduleName = readString data
-        {| MethodToken = methodToken; AssemblyName = assemblyName; ModuleName = moduleName |}
+    let inline private deserializeMethodData () =
+        trace "Deserialize method data:"
+        let methodToken = readUInt32 () |> traceValue "methodToken"
+        let assemblyName = readString () |> traceValue "assemblyName"
+        let moduleName = readString () |> traceValue "moduleName"
+        { methodToken = methodToken; assemblyName = assemblyName; moduleName = moduleName }
 
-    let private deserializeCoverageInfo data =
-        let offset = readUInt32 data
-        let event = readInt32 data
-        let methodId = readInt32 data
-        {| Offset = offset; Event = event; MethodId = methodId |}
+    let inline private deserializeCoverageInfo () =
+        trace "Deserialize coverage info:"
+        let offset = readUInt32 () |> traceValue "offset"
+        let event = readInt32 () |> traceValue "event"
+        let methodId = readInt32 () |> traceValue "methodId"
+        let threadId = readUInt64 () |> traceValue "threadId"
+        { offset = offset; event = event; methodId = methodId; threadId = threadId }
 
-    let private deserializeArray elementDeserializer data =
-        let arraySize = readInt32 data
-        Array.init arraySize (fun _ -> elementDeserializer data)
+    let inline private deserializeArray elementDeserializer =
+        trace "Deserialize array:"
+        let arraySize = readInt32 () |> traceValue "Array size"
+        Array.init arraySize (fun _ -> elementDeserializer ())
 
-    let private deserializeHistory data =
-        let methodsData = deserializeArray deserializeMethodData data
-        let coverageInfo = deserializeArray deserializeCoverageInfo data
+    let inline private deserializeDictionary keyDeserializer elementDeserializer =
+        trace "Deserialize dictionary:"
+        let dictionarySize = readInt32 () |> traceValue "Dict size"
+        let dictionary = System.Collections.Generic.Dictionary()
+        for _ in 0..dictionarySize - 1 do
+            let index = keyDeserializer ()
+            let element = elementDeserializer ()
+            dictionary.Add(index, element)
+        dictionary
 
-        coverageInfo
-        |> Seq.map (fun x ->
-            let methodData = methodsData[x.MethodId]
+    let inline private deserializeCoverageInfoFast () =
+        trace "Deserialize coverage info fast"
+        let count = readInt32 () |> traceValue "Reports count"
+        let bytesCount = sizeof<RawCoverageLocation> * count
+        let targetBytes = Array.zeroCreate bytesCount
+        let targetSpan = Span(targetBytes)
+        data.AsSpan().Slice(dataOffset, bytesCount).CopyTo(targetSpan)
+        let span = MemoryMarshal.Cast<byte, RawCoverageLocation> targetSpan
+        for x in span do
+            trace "------"
+            trace $"offset: {x.offset}"
+            trace $"event: {x.event}"
+            trace $"method id: {x.methodId}"
+            trace $"thread id: {x.threadId}"
+        increaseOffset bytesCount
+        span.ToArray()
+
+    let private deserializeRawReport () =
+        let threadId = readInt32 () |> traceValue "Thread id"
+        let threadAborted = readInt32 () |> traceValue "Aborted"
+        if threadAborted = 1 then
             {
-                assemblyName = methodData.AssemblyName
-                moduleName = methodData.ModuleName
-                methodToken = int methodData.MethodToken
-                offset = int x.Offset
+                threadId = threadId
+                rawCoverageLocations = [||]
             }
-        )
-        |> Seq.toArray
+        else
+            {
+                threadId = threadId
+                rawCoverageLocations = deserializeCoverageInfoFast ()
+            }
 
-    let getHistory bytes =
+    let private deserializeRawReports () =
+        trace "Start method deserialization"
+        let methods = deserializeDictionary readInt32 deserializeMethodData
+        trace "Methods deserialized"
+        let reports = deserializeArray deserializeRawReport
+        trace "Reports deserialized"
+        {
+            methods = methods
+            reports = reports
+        }
+
+    let private startNewDeserialization bytes =
+        trace "Start new deserialization"
+        data <- bytes
         dataOffset <- 0
+
+    let private getMethods () =
+        deserializedMethods <- deserializeDictionary readInt32 deserializeMethodData
+
+    let getRawReports bytes =
         try
-            deserializeArray deserializeHistory bytes
+            startNewDeserialization bytes
+            deserializeRawReports ()
         with
         | e ->
             Logger.error $"{dataOffset}"
             Logger.error $"{e.Message}\n\n{e.StackTrace}"
             failwith "CoverageDeserialization failed!"
+
+    let reportsFromRawReports (rawReports: RawCoverageReports) =
+
+        let toLocation (x: RawCoverageLocation) =
+            let method = rawReports.methods[x.methodId]
+            {
+                assemblyName = method.assemblyName
+                moduleName = method.moduleName
+                methodToken = method.methodToken |> int
+                offset = x.offset |> int
+            }
+
+        let toReport (x: RawCoverageReport) =
+            {
+                threadId = x.threadId
+                coverageLocations = x.rawCoverageLocations |> Array.map toLocation 
+            }
+
+        rawReports.reports |> Array.map toReport

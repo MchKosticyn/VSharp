@@ -2,6 +2,8 @@ namespace VSharp.SVM
 
 open System
 open System.Reflection
+open System.Collections.Generic
+open System.Threading
 open System.Threading.Tasks
 open FSharpx.Collections
 
@@ -11,7 +13,7 @@ open VSharp.Interpreter.IL.CilStateOperations
 open VSharp.Interpreter.IL
 open VSharp.Solver
 
-type public SVM(options : SVMOptions) =
+type public SVM(options : SVMOptions, fuzzerOptions : FuzzerOptions option) =
 
     let hasTimeout = options.timeout > 0
     let timeout =
@@ -184,6 +186,9 @@ type public SVM(options : SVMOptions) =
     let isTimeoutReached() = hasTimeout && statistics.CurrentExplorationTime.TotalMilliseconds >= timeout
     let shouldReleaseBranches() = options.releaseBranches && statistics.CurrentExplorationTime.TotalMilliseconds >= branchReleaseTimeout
     let isStepsLimitReached() = hasStepsLimit && statistics.StepsCount >= options.stepsLimit
+
+    new (options : SVMOptions) =
+        new SVM (options, None)
 
     static member private AllocateByRefParameters initialState (method : Method) =
         let allocateIfByRef (pi : ParameterInfo) =
@@ -424,6 +429,16 @@ type public SVM(options : SVMOptions) =
             reportError <- wrapOnError onException false
             reportFatalError <- wrapOnError onException true
             try
+                let initializeAndStartFuzzer cancellationToken  =
+                    let saveStatistic = statistics.SetBasicBlocksAsCoveredByTest
+                    let outputDir = options.outputDirectory.FullName
+                    task {
+                        let targetAssemblyPath = (Seq.head isolated).Module.Assembly.Location
+                        let onCancelled () = Logger.warning "Fuzzer canceled"
+                        let interactor = Fuzzer.Interactor(cancellationToken, outputDir, saveStatistic, onCancelled)
+                        do! interactor.StartFuzzing targetAssemblyPath isolated
+                    }
+
                 let initializeAndStart () =
                     let trySubstituteTypeParameters method =
                         let emptyState = Memory.EmptyState()
@@ -451,9 +466,21 @@ type public SVM(options : SVMOptions) =
                     if not initialStates.IsEmpty then
                         x.AnswerPobs initialStates
                 let explorationTask = Task.Run(initializeAndStart)
+                let tasks =
+                    match fuzzerOptions with
+                    | Some _ -> // Option currently unused because docker isolation level not implemented 
+                        let fuzzerTask =
+                            let tokSource =
+                                if hasTimeout then new CancellationTokenSource(int(timeout * 1.5))
+                                else new CancellationTokenSource()
+                            let tok = tokSource.Token
+                            initializeAndStartFuzzer  tok
+                        [|explorationTask; fuzzerTask|]
+                    | None ->
+                        [|explorationTask|]
                 let finished =
-                    if hasTimeout then explorationTask.Wait(int (timeout * 1.5))
-                    else explorationTask.Wait(); true
+                    if hasTimeout then Task.WaitAll(tasks, int (timeout * 1.5))
+                    else Task.WaitAll(tasks); true
                 if not finished then Logger.warning "Execution was cancelled due to timeout"
             with
             | :? AggregateException as e ->

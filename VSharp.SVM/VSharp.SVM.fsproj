@@ -32,6 +32,7 @@
         <Compile Include="FairSearcher.fs" />
         <Compile Include="BidirectionalSearcher.fs" />
         <Compile Include="SVM.fs" />
+        <Compile Include="StandaloneFuzzer.fs" />
     </ItemGroup>
 
     <ItemGroup>

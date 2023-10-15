@@ -1007,9 +1007,10 @@ namespace IntegrationTests
         }
 
         // abs(x)
-        [TestSvm]
+        [TestSvm(explorationMode: ExplorationMode.Fuzzer)]
         public static double AbsMethod(double x)
         {
+            throw new AccessViolationException();
             return Math.Abs(x);
         }
 

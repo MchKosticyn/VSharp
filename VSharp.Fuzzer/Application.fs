@@ -14,7 +14,7 @@ open VSharp.Fuzzer.Communication.Services
 type internal Application (fuzzerOptions: Startup.FuzzerOptions) =
     let fuzzerCancellationToken = new CancellationTokenSource()
     let coverageTool = CoverageTool()
-    let masterProcessService = connectSymbolicExecutionService ()
+    let masterProcessService = connectMasterProcessService ()
     let fuzzer = Fuzzer.Fuzzer(fuzzerOptions, masterProcessService, coverageTool)
 
     let mutable assembly = Unchecked.defaultof<Assembly>
@@ -30,7 +30,7 @@ type internal Application (fuzzerOptions: Startup.FuzzerOptions) =
 
         let onFuzz moduleName methodToken =
             task {
-                failIfNull fuzzer "onFuzz called before assembly initialization"
+                failIfNull assembly "onFuzz called before assembly initialization"
 
                 let methodBase = Reflection.resolveMethodBaseFromAssembly assembly moduleName methodToken
                 traceFuzzing $"Resolved MethodBase {methodToken}"

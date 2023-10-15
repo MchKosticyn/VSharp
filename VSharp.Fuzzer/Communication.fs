@@ -147,7 +147,7 @@ let private fuzzerPort = 10042
 let private masterProcessPort = 10043
 
 let connectFuzzerService () = Grpc.runGrpcClient<Contracts.IFuzzerService> fuzzerPort
-let connectSymbolicExecutionService () = Grpc.runGrpcClient<Contracts.IMasterProcessService> masterProcessPort
+let connectMasterProcessService () = Grpc.runGrpcClient<Contracts.IMasterProcessService> masterProcessPort
 
 let private waitTimeout = 10000
 let private waitServiceForReady wait =

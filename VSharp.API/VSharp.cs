@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Threading;
 using VSharp.CSharpUtils;
 using VSharp.Interpreter.IL;
 using VSharp.SVM;
@@ -106,14 +107,49 @@ namespace VSharp
 
     public static class TestGenerator
     {
-        private static Statistics StartExploration(
+        private static Statistics StartExplorationFuzzing(
+            IEnumerable<MethodBase> methods,
+            VSharpOptions options)
+        {
+            var unitTests = new UnitTests(options.OutputDirectory);
+            Logger.changeVerbosityTuple(Logger.defaultTag, options.Verbosity.ToLoggerLevel());
+            var explorer = new StandaloneFuzzer(new FuzzerOptions(fuzzerIsolation.Process, unitTests.TestDirectory));
+            var isolated = new List<MethodBase>();
+
+            foreach (var method in methods)
+            {
+                var normalizedMethod = AssemblyManager.NormalizeMethod(method);
+                if (normalizedMethod != normalizedMethod.Module.Assembly.EntryPoint)
+                {
+                    isolated.Add(normalizedMethod);
+                }
+            }
+
+            var cancellationTokenSource = new CancellationTokenSource();
+            cancellationTokenSource.CancelAfter(options.Timeout);
+            explorer.StartFuzzing(cancellationTokenSource.Token, isolated).Wait(cancellationTokenSource.Token);
+
+            var statistics = new Statistics(
+                new TimeSpan(0,0, 0), 
+                unitTests.TestDirectory,
+                0, 
+                0, 
+                0,
+                global::System.Array.Empty<string>(),
+                global::System.Array.Empty<GeneratedTestInfo>()
+            );
+
+            return statistics;
+        }
+
+        private static Statistics StartExplorationSili(
             IEnumerable<MethodBase> methods,
             coverageZone coverageZone,
             VSharpOptions options,
             string[]? mainArguments = null)
         {
-            Logger.currentLogLevel = options.Verbosity.ToLoggerLevel();
-
+            Logger.changeVerbosityTuple(Logger.defaultTag, options.Verbosity.ToLoggerLevel());
+            
             var unitTests = new UnitTests(options.OutputDirectory);
             var baseSearchMode = options.SearchStrategy.ToSiliMode();
             // TODO: customize search strategies via console options
@@ -224,6 +260,20 @@ namespace VSharp
             unitTests.WriteReport(statistics.PrintStatistics);
 
             return result;
+        }
+
+        private static Statistics StartExploration(
+            IEnumerable<MethodBase> methods,
+            coverageZone coverageZone,
+            VSharpOptions options,
+            string[]? mainArguments = null)
+        {
+            return options.ExplorationMode switch
+            {
+                ExplorationMode.Fuzzing => StartExplorationFuzzing(methods, options),
+                ExplorationMode.Sili => StartExplorationSili(methods, coverageZone, options, mainArguments),
+                ExplorationMode.Interleaving => StartExplorationSili(methods, coverageZone, options, mainArguments),
+            };
         }
 
         private static void Render(Statistics statistics, Type? declaringType = null, bool singleFile = false, DirectoryInfo? outputDir = null)
