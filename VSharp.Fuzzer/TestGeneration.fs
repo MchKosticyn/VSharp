@@ -93,20 +93,25 @@ module internal TestGeneration =
         Memory.InitFunctionFrame state m this (Some parameters)
         Memory.InitFunctionFrame model m this (Some parameters)
 
-        // Filling invocation result
-        match invocationResult with
-        | Thrown ex ->
-            Logger.traceTestGeneration "Filling exception register"
-            let exType = ex.GetType()
-            let exRef = Memory.AllocateConcreteObject state ex exType
-            // TODO: check if exception was thrown by user or by runtime
-            state.exceptionsRegister <- Unhandled(exRef, false, "")
-        | Returned obj ->
-            Logger.traceTestGeneration "Pushing result onto evaluation stack"
-            let returnedTerm = Memory.ObjectToTerm state obj m.ReturnType
-            state.evaluationStack <- EvaluationStack.Push returnedTerm state.evaluationStack
+        // Filling invocation result and create testSuite
+        let testSuite =
+            match invocationResult with
+            | Thrown ex ->
+                Logger.traceTestGeneration "Filling exception register"
+                let exType = ex.GetType()
+                let exRef = Memory.AllocateConcreteObject state ex exType
+                // TODO: check if exception was thrown by user or by runtime
+                state.exceptionsRegister <- exceptionRegisterStack.singleton <| Unhandled(exRef, false, "")
+                Error ("", false)
+            | Returned obj ->
+                Logger.traceTestGeneration "Pushing result onto evaluation stack"
+                let returnedTerm = Memory.ObjectToTerm state obj m.ReturnType
+                state.evaluationStack <- EvaluationStack.Push returnedTerm state.evaluationStack
+                Test
 
-        Logger.traceTestGeneration "Test generation finished"
+        Logger.traceTestGeneration "State to test started"
         // Create test from filled state
-        TestGenerator.state2testWithMockingCache false m state generationData.mocks ""
+        let result = TestGenerator.state2testWithMockingCache testSuite m state generationData.mocks
+        Logger.traceTestGeneration "State to test finished"
+        result
 

@@ -6,7 +6,6 @@ open System.Reflection
 open VSharp
 open VSharp.Core
 
-
 type internal GenerationData = {
     seed: int
     method: Method
