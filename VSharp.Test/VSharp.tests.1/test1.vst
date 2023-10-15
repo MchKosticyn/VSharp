@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<testInfo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <assemblyName>VSharp.Test, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null</assemblyName>
+  <moduleFullyQualifiedName>/home/viktor/Documents/code/work/VSharp/VSharp.Test/bin/Release/net7.0/VSharp.Test.dll</moduleFullyQualifiedName>
+  <token>100663462</token>
+  <args>
+    <anyType xsi:type="xsd:double">0</anyType>
+  </args>
+  <isError>false</isError>
+  <expectedResult xsi:type="xsd:double">0</expectedResult>
+  <throwsException />
+  <classTypeParameters />
+  <methodTypeParameters />
+  <mockClassTypeParameters />
+  <mockMethodTypeParameters />
+  <memory>
+    <objects />
+    <types />
+  </memory>
+  <typeMocks />
+  <extraAssemblyLoadDirs>
+    <string>/home/viktor/Documents/code/work/VSharp/VSharp.Test</string>
+  </extraAssemblyLoadDirs>
+  <externMocks />
+</testInfo>
