@@ -47,7 +47,7 @@ void vsharp::InitializeProbes() {
     LOG(tout << "probes initialized" << std::endl);
 }
 
-static CoverageProbes vsharp::coverageProbes;
+CoverageProbes vsharp::coverageProbes;
 CoverageTracker* vsharp::coverageTracker;
 
 //region MethodInfo

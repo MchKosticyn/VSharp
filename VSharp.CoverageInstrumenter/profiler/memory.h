@@ -13,7 +13,7 @@
 #include <shared_mutex>
 #include <mutex>
 #include <atomic>
-#include <cxxabi.h>
+
 
 
 typedef UINT_PTR ThreadID;
@@ -24,11 +24,7 @@ template <typename T> void serializePrimitive(const T obj, std::vector<char>& v)
     static_assert(std::is_fundamental<T>::value || std::is_enum<T>::value,"Can only serialize primitive objects.");
     auto size = v.size();
 
-//    int status;
-//    std::unique_ptr<char[], void (*)(void*)> result(
-//            abi::__cxa_demangle(typeid(T).name(), nullptr, nullptr, &status), std::free);
-//    auto typeName = result ? std::string(result.get()) : "error occurred";
-//    LOG(tout << "Value: " << obj << "\nType: " << typeName << "\nSize: " << sizeof(T));
+
 
     v.resize(size + sizeof(T));
     std::memcpy(&v[size], &obj, sizeof(T));
