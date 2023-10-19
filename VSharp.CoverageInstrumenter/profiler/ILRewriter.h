@@ -4,7 +4,6 @@
 #include "corhlpr.h"
 #include "cor.h"
 #include "corprof.h"
-#include <cassert>
 #include <stdexcept>
 #include "probes.h"
 

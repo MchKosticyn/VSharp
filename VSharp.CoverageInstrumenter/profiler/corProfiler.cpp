@@ -37,7 +37,7 @@ HRESULT STDMETHODCALLTYPE CorProfiler::Initialize(IUnknown *pICorProfilerInfoUnk
 {
     const char* waitDebuggerAttached = std::getenv("WAIT_DEBUGGER_ATTACHED_COVERAGE_TOOL");
     volatile int done = waitDebuggerAttached == nullptr ? 1 : 0;
-    while (!done) sleep(1);
+    while (!done) OS::sleepSeconds(1);
 
     HRESULT queryInterfaceResult = pICorProfilerInfoUnk->QueryInterface(__uuidof(ICorProfilerInfo8), reinterpret_cast<void **>(&this->corProfilerInfo));
 
@@ -55,6 +55,9 @@ HRESULT STDMETHODCALLTYPE CorProfiler::Initialize(IUnknown *pICorProfilerInfoUnk
         COR_PRF_DISABLE_TRANSPARENCY_CHECKS_UNDER_FULL_TRUST | /* helps the case where this profiler is used on Full CLR */
         COR_PRF_DISABLE_INLINING;
 
+    // TMP Windows fix
+    #undef IfFailRet
+    #define IfFailRet(EXPR) do { HRESULT hr = (EXPR); if(FAILED(hr)) { return (hr); } } while (0)
     IfFailRet(this->corProfilerInfo->SetEventMask(eventMask));
 
     const char* isPassive = std::getenv("COVERAGE_ENABLE_PASSIVE");

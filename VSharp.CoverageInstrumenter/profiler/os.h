@@ -7,5 +7,6 @@
 class OS final {
 public:
     static std::string unicodeToAnsi(const WCHAR* str);
+    static void sleepSeconds(int seconds);
 };
 #endif //_OS_H
