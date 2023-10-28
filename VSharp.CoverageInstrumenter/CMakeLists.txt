@@ -11,8 +11,6 @@ else()
     set(CMAKE_CXX_COMPILER "cl")
 endif()
 
-
-
 if (APPLE)
     set(CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS "${CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS} -undefined dynamic_lookup")
 endif()
@@ -87,6 +85,7 @@ else()
         ${PROFILER_PATH}/probes.cpp
 #        ${CORECLR_PATH}/pal/prebuilt/idl/corprof_i.cpp
         ./win/os.cpp
+        ./win/vsharpCoverage.def
     )
     set(DEPENDENCIES Advapi32.lib oleaut32.lib Ole32.lib)
 endif()
