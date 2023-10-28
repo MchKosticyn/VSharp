@@ -13,6 +13,7 @@
 
 extern "C" IMAGEHANDLER_API void SetEntryMain(char* assemblyName, int assemblyNameLength, char* moduleName, int moduleNameLength, int methodToken);
 extern "C" IMAGEHANDLER_API void GetHistory(UINT_PTR size, UINT_PTR bytes);
+extern "C" IMAGEHANDLER_API void SetCurrentThreadId(int mapId);
 
 namespace vsharp {
 
