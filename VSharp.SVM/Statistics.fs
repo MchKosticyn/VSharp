@@ -87,6 +87,8 @@ type public SVMStatistics(entryMethods : Method seq) =
     let mutable testsCount = 0u
     let mutable branchesReleased = false
 
+    let logFile = new StreamWriter (File.OpenWrite("D:\Work\VSharp\VSharp.Test\\bin\Release\\net7.0\cov.log"))
+
     let formatTimeSpan (span : TimeSpan) =
         String.Format("{0:00}:{1:00}:{2:00}.{3}", span.Hours, span.Minutes, span.Seconds, span.Milliseconds)
 
@@ -200,16 +202,28 @@ type public SVMStatistics(entryMethods : Method seq) =
         let mutable coveredBlocks = ref null
         let mutable hasNewCoverage = false
         let blocks = Seq.distinct blocks
+        logFile.WriteLine(
+            Seq.toList blocks
+            |> List.filter (fun x -> x.method.InCoverageZone)
+            |> List.map (fun x -> $"{x.offset} {x.method.Name}")
+            |> String.concat "|"
+        )
+        logFile.Flush()
         for block in blocks do
-            if blocksCoveredByTests.TryGetValue(block.method, coveredBlocks) then
-                hasNewCoverage <- hasNewCoverage || coveredBlocks.Value.TryAdd(block.offset, ())
+            let method = block.method
+            let mutable isNewBlock = false
+            if blocksCoveredByTests.TryGetValue(method, coveredBlocks) then
+                isNewBlock <- coveredBlocks.Value.TryAdd(block.offset, ())
             else
                 let coveredBlocks = ConcurrentDictionary()
-                hasNewCoverage <- true
+                isNewBlock <- true
                 coveredBlocks.TryAdd(block.offset, ()) |> ignore
-                blocksCoveredByTests[block.method] <- coveredBlocks
-            if block.method.InCoverageZone then
+                blocksCoveredByTests[method] <- coveredBlocks
+            if method.InCoverageZone then
                 Interlocked.Exchange(ref isVisitedBlocksNotCoveredByTestsRelevant, 0) |> ignore
+            hasNewCoverage <- hasNewCoverage || isNewBlock && method.InCoverageZone 
+        logFile.WriteLine($"{hasNewCoverage}")
+        logFile.Flush()
         hasNewCoverage
 
     member x.IsBasicBlockCoveredByTest (blockStart : codeLocation) =

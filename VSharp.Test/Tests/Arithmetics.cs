@@ -1011,7 +1011,7 @@ namespace IntegrationTests
         public static double AbsMethod(double x)
         {
             throw new AccessViolationException();
-            return Math.Abs(x);
+            //return Math.Abs(x);
         }
 
         [TestSvm]

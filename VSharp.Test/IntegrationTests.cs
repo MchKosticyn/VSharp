@@ -133,7 +133,7 @@ namespace VSharp.Test
             bool hasExternMocking = false,
             OsType supportedOs = OsType.All,
             FuzzerIsolation fuzzerIsolation = FuzzerIsolation.Process,
-            ExplorationMode explorationMode = ExplorationMode.Sili,
+            ExplorationMode explorationMode = ExplorationMode.Fuzzer,
             int randomSeed = 0,
             uint stepsLimit = 0)
         {

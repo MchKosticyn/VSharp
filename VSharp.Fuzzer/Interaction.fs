@@ -57,6 +57,8 @@ type Interactor (
     onCancelled: unit -> unit
     ) =
 
+    do
+        Logger.enableTag "Communication" Trace
     // TODO: make options configurable (CLI & Tests) 
     let fuzzerOptions =
         {
@@ -100,11 +102,12 @@ type Interactor (
     let fuzzNextMethod () =
         task {
             try
-                let method = queued.Dequeue()
-                do! fuzzerService.Fuzz {
-                    moduleName = method.Module.FullyQualifiedName
-                    methodId = method.MetadataToken
-                }
+                if queued.Count <> 0 then
+                    let method = queued.Dequeue()
+                    do! fuzzerService.Fuzz {
+                        moduleName = method.Module.FullyQualifiedName
+                        methodId = method.MetadataToken
+                    }
             with :? TaskCanceledException -> onCancelled ()
         }
 
@@ -149,9 +152,10 @@ type Interactor (
             fuzzerProcess.Kill ()
         ) |> ignore
         startMasterProcess ()
-        startFuzzer ()
 
     let rec startFuzzingLoop (targetAssemblyPath: string) =
+
+        let logLoop msg = traceCommunication $"[Loop] {msg}"
 
         let startFuzzing () =
             task {
@@ -163,7 +167,7 @@ type Interactor (
         let restartFuzzing () =
             task {
                 handleExit ()
-                do! startFuzzing ()
+                do! startFuzzingLoop targetAssemblyPath
             }
 
         let finish () = fuzzerService.Finish (UnitData())
@@ -177,22 +181,28 @@ type Interactor (
 
         task {
             try
+                logLoop "Start fuzzing"
                 do! startFuzzing ()
-                let mutable cont = false
+                let mutable cont = true
                 while cont do
+                    logLoop "Poll fuzzer"
                     do! Task.Delay(100)
                     if queued.Count = 0 then
+                        logLoop "All methods was sent, finish loop"
                         cont <- false
                     elif fuzzerProcess.HasExited then
+                        logLoop "Has unhandled methods but fuzzer exited, restarting"
                         do! restartFuzzing ()
-                        do! startFuzzingLoop targetAssemblyPath
                 do! finish ()
                 do! waitForExit ()
             with
-                | :? TaskCanceledException -> onCancelled ()
-                | :? System.Net.Http.HttpRequestException ->
-                        do! restartFuzzing ()
-                        do! startFuzzingLoop targetAssemblyPath
+                | :? TaskCanceledException ->
+                    logLoop "Cancelled"
+                    onCancelled ()
+                | :? System.Net.Http.HttpRequestException
+                | :? Grpc.Core.RpcException -> 
+                    logLoop "GRPC Exception, restarting"
+                    do! restartFuzzing ()
         }
 
     member this.StartFuzzing (targetAssemblyPath: string) (isolated: MethodBase seq) =
