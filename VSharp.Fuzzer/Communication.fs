@@ -118,7 +118,7 @@ module Services =
     type FuzzerService (onFinish, onFuzz, onSetupAssembly, onSetupDir) =
         interface Contracts.IFuzzerService with
             member this.Finish _ =
-                traceData ()
+                traceData "Finish"
                 onFinish ()
             member this.Fuzz data =
                 traceData data
@@ -129,7 +129,9 @@ module Services =
             member this.SetupOutputDirectory data =
                 traceData data
                 onSetupDir data.stringValue
-            member this.WaitForReady _ _ = Task.FromResult() :> Task
+            member this.WaitForReady _ _ =
+                traceData "WaitForReady"
+                Task.FromResult() :> Task
 
     type MasterProcessService(onTrackCoverage, onTrackExecutionSeed, onFinished) =
         interface Contracts.IMasterProcessService with
@@ -139,8 +141,12 @@ module Services =
             member this.TrackExecutionSeed data =
                 traceData data
                 onTrackExecutionSeed data
-            member this.WaitForReady _ _ = Task.FromResult() :> Task
-            member this.NotifyFinished _ = onFinished ()
+            member this.WaitForReady _ _ =
+                traceData "WaitForReady"
+                Task.FromResult() :> Task
+            member this.NotifyFinished _ =
+                traceData "Finished"
+                onFinished ()
 
 
 let private fuzzerPort = 10042

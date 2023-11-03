@@ -31,7 +31,7 @@ module Logger =
 
     let public configureWriter writer = currentTextWriter <- writer
     let public enableTimestamps value = writeTimestamps <- value
-    let public enableTag tag level = enabledTags.Add(tag, level)
+    let public enableTag tag level = enabledTags[tag] <- level
     let public changeVerbosity tag level = enabledTags[tag] <- level
     let public changeVerbosityTuple (tag, level) = enabledTags[tag] <- level
     let public disableTag tag = enabledTags.Remove tag |> ignore

@@ -69,11 +69,11 @@ type internal Fuzzer(
     let invoke (method: MethodBase) this args =
         try
             let returned = method.Invoke(this, copyArgs args)
-            traceFuzzing "Method returned"
+            //traceFuzzing "Method returned"
             Returned returned
         with
         | :? TargetInvocationException as e ->
-            traceFuzzing "Method thrown exception"
+            //traceFuzzing "Method thrown exception"
             Thrown e
 
     let fuzzOnce method (generationDatas: GenerationData[]) (results: InvocationResult[]) i threadId =
@@ -155,6 +155,7 @@ type internal Fuzzer(
                         ignoredCount <- ignoredCount + 1
                         ()
                 else
+                    ignoredCount <- ignoredCount + 1
                     infoFuzzing "Coverage already tracked"
             }
 
