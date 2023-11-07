@@ -155,7 +155,7 @@ let private masterProcessPort = 10043
 let connectFuzzerService () = Grpc.runGrpcClient<Contracts.IFuzzerService> fuzzerPort
 let connectMasterProcessService () = Grpc.runGrpcClient<Contracts.IMasterProcessService> masterProcessPort
 
-let private waitTimeout = 10000
+let private waitTimeout = 1000000
 let private waitServiceForReady wait =
     let tokenSource = new CancellationTokenSource()
     let mutable callOptions = CallOptions().WithWaitForReady(true).WithCancellationToken(tokenSource.Token)

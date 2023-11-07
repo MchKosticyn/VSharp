@@ -58,7 +58,7 @@ type Interactor (
     ) =
 
     do
-        Logger.enableTag "Communication" Trace
+        enableTag "Communication" Trace
     // TODO: make options configurable (CLI & Tests) 
     let fuzzerOptions =
         {
@@ -102,6 +102,7 @@ type Interactor (
     let fuzzNextMethod () =
         task {
             try
+                Logger.traceCommunication "fuzzNextMethod"
                 if queued.Count <> 0 then
                     let method = queued.Dequeue()
                     do! fuzzerService.Fuzz {
@@ -167,7 +168,13 @@ type Interactor (
         let restartFuzzing () =
             task {
                 handleExit ()
-                do! startFuzzingLoop targetAssemblyPath
+                if not fuzzerProcess.HasExited then
+                    logLoop "Fuzzer alive, killing"
+                    fuzzerProcess.Kill()
+                if queued.Count <> 0 then
+                    do! startFuzzingLoop targetAssemblyPath
+                else
+                    logLoop "Has not queued method, no need to restart fuzzer"
             }
 
         let finish () = fuzzerService.Finish (UnitData())
@@ -193,6 +200,7 @@ type Interactor (
                     elif fuzzerProcess.HasExited then
                         logLoop "Has unhandled methods but fuzzer exited, restarting"
                         do! restartFuzzing ()
+                Logger.traceCommunication "finish"
                 do! finish ()
                 do! waitForExit ()
             with

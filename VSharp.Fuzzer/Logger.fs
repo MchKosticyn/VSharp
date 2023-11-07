@@ -23,11 +23,11 @@ let traceFuzzingInteraction msg = VSharp.Logger.traceWithTag VSharp.Logger.fuzzi
 
 let setupLogger outputDir =
     #if DEBUG || DEBUGFUZZER
-    let writer = new System.IO.StreamWriter (
-        System.IO.File.OpenWrite $"{outputDir}{System.IO.Path.DirectorySeparatorChar}fuzzer.log"
-    )
-    System.Console.SetError writer
-    VSharp.Logger.configureWriter writer
+    // let writer = new System.IO.StreamWriter (
+    //     System.IO.File.OpenWrite $"{outputDir}{System.IO.Path.DirectorySeparatorChar}fuzzer.log"
+    // )
+    //System.Console.SetError writer
+    //VSharp.Logger.configureWriter writer
 
     // VSharp.Logger.enableTag VSharp.Logger.deserializationTraceTag VSharp.Logger.Trace
     VSharp.Logger.enableTag communicationTraceTag VSharp.Logger.Trace

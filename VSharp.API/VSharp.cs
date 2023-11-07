@@ -107,107 +107,26 @@ namespace VSharp
 
     public static class TestGenerator
     {
-        private static Statistics StartExplorationFuzzing(
-            IEnumerable<MethodBase> methods,
-            coverageZone coverageZone,
-            VSharpOptions options,
-            string[]? mainArguments = null)
+        private class Reporter: IReporter
         {
-            var unitTests = new UnitTests(options.OutputDirectory);
-            Logger.changeVerbosityTuple(Logger.defaultTag, options.Verbosity.ToLoggerLevel());
-            var baseSearchMode = options.SearchStrategy.ToSiliMode();
-            var siliOptions =
-                new SVMOptions(
-                    explorationMode: explorationMode.NewTestCoverageMode(
-                        coverageZone,
-                        options.Timeout > 0 ? searchMode.NewFairMode(baseSearchMode) : baseSearchMode
-                    ),
-                    outputDirectory: unitTests.TestDirectory,
-                    recThreshold: options.RecursionThreshold,
-                    timeout: options.Timeout,
-                    solverTimeout: options.SolverTimeout,
-                    visualize: false,
-                    releaseBranches: options.ReleaseBranches,
-                    maxBufferSize: 128,
-                    prettyChars: true,
-                    checkAttributes: true,
-                    stopOnCoverageAchieved: 100,
-                    randomSeed: options.RandomSeed,
-                    stepsLimit: options.StepsLimit
-                );
+            private readonly UnitTests _unitTests;
+            private readonly bool _isQuiet;
 
-            using var explorer = new SVM.SVM(siliOptions, new FuzzerOptions(fuzzerIsolation.Process, unitTests.TestDirectory));
-
-            var isolated = new List<MethodBase>();
-
-            foreach (var method in methods)
+            public Reporter(UnitTests unitTests, bool isQuiet)
             {
-                var normalizedMethod = AssemblyManager.NormalizeMethod(method);
-                if (normalizedMethod != normalizedMethod.Module.Assembly.EntryPoint)
-                {
-                    isolated.Add(normalizedMethod);
-                }
+                _unitTests = unitTests;
+                _isQuiet = isQuiet;
             }
 
-            var cancellationTokenSource = new CancellationTokenSource();
-            cancellationTokenSource.CancelAfter(options.Timeout);
-            explorer.StartFuzzing(cancellationTokenSource.Token, isolated).Wait(cancellationTokenSource.Token);
+            public void ReportFinished(UnitTest unitTest) => _unitTests.GenerateTest(unitTest);
+            public void ReportException(UnitTest unitTest) => _unitTests.GenerateError(unitTest);
+            public void ReportIIE(InsufficientInformationException iie) {}
 
-            var statistics = new Statistics(
-                new TimeSpan(0,0, 0), 
-                unitTests.TestDirectory,
-                0, 
-                0, 
-                0,
-                global::System.Array.Empty<string>(),
-                global::System.Array.Empty<GeneratedTestInfo>()
-            );
-
-            return statistics;
-        }
-
-        private static Statistics StartExplorationSili(
-            IEnumerable<MethodBase> methods,
-            coverageZone coverageZone,
-            VSharpOptions options,
-            string[]? mainArguments = null)
-        {
-            Logger.changeVerbosityTuple(Logger.defaultTag, options.Verbosity.ToLoggerLevel());
-            
-            var unitTests = new UnitTests(options.OutputDirectory);
-            var baseSearchMode = options.SearchStrategy.ToSiliMode();
-            // TODO: customize search strategies via console options
-            var siliOptions =
-                new SVMOptions(
-                    explorationMode: explorationMode.NewTestCoverageMode(
-                        coverageZone,
-                        options.Timeout > 0 ? searchMode.NewFairMode(baseSearchMode) : baseSearchMode
-                    ),
-                    outputDirectory: unitTests.TestDirectory,
-                    recThreshold: options.RecursionThreshold,
-                    timeout: options.Timeout,
-                    solverTimeout: options.SolverTimeout,
-                    visualize: false,
-                    releaseBranches: options.ReleaseBranches,
-                    maxBufferSize: 128,
-                    prettyChars: true,
-                    checkAttributes: true,
-                    stopOnCoverageAchieved: 100,
-                    randomSeed: options.RandomSeed,
-                    stepsLimit: options.StepsLimit
-                );
-
-            using var explorer = new SVM.SVM(siliOptions);
-            var statistics = explorer.Statistics;
-
-            void HandleInternalFail(Method? method, Exception exception)
+            public void ReportInternalFail(Method method, Exception exn)
             {
-                if (options.Verbosity == Verbosity.Quiet)
-                {
-                    return;
-                }
+                if (_isQuiet) return;
 
-                if (exception is UnknownMethodException unknownMethodException)
+                if (exn is UnknownMethodException unknownMethodException)
                 {
                     Logger.printLogString(Logger.Error, $"Unknown method: {unknownMethodException.Method.FullName}, {unknownMethodException.Message}");
                     Logger.printLogString(Logger.Error, $"StackTrace: {unknownMethodException.InterpreterStackTrace}");
@@ -221,9 +140,9 @@ namespace VSharp
                     messageBuilder.AppendLine($"Explored method: {method.DeclaringType}.{method.Name}");
                 }
 
-                messageBuilder.Append($"Exception: {exception.GetType()} {exception.Message}");
+                messageBuilder.Append($"Exception: {exn.GetType()} {exn.Message}");
 
-                var trace = new StackTrace(exception, true);
+                var trace = new StackTrace(exn, true);
                 var frame = trace.GetFrame(0);
 
                 if (frame is not null)
@@ -235,16 +154,65 @@ namespace VSharp
                 Logger.printLogString(Logger.Error, messageBuilder.ToString());
             }
 
-            void HandleCrash(Exception exception)
+            public void ReportCrash(Exception exn)
             {
-                if (options.Verbosity == Verbosity.Quiet)
-                {
-                    return;
-                }
-
-                Logger.printLogString(Logger.Critical, $"{exception}");
+                if (_isQuiet) return;
+                Logger.printLogString(Logger.Critical, $"{exn}");
             }
+        }
 
+        private static Statistics StartExploration(
+            IEnumerable<MethodBase> methods,
+            coverageZone coverageZone,
+            VSharpOptions options,
+            string[]? mainArguments = null)
+        {
+            Logger.changeVerbosityTuple(Logger.defaultTag, options.Verbosity.ToLoggerLevel());
+            
+            var unitTests = new UnitTests(options.OutputDirectory);
+            var baseSearchMode = options.SearchStrategy.ToSiliMode();
+            // TODO: customize search strategies via console options
+
+            var siliOptions =
+                new SVMOptions(
+                    explorationMode: explorationMode.NewTestCoverageMode(
+                        coverageZone,
+                        options.Timeout > 0 ? searchMode.NewFairMode(baseSearchMode) : baseSearchMode
+                    ),
+                    recThreshold: options.RecursionThreshold,
+                    solverTimeout: options.SolverTimeout,
+                    visualize: false,
+                    releaseBranches: options.ReleaseBranches,
+                    maxBufferSize: 128,
+                    prettyChars: true,
+                    checkAttributes: true,
+                    stopOnCoverageAchieved: 100,
+                    randomSeed: options.RandomSeed,
+                    stepsLimit: options.StepsLimit
+                );
+
+            var fuzzerOptions =
+                new FuzzerOptions(
+                    isolation: fuzzerIsolation.Process,
+                    coverageZone: coverageZone
+                );
+
+            var explorationModeOptions = options.ExplorationMode switch
+            {
+                ExplorationMode.Fuzzing => SVM.explorationModeOptions.NewFuzzing(fuzzerOptions),
+                ExplorationMode.Sili => SVM.explorationModeOptions.NewSVM(siliOptions),
+                ExplorationMode.Interleaving => SVM.explorationModeOptions.NewCombined(siliOptions, fuzzerOptions),
+            };
+
+            var explorationOptions = new ExplorationOptions(
+                timeout: options.Timeout,
+                outputDirectory: unitTests.TestDirectory,
+                explorationModeOptions: explorationModeOptions
+            );
+
+            using var explorer = new Explorer(explorationOptions, new Reporter(unitTests, options.Verbosity == Verbosity.Quiet));
+
+            var statistics = explorer.Statistics;
             var isolated = new List<MethodBase>();
             var entryPoints = new List<Tuple<MethodBase, string[]?>>();
 
@@ -261,8 +229,7 @@ namespace VSharp
                 }
             }
 
-            explorer.Interpret(isolated, entryPoints, unitTests.GenerateTest, unitTests.GenerateError, _ => { },
-                HandleInternalFail, HandleCrash);
+            explorer.StartExploration(isolated, entryPoints);
 
             var generatedTestInfos = statistics.GeneratedTestInfos.Select(i =>
                 new GeneratedTestInfo(
@@ -284,20 +251,6 @@ namespace VSharp
             unitTests.WriteReport(statistics.PrintStatistics);
 
             return result;
-        }
-
-        private static Statistics StartExploration(
-            IEnumerable<MethodBase> methods,
-            coverageZone coverageZone,
-            VSharpOptions options,
-            string[]? mainArguments = null)
-        {
-            return options.ExplorationMode switch
-            {
-                ExplorationMode.Fuzzing => StartExplorationFuzzing(methods, coverageZone, options, mainArguments),
-                ExplorationMode.Sili => StartExplorationSili(methods, coverageZone, options, mainArguments),
-                ExplorationMode.Interleaving => StartExplorationSili(methods, coverageZone, options, mainArguments),
-            };
         }
 
         private static void Render(Statistics statistics, Type? declaringType = null, bool singleFile = false, DirectoryInfo? outputDir = null)

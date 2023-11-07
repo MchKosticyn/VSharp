@@ -32,7 +32,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VSharp.CoverageRunner", "VS
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "VSharp.Fuzzer", "VSharp.Fuzzer\VSharp.Fuzzer.fsproj", "{70A99736-8F51-40EA-9AB3-37E64697D3B8}"
 EndProject
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "VSharp.SVM", "VSharp.SVM\VSharp.SVM.fsproj", "{9455C456-51A6-4CA3-B33A-4F168CBADADA}"
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "VSharp.Explorer", "VSharp.Explorer\VSharp.Explorer.fsproj", "{9455C456-51A6-4CA3-B33A-4F168CBADADA}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
