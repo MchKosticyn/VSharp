@@ -101,7 +101,7 @@ module internal TestGeneration =
                 let exType = ex.GetType()
                 let exRef = Memory.AllocateConcreteObject state ex exType
                 // TODO: check if exception was thrown by user or by runtime
-                state.exceptionsRegister <- Unhandled(exRef, false, "")
+                state.exceptionsRegister <- exceptionRegisterStack.singleton <| Unhandled(exRef, false, "")
                 Error ("", false)
             | Returned obj ->
                 Logger.traceTestGeneration "Pushing result onto evaluation stack"
