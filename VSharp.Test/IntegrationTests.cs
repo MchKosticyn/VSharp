@@ -201,6 +201,22 @@ namespace VSharp.Test
             private readonly int _randomSeed;
             private readonly uint _stepsLimit;
 
+            private class Reporter: IReporter
+            {
+                private readonly UnitTests _unitTests;
+
+                public Reporter(UnitTests unitTests)
+                {
+                    _unitTests = unitTests;
+                }
+
+                public void ReportFinished(UnitTest unitTest) => _unitTests.GenerateTest(unitTest);
+                public void ReportException(UnitTest unitTest) => _unitTests.GenerateError(unitTest);
+                public void ReportIIE(InsufficientInformationException iie) {}
+                public void ReportInternalFail(Method method, Exception exn) => ExceptionDispatchInfo.Capture(exn).Throw();
+                public void ReportCrash(Exception exn) => ExceptionDispatchInfo.Capture(exn).Throw();
+            }
+
             public TestSvmCommand(
                 TestCommand innerCommand,
                 int? expectedCoverage,
@@ -345,8 +361,25 @@ namespace VSharp.Test
                 reporter?.Report(statistics with { Coverage = actualCoverage });
             }
 
-            private TestResult ExploreSili(TestExecutionContext context)
+            private TestResult Explore(TestExecutionContext context)
             {
+                if (_hasExternMocking && !ExternMocker.ExtMocksSupported)
+                    return IgnoreTest(context);
+
+                switch (_supportedOs)
+                {
+                    case OsType.Windows:
+                        if (!OperatingSystem.IsWindows())
+                            return IgnoreTest(context);
+                        break;
+                    case OsType.Unix:
+                        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+                            return IgnoreTest(context);
+                        break;
+                    case OsType.All:
+                        break;
+                }
+
                 IStatisticsReporter reporter = null;
 
                 var csvReportPath = TestContext.Parameters[CsvPathParameterName];
@@ -372,12 +405,18 @@ namespace VSharp.Test
 
                 try
                 {
+                    var fuzzingEnabled = _explorationMode switch
+                    {
+                        ExplorationMode.Sili => false,
+                        ExplorationMode.Interleaving => true,
+                        ExplorationMode.Fuzzer => true,
+                    };
+
                     var unitTests = new UnitTests(Directory.GetCurrentDirectory());
+
                     _options = new SVMOptions(
                         explorationMode: explorationMode.NewTestCoverageMode(_coverageZone, _searchStrat),
-                        outputDirectory: unitTests.TestDirectory,
                         recThreshold: _recThresholdForTest,
-                        timeout: _timeout,
                         solverTimeout: _solverTimeout,
                         visualize: false,
                         releaseBranches: _releaseBranches,
@@ -389,30 +428,31 @@ namespace VSharp.Test
                         stepsLimit: _stepsLimit
                     );
 
-                    using var explorer = _explorationMode switch
-                    {
-                        ExplorationMode.Sili => new SVM.SVM(_options),
-                        ExplorationMode.Interleaving => new SVM.SVM(
-                            _options, 
-                            Microsoft.FSharp.Core.FSharpOption<FuzzerOptions>.Some(new FuzzerOptions(
-                                fuzzerIsolation.Process, 
-                                _options.outputDirectory
-                            ))
-                        ),
-                        ExplorationMode.Fuzzer => throw new Exception("Unreachable"),
-                    };
-
-                    explorer.Interpret(
-                        new [] { exploredMethodInfo },
-                        new Tuple<MethodBase, string[]>[] {},
-                        unitTests.GenerateTest,
-                        unitTests.GenerateError,
-                        _ => { },
-                        (_, e) => ExceptionDispatchInfo.Capture(e).Throw(),
-                        e => ExceptionDispatchInfo.Capture(e).Throw()
+                    var fuzzerOptions = new FuzzerOptions(
+                        fuzzerIsolation.Process, 
+                        _coverageZone
                     );
 
-                    if (unitTests.UnitTestsCount == 0 && unitTests.ErrorsCount == 0 && explorer.Statistics.IncompleteStates.Count == 0)
+                    var explorationModeOptions = _explorationMode switch
+                    {
+                        ExplorationMode.Sili => SVM.explorationModeOptions.NewSVM(_options),
+                        ExplorationMode.Interleaving => SVM.explorationModeOptions.NewCombined(_options, fuzzerOptions),
+                        ExplorationMode.Fuzzer => SVM.explorationModeOptions.NewFuzzing(fuzzerOptions),
+                    };
+
+                    var explorationOptions = new ExplorationOptions(
+                        timeout: _timeout,
+                        outputDirectory: unitTests.TestDirectory,
+                        explorationModeOptions: explorationModeOptions
+                    );
+
+                    using var explorer = new Explorer(explorationOptions, new Reporter(unitTests));
+                    explorer.StartExploration(
+                        new [] { exploredMethodInfo }, 
+                        new Tuple<MethodBase, string[]>[] {}
+                    );
+
+                    if (!fuzzingEnabled && unitTests.UnitTestsCount == 0 && unitTests.ErrorsCount == 0 && explorer.Statistics.IncompleteStates.Count == 0)
                     {
                         throw new Exception("No states were obtained! Most probably this is bug.");
                     }
@@ -428,7 +468,7 @@ namespace VSharp.Test
                         TestsOutputDirectory = unitTests.TestDirectory.FullName
                     };
 
-                    if (unitTests.UnitTestsCount != 0 || unitTests.ErrorsCount != 0)
+                    if (!fuzzingEnabled && unitTests.UnitTestsCount != 0 || unitTests.ErrorsCount != 0)
                     {
                         var testsDir = unitTests.TestDirectory;
                         var rendered = RenderTests(context, stats, exploredMethodInfo, reporter, testsDir);
@@ -448,72 +488,6 @@ namespace VSharp.Test
                 }
 
                 return context.CurrentResult;
-            }
-
-            private TestResult ExploreFuzzer(TestExecutionContext context)
-            {
-                var originMethodInfo = innerCommand.Test.Method.MethodInfo;
-                var exploredMethodInfo = (MethodInfo) AssemblyManager.NormalizeMethod(originMethodInfo);
-
-                try
-                {
-                    var unitTests = new UnitTests(Directory.GetCurrentDirectory());
-                    var testsDir = unitTests.TestDirectory;
-
-                    using var explorer = new SVM.SVM(
-                        _options,
-                        Microsoft.FSharp.Core.FSharpOption<FuzzerOptions>.Some(new FuzzerOptions(
-                            fuzzerIsolation.Process,
-                            _options.outputDirectory
-                        ))
-                    );
-
-                    var cancellationTokenSource = new CancellationTokenSource();
-                    if (_timeout > 0) cancellationTokenSource.CancelAfter(_timeout);
-                    explorer
-                        .StartFuzzing(cancellationTokenSource.Token, new []{exploredMethodInfo})
-                        .Wait(cancellationTokenSource.Token);
-
-                    TestContext.Out.WriteLine($"Test results written to {unitTests.TestDirectory.FullName}");
-
-                    var rendered = RenderTests(context, null, exploredMethodInfo, null, testsDir);
-                    if (!rendered) return context.CurrentResult;
-                    
-                    CheckCoverage(context, null, exploredMethodInfo, null, testsDir);
-                }
-                catch (Exception e)
-                {
-                    context.CurrentResult.SetResult(ResultState.Error, e.Message, e.StackTrace);
-                }
-
-                return context.CurrentResult;
-            }
-
-            private TestResult Explore(TestExecutionContext context)
-            {
-                if (_hasExternMocking && !ExternMocker.ExtMocksSupported)
-                    return IgnoreTest(context);
-
-                switch (_supportedOs)
-                {
-                    case OsType.Windows:
-                        if (!OperatingSystem.IsWindows())
-                            return IgnoreTest(context);
-                        break;
-                    case OsType.Unix:
-                        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
-                            return IgnoreTest(context);
-                        break;
-                    case OsType.All:
-                        break;
-                }
-
-                return _explorationMode switch
-                {
-                    ExplorationMode.Sili => ExploreSili(context),
-                    ExplorationMode.Interleaving => ExploreSili(context),
-                    ExplorationMode.Fuzzer => ExploreFuzzer(context),
-                };
             }
 
             public override TestResult Execute(TestExecutionContext context)

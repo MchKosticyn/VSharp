@@ -27,14 +27,12 @@ type fuzzerIsolation =
 
 type FuzzerOptions = {
     isolation: fuzzerIsolation
-    outputDirectory: DirectoryInfo
+    coverageZone: coverageZone
 }
 
 type SVMOptions = {
     explorationMode : explorationMode
-    outputDirectory : DirectoryInfo
     recThreshold : uint
-    timeout : int
     solverTimeout : int
     visualize : bool
     releaseBranches : bool
@@ -46,7 +44,34 @@ type SVMOptions = {
     stepsLimit : uint
 }
 
-type ExplorationOptions =
+type explorationModeOptions =
     | Fuzzing of FuzzerOptions
-    | Sili of SVMOptions
+    | SVM of SVMOptions
     | Combined of SVMOptions * FuzzerOptions
+
+type ExplorationOptions = {
+    timeout : int
+    outputDirectory : DirectoryInfo
+    explorationModeOptions : explorationModeOptions
+}
+with
+    member this.fuzzerOptions =
+        match this.explorationModeOptions with
+        | Fuzzing x -> x
+        | Combined (_, x) -> x
+        | _ -> failwith ""
+
+    member this.svmOptions =
+        match this.explorationModeOptions with
+        | SVM x -> x
+        | Combined (x, _) -> x
+        | _ -> failwith ""
+
+    member this.coverageZone =
+        match this.explorationModeOptions with
+        | SVM x ->
+            match x.explorationMode with
+            | TestCoverageMode (coverageZone, _) -> coverageZone 
+            | StackTraceReproductionMode _ -> failwith ""
+        | Combined (_, x) -> x.coverageZone
+        | Fuzzing x -> x.coverageZone

@@ -23,7 +23,6 @@ type internal Application (fuzzerOptions: Startup.FuzzerOptions) =
 
         let onSetupAssembly pathToTargetAssembly =
             task {
-                traceCommunication $"Received: Setup {pathToTargetAssembly}"
                 assembly <- AssemblyManager.LoadFromAssemblyPath pathToTargetAssembly
                 traceFuzzing $"Target assembly was set to {assembly.FullName}"
             } |> withExceptionLogging
@@ -49,6 +48,7 @@ type internal Application (fuzzerOptions: Startup.FuzzerOptions) =
 
         let onFinish () =
             task {
+                traceCommunication "Fuzzer cancelled"
                 fuzzerCancellationToken.Cancel()
             } |> withExceptionLogging
 
