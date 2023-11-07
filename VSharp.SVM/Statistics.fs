@@ -87,7 +87,7 @@ type public SVMStatistics(entryMethods : Method seq) =
     let mutable testsCount = 0u
     let mutable branchesReleased = false
 
-    let logFile = new StreamWriter (File.OpenWrite("D:\Work\VSharp\VSharp.Test\\bin\Release\\net7.0\cov.log"))
+    let logFile = new StreamWriter (File.OpenWrite("C:\Users\\vikto\RiderProjects\VSharp\VSharp.Test\\bin\Release\\net7.0\cov.log"))
 
     let formatTimeSpan (span : TimeSpan) =
         String.Format("{0:00}:{1:00}:{2:00}.{3}", span.Hours, span.Minutes, span.Seconds, span.Milliseconds)

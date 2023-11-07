@@ -460,7 +460,14 @@ namespace VSharp.Test
                     var unitTests = new UnitTests(Directory.GetCurrentDirectory());
                     var testsDir = unitTests.TestDirectory;
 
-                    var explorer = new StandaloneFuzzer(new FuzzerOptions(fuzzerIsolation.Process, testsDir));
+                    using var explorer = new SVM.SVM(
+                        _options,
+                        Microsoft.FSharp.Core.FSharpOption<FuzzerOptions>.Some(new FuzzerOptions(
+                            fuzzerIsolation.Process,
+                            _options.outputDirectory
+                        ))
+                    );
+
                     var cancellationTokenSource = new CancellationTokenSource();
                     if (_timeout > 0) cancellationTokenSource.CancelAfter(_timeout);
                     explorer
