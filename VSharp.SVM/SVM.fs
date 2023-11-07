@@ -13,7 +13,7 @@ open VSharp.Interpreter.IL.CilStateOperations
 open VSharp.Interpreter.IL
 open VSharp.Solver
 
-type public SVM(options : SVMOptions, fuzzerOptions : FuzzerOptions option) =
+type public SVM(options : SVMOptions) =
 
     let hasTimeout = options.timeout > 0
     let timeout =
@@ -416,6 +416,16 @@ type public SVM(options : SVMOptions, fuzzerOptions : FuzzerOptions option) =
                 isCoverageAchieved <- checkCoverage
         | StackTraceReproductionMode _ -> __notImplemented__()
 
+    member x.StartFuzzing (fuzzerOptions : FuzzerOptions, cancellationToken, isolated : MethodBase seq) =
+        let saveStatistic = statistics.SetBasicBlocksAsCoveredByTest
+        let outputDir = options.outputDirectory.FullName
+        task {
+            let targetAssemblyPath = (Seq.head isolated).Module.Assembly.Location
+            let onCancelled () = Logger.warning "Fuzzer canceled"
+            let interactor = Fuzzer.Interactor(cancellationToken, outputDir, saveStatistic, onCancelled)
+            do! interactor.StartFuzzing targetAssemblyPath isolated
+        }
+
     member x.Interpret (isolated : MethodBase seq) (entryPoints : (MethodBase * string[]) seq) (onFinished : Action<UnitTest>)
                        (onException : Action<UnitTest>) (onIIE : Action<InsufficientInformationException>)
                        (onInternalFail : Action<Method, Exception>) (onCrash : Action<Exception>): unit =
@@ -429,16 +439,6 @@ type public SVM(options : SVMOptions, fuzzerOptions : FuzzerOptions option) =
             reportError <- wrapOnError onException false
             reportFatalError <- wrapOnError onException true
             try
-                let initializeAndStartFuzzer cancellationToken  =
-                    let saveStatistic = statistics.SetBasicBlocksAsCoveredByTest
-                    let outputDir = options.outputDirectory.FullName
-                    task {
-                        let targetAssemblyPath = (Seq.head isolated).Module.Assembly.Location
-                        let onCancelled () = Logger.warning "Fuzzer canceled"
-                        let interactor = Fuzzer.Interactor(cancellationToken, outputDir, saveStatistic, onCancelled)
-                        do! interactor.StartFuzzing targetAssemblyPath isolated
-                    }
-
                 let initializeAndStart () =
                     let trySubstituteTypeParameters method =
                         let emptyState = Memory.EmptyState()
@@ -465,6 +465,7 @@ type public SVM(options : SVMOptions, fuzzerOptions : FuzzerOptions option) =
                     statistics.SetStatesCountGetter(fun () -> searcher.StatesCount)
                     if not initialStates.IsEmpty then
                         x.AnswerPobs initialStates
+
                 let explorationTask = Task.Run(initializeAndStart)
                 let tasks =
                     match fuzzerOptions with
@@ -474,7 +475,7 @@ type public SVM(options : SVMOptions, fuzzerOptions : FuzzerOptions option) =
                                 if hasTimeout then new CancellationTokenSource(int(timeout * 1.5))
                                 else new CancellationTokenSource()
                             let tok = tokSource.Token
-                            initializeAndStartFuzzer  tok
+                            x.StartFuzzing(tok, isolated)
                         [|explorationTask; fuzzerTask|]
                     | None ->
                         [|explorationTask|]

@@ -109,11 +109,35 @@ namespace VSharp
     {
         private static Statistics StartExplorationFuzzing(
             IEnumerable<MethodBase> methods,
-            VSharpOptions options)
+            coverageZone coverageZone,
+            VSharpOptions options,
+            string[]? mainArguments = null)
         {
             var unitTests = new UnitTests(options.OutputDirectory);
             Logger.changeVerbosityTuple(Logger.defaultTag, options.Verbosity.ToLoggerLevel());
-            var explorer = new StandaloneFuzzer(new FuzzerOptions(fuzzerIsolation.Process, unitTests.TestDirectory));
+            var baseSearchMode = options.SearchStrategy.ToSiliMode();
+            var siliOptions =
+                new SVMOptions(
+                    explorationMode: explorationMode.NewTestCoverageMode(
+                        coverageZone,
+                        options.Timeout > 0 ? searchMode.NewFairMode(baseSearchMode) : baseSearchMode
+                    ),
+                    outputDirectory: unitTests.TestDirectory,
+                    recThreshold: options.RecursionThreshold,
+                    timeout: options.Timeout,
+                    solverTimeout: options.SolverTimeout,
+                    visualize: false,
+                    releaseBranches: options.ReleaseBranches,
+                    maxBufferSize: 128,
+                    prettyChars: true,
+                    checkAttributes: true,
+                    stopOnCoverageAchieved: 100,
+                    randomSeed: options.RandomSeed,
+                    stepsLimit: options.StepsLimit
+                );
+
+            using var explorer = new SVM.SVM(siliOptions, new FuzzerOptions(fuzzerIsolation.Process, unitTests.TestDirectory));
+
             var isolated = new List<MethodBase>();
 
             foreach (var method in methods)
@@ -270,7 +294,7 @@ namespace VSharp
         {
             return options.ExplorationMode switch
             {
-                ExplorationMode.Fuzzing => StartExplorationFuzzing(methods, options),
+                ExplorationMode.Fuzzing => StartExplorationFuzzing(methods, coverageZone, options, mainArguments),
                 ExplorationMode.Sili => StartExplorationSili(methods, coverageZone, options, mainArguments),
                 ExplorationMode.Interleaving => StartExplorationSili(methods, coverageZone, options, mainArguments),
             };

@@ -45,3 +45,8 @@ type SVMOptions = {
     randomSeed : int
     stepsLimit : uint
 }
+
+type ExplorationOptions =
+    | Fuzzing of FuzzerOptions
+    | Sili of SVMOptions
+    | Combined of SVMOptions * FuzzerOptions
