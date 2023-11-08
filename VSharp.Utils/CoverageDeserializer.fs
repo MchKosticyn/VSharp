@@ -1,6 +1,7 @@
 namespace VSharp
 
 open System
+open System.Diagnostics
 open System.Runtime.InteropServices
 open System.Runtime.Serialization
 open System.Text
@@ -43,8 +44,6 @@ type RawCoverageReports = {
     reports: RawCoverageReport[]
 }
 
-
-
 module CoverageDeserializer =
 
     let mutable private data = [||]
@@ -52,32 +51,65 @@ module CoverageDeserializer =
     let mutable private deserializedMethods = System.Collections.Generic.Dictionary()
 
 
+    let timers = System.Collections.Generic.Dictionary<string, Stopwatch>()
+
+    let withTimeMeasure name f =
+        let stopwatch = 
+            match timers.TryGetValue(name) with
+            | true, stopwatch -> stopwatch
+            | false, _ ->
+                let stopwatch = Stopwatch()
+                timers.Add(name, stopwatch)
+                stopwatch
+
+        stopwatch.Start()
+        let result = f ()
+        stopwatch.Stop ()
+
+        result
+
+    let printMeasures () =
+        for k in timers.Keys do
+            Logger.error $"{k}: {double timers[k].ElapsedMilliseconds / 1000.0}"
+
     let trace x =
+        #if TRACEDESERIALIZATION
+        withTimeMeasure "trace" <| fun () -> 
         Logger.traceWithTag Logger.deserializationTraceTag x
+        #endif
+        ()
 
     let traceValue name x =
+        #if TRACEDESERIALIZATION
+        withTimeMeasure "traceValue" <| fun () -> 
         Logger.traceWithTag Logger.deserializationTraceTag $"{name}: {x}"
+        x
+        #endif
         x
 
     let inline private increaseOffset i =
         dataOffset <- dataOffset + i
 
     let inline private readInt32 () =
+        withTimeMeasure "readInt32" <| fun () -> 
         let result = BitConverter.ToInt32(data, dataOffset)
         increaseOffset sizeof<int32>
         result
 
     let inline private readUInt32 () =
+        withTimeMeasure "readUInt32" <| fun () -> 
         let result = BitConverter.ToUInt32(data, dataOffset)
         increaseOffset sizeof<uint32>
         result
 
     let inline private readUInt64 () =
+        withTimeMeasure "readUInt64" <| fun () -> 
         let result = BitConverter.ToUInt64(data, dataOffset)
         increaseOffset sizeof<uint64>
         result
 
     let inline private readString () =
+        withTimeMeasure "readString" <| fun () -> 
         let size = readUInt32 () |> int
         let result = Array.sub data dataOffset (2 * size - 2)
         increaseOffset (2 * size)
@@ -115,6 +147,7 @@ module CoverageDeserializer =
         dictionary
 
     let inline private deserializeCoverageInfoFast () =
+        withTimeMeasure "deserializeCoverageInfoFast" <| fun () -> 
         trace "Deserialize coverage info fast"
         let count = readInt32 () |> traceValue "Reports count"
         let bytesCount = sizeof<RawCoverageLocation> * count
@@ -122,12 +155,12 @@ module CoverageDeserializer =
         let targetSpan = Span(targetBytes)
         data.AsSpan().Slice(dataOffset, bytesCount).CopyTo(targetSpan)
         let span = MemoryMarshal.Cast<byte, RawCoverageLocation> targetSpan
-        for x in span do
-            trace "------"
-            trace $"offset: {x.offset}"
-            trace $"event: {x.event}"
-            trace $"method id: {x.methodId}"
-            trace $"thread id: {x.threadId}"
+//        for x in span do
+//            trace "------"
+//            trace $"offset: {x.offset}"
+//            trace $"event: {x.event}"
+//            trace $"method id: {x.methodId}"
+//            trace $"thread id: {x.threadId}"
         increaseOffset bytesCount
         span.ToArray()
 
@@ -167,7 +200,9 @@ module CoverageDeserializer =
     let getRawReports bytes =
         try
             startNewDeserialization bytes
-            deserializeRawReports ()
+            let result = deserializeRawReports ()
+            printMeasures ()
+            result
         with
         | e ->
             Logger.error $"{dataOffset}"

@@ -293,10 +293,16 @@ namespace IntegrationTests
         [TestSvm(100, strat: SearchStrategy.ExecutionTreeContributedCoverage)]
         public static string StringRegex3(string str)
         {
+            var stopwatch = new System.Diagnostics.Stopwatch();
+            stopwatch.Start();
             if (string.IsNullOrEmpty(str))
                 return string.Empty;
             var result = System.Text.RegularExpressions.Regex.Match(str, @"^(?<major>\d+)(\.(?<minor>\d+))?(\.(?<patch>\d+))?$");
-            return result.Groups["major"].Value + result.Groups["minor"].Value + result.Groups["patch"].Value;
+            var returnResult = result.Groups["major"].Value + result.Groups["minor"].Value +
+                               result.Groups["patch"].Value;
+            stopwatch.Stop();
+            System.Console.WriteLine(stopwatch.ElapsedMilliseconds / 1000.0);
+            return returnResult ;
         }
 
         [TestSvm(100, strat: SearchStrategy.ExecutionTreeContributedCoverage)]

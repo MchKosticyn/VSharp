@@ -8,6 +8,7 @@ open System.Reflection
 open System.Threading
 open System.Threading.Tasks
 open VSharp
+open VSharp.CSharpUtils
 open VSharp.Core
 
 open VSharp.Fuzzer.Communication.Contracts
@@ -27,12 +28,14 @@ module private CancellableThreads =
             thread
 
         let abortThread () =
-            if not systemThread.IsAlive then
+            if systemThread.IsAlive then
                 traceFuzzing $"Start aborting: {systemThread.ManagedThreadId}"
                 let nativeHandle = internalGetThreadHandle.Invoke(systemThread, [||])
                 internalAbort.Invoke(null, [| nativeHandle |]) |> ignore
-                traceFuzzing $"Aborted: {systemThread.ManagedThreadId}"
                 systemThread.Join()
+                traceFuzzing $"Aborted: {systemThread.ManagedThreadId}"
+            else
+                traceFuzzing $"Thread is dead: {systemThread.ManagedThreadId}"
 
         Action abortThread |> cancellationToken.Register |> ignore
         systemThread
@@ -69,11 +72,9 @@ type internal Fuzzer(
     let invoke (method: MethodBase) this args =
         try
             let returned = method.Invoke(this, copyArgs args)
-            //traceFuzzing "Method returned"
             Returned returned
         with
         | :? TargetInvocationException as e ->
-            //traceFuzzing "Method thrown exception"
             Thrown e
 
     let fuzzOnce method (generationDatas: GenerationData[]) (results: InvocationResult[]) i threadId =
@@ -106,25 +107,26 @@ type internal Fuzzer(
         )
         traceFuzzing "Execution seeds sent"
 
-        traceFuzzing "Start method invocation"
-        let threads = 
-            indices
-            |> Array.map (fun i  ->
-                CancellableThreads.startCancellableThread
-                    (fuzzOnce method data invocationResults i threadIds[i])
-                    fuzzingCancellationTokenSource.Token
-            )
-
+        
         let availableTime = getAvailableTime ()
-        if availableTime > 0 then
-            fuzzingCancellationTokenSource.CancelAfter(availableTime)
+        
+        if availableTime <= 0 then
+            traceFuzzing "Method invocation not started, no time available"
+            None
         else
-            fuzzingCancellationTokenSource.Cancel()
+            traceFuzzing $"Start method invocation, available time: {availableTime}"
+            let threads = 
+                indices
+                |> Array.map (fun i  ->
+                    CancellableThreads.startCancellableThread
+                        (fuzzOnce method data invocationResults i threadIds[i])
+                        fuzzingCancellationTokenSource.Token
+                )
+            fuzzingCancellationTokenSource.CancelAfter(availableTime)
+            threads |> Array.iter (fun t -> t.Join())
+            traceFuzzing "Method invoked"
 
-        threads |> Array.iter (fun t -> t.Join())
-        traceFuzzing "Method invoked"
-
-        threadIds, data, invocationResults
+            (threadIds, data, invocationResults) |> Some
 
     let printStatistics (method: Method) =
         printfn $"\nMethod[{method.Id}]: {method.Name}"
@@ -135,22 +137,43 @@ type internal Fuzzer(
         ignoredCount <- 0
         abortedCount <- 0
 
-    let handleResults result =
+    let handleResults (method: Method) result =
         
-        let onCollected methods coverageReport generationData invocationResult =
+        let onCollected (methods: Dictionary<int,RawMethodInfo>) coverageReport generationData invocationResult =
             task {
+
+                let mainMethod =
+                    methods
+                    |> Seq.find (fun x -> int x.Value.methodToken = method.MetadataToken )
+
+
+                let filteredLocations =
+                    coverageReport.rawCoverageLocations
+                    |> Array.filter (fun x -> x.methodId = mainMethod.Key)
+                    
+                let coverageReport = {
+                    coverageReport with rawCoverageLocations = filteredLocations
+                }
+
+                let methods = System.Collections.Generic.Dictionary<_,_>(Seq.singleton mainMethod)
+                
+                
                 let! isNewCoverage = symbolicExecutionService.TrackCoverage({
                     rawData = coverageReport
                     methods = methods
                 })
+                
+                infoFuzzing $"{coverageReport.rawCoverageLocations.Length} {methods.Count}"
                 if isNewCoverage.boolValue then
                     let test = fuzzingResultToTest generationData invocationResult
                     match test with
                     | Some test ->
                         let testPath = $"{currentOutputDir}{Path.DirectorySeparatorChar}fuzzer_test_{testIdGenerator.NextId()}.vst"
-                        test.Serialize(testPath)
                         generatedCount <- generatedCount + 1
-                        infoFuzzing $"Generated test: {testPath}"
+                        Task.Run(fun () ->
+                            test.Serialize(testPath)
+                            infoFuzzing $"Generated test: {testPath}"
+                        ).ForgetUntilExecutionRequested() // TODO: Maybe just serialize after finished?
                     | None ->
                         ignoredCount <- ignoredCount + 1
                         ()
@@ -185,8 +208,9 @@ type internal Fuzzer(
                     abortedCount <- abortedCount + 1
                     traceFuzzing "Aborted"
                 | _ ->
-                    traceFuzzing "Finished"
+                    traceFuzzing "Invoked"
                     assert(not <| Utils.isNull invocationResult)
+                    // TODO: send batches
                     do! onCollected coverages.methods coverage generationData invocationResult
         }
 
@@ -209,8 +233,10 @@ type internal Fuzzer(
 
                     while currentMillisecondsElapsed < fuzzerOptions.timeLimitPerMethod do
                         traceFuzzing "Start fuzzing iteration"
-                        let results = fuzzBatch typeSolverSeed rnd methodBase typeStorage
-                        do! handleResults results
+
+                        match fuzzBatch typeSolverSeed rnd methodBase typeStorage with
+                        | Some results -> do! handleResults method results
+                        | None -> ()
 
                         stopwatch.Stop()
                         currentMillisecondsElapsed <- currentMillisecondsElapsed + int stopwatch.ElapsedMilliseconds

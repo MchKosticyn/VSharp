@@ -109,7 +109,9 @@ module internal TestGeneration =
                 state.evaluationStack <- EvaluationStack.Push returnedTerm state.evaluationStack
                 Test
 
-        Logger.traceTestGeneration "Test generation finished"
+        Logger.traceTestGeneration "State to test started"
         // Create test from filled state
-        TestGenerator.state2testWithMockingCache testSuite m state generationData.mocks
+        let result = TestGenerator.state2testWithMockingCache testSuite m state generationData.mocks
+        Logger.traceTestGeneration "State to test finished"
+        result
 

@@ -51,6 +51,8 @@ type private TestRestorer () =
         ()
 
 type Interactor (
+    targetAssemblyPath: string,
+    isolated: MethodBase seq,
     cancellationToken: CancellationToken,
     outputPath: string,
     saveStatistic,
@@ -79,12 +81,29 @@ type Interactor (
             sanitizersMode = Disabled
         }
 
+    let fuzzerExternalTimelimitPerMethod = TimeSpan(
+        0, // days
+        0, // hours
+        0, // minutes
+        0, // seconds
+        fuzzerOptions.timeLimitPerMethod * 3, // milliseconds
+        0  // microseconds
+    )
+
     
     let testRestorer = TestRestorer()
+    let queued = System.Collections.Generic.Queue<_>(isolated)
+    let methodsCount = queued.Count
+
     let mutable fuzzerService = Unchecked.defaultof<IFuzzerService>
     let mutable fuzzerProcess = Unchecked.defaultof<Process>
-    let mutable queued = System.Collections.Generic.Queue<MethodBase>()
+    let mutable lastFinishedReceivedTime = DateTime.Now
+    let mutable handledMethodsCount = 0
 
+    let isAllMethodsWasSent () = queued.Count = 0
+    let isFuzzingFinished () =
+        handledMethodsCount = methodsCount
+        || cancellationToken.IsCancellationRequested
 
     let handleExit () =
         let unhandledExceptionPath = $"{Directory.GetCurrentDirectory()}{Path.DirectorySeparatorChar}kek.info"
@@ -102,8 +121,8 @@ type Interactor (
     let fuzzNextMethod () =
         task {
             try
-                Logger.traceCommunication "fuzzNextMethod"
-                if queued.Count <> 0 then
+                traceCommunication "fuzzNextMethod"
+                if isAllMethodsWasSent () |> not then
                     let method = queued.Dequeue()
                     do! fuzzerService.Fuzz {
                         moduleName = method.Module.FullyQualifiedName
@@ -130,7 +149,9 @@ type Interactor (
 
         let onFinished () =
             task {
-                if queued.Count <> 0 then
+                handledMethodsCount <- handledMethodsCount + 1
+                lastFinishedReceivedTime <- DateTime.Now
+                if isAllMethodsWasSent () |> not then
                     do! fuzzNextMethod ()
                 else
                     return ()
@@ -168,13 +189,17 @@ type Interactor (
         let restartFuzzing () =
             task {
                 handleExit ()
-                if not fuzzerProcess.HasExited then
-                    logLoop "Fuzzer alive, killing"
-                    fuzzerProcess.Kill()
-                if queued.Count <> 0 then
-                    do! startFuzzingLoop targetAssemblyPath
+                handledMethodsCount <- handledMethodsCount + 1
+                if isFuzzingFinished () then
+                    logLoop "Fuzzing finished, no need to restart fuzzer"
                 else
-                    logLoop "Has not queued method, no need to restart fuzzer"
+                    if isAllMethodsWasSent () |> not then
+                        if not fuzzerProcess.HasExited then
+                            logLoop "Fuzzer alive, killing and restarting"
+                            fuzzerProcess.Kill()
+                        do! startFuzzingLoop targetAssemblyPath
+                    else
+                        logLoop "Has not queued method, no need to restart fuzzer"
             }
 
         let finish () = fuzzerService.Finish (UnitData())
@@ -190,17 +215,19 @@ type Interactor (
             try
                 logLoop "Start fuzzing"
                 do! startFuzzing ()
-                let mutable cont = true
-                while cont do
-                    logLoop "Poll fuzzer"
+                logLoop $"ABOBA: {isFuzzingFinished ()}"
+                while isFuzzingFinished () |> not do
+                    let timeFromLastResponse = DateTime.Now - lastFinishedReceivedTime
+                    logLoop $"Poll fuzzer, time from last response: {timeFromLastResponse.Seconds} seconds"
                     do! Task.Delay(100)
-                    if queued.Count = 0 then
-                        logLoop "All methods was sent, finish loop"
-                        cont <- false
-                    elif fuzzerProcess.HasExited then
+                    if fuzzerProcess.HasExited then
                         logLoop "Has unhandled methods but fuzzer exited, restarting"
                         do! restartFuzzing ()
-                Logger.traceCommunication "finish"
+                    elif timeFromLastResponse > fuzzerExternalTimelimitPerMethod then
+                        logLoop "Fuzzer external timeout per method achieved, restarting"
+                        do! restartFuzzing ()
+
+                logLoop "Fuzzer finished, finish loop"
                 do! finish ()
                 do! waitForExit ()
             with
@@ -208,12 +235,12 @@ type Interactor (
                     logLoop "Cancelled"
                     onCancelled ()
                 | :? System.Net.Http.HttpRequestException
-                | :? Grpc.Core.RpcException -> 
+                | :? Grpc.Core.RpcException as ex -> 
                     logLoop "GRPC Exception, restarting"
+                    logLoop $"{ex.ToString()}"
                     do! restartFuzzing ()
         }
 
-    member this.StartFuzzing (targetAssemblyPath: string) (isolated: MethodBase seq) =
+    member this.StartFuzzing () =
         initialize ()
-        queued <- System.Collections.Generic.Queue<_>(isolated)
         startFuzzingLoop targetAssemblyPath

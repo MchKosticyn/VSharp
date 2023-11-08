@@ -32,6 +32,7 @@ let setupLogger outputDir =
     // VSharp.Logger.enableTag VSharp.Logger.deserializationTraceTag VSharp.Logger.Trace
     VSharp.Logger.enableTag communicationTraceTag VSharp.Logger.Trace
     VSharp.Logger.enableTag fuzzingTag VSharp.Logger.Trace
+    VSharp.Logger.enableTag testGenerationTraceTag VSharp.Logger.Trace
     // VSharp.Logger.enableTag generationTag VSharp.Logger.Trace
     // VSharp.Logger.enableTag typeSolverTag VSharp.Logger.Trace
 

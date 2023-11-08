@@ -6,6 +6,7 @@ open System.Threading
 open VSharp.Fuzzer.Communication.Contracts
 open VSharp.Fuzzer.Utils
 open VSharp
+open VSharp.CSharpUtils
 open VSharp.Fuzzer.Communication
 open Logger
 open VSharp.Fuzzer.Communication.Services
@@ -44,7 +45,10 @@ type internal Application (fuzzerOptions: Startup.FuzzerOptions) =
                 traceFuzzing $"Successfully fuzzed {moduleName} {methodToken}"
 
                 do! masterProcessService.NotifyFinished (UnitData())
-            } |> withExceptionLogging
+            } |> withExceptionLogging |> fun x -> x.Forget() // TODO: make non-blocking
+
+            System.Threading.Tasks.Task.FromResult() :> System.Threading.Tasks.Task
+            
 
         let onFinish () =
             task {

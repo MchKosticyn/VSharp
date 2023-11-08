@@ -424,8 +424,15 @@ type private FuzzerExplorer(explorationOptions: ExplorationOptions, statistics: 
                 try
                     let targetAssemblyPath = (Seq.head methodsBase).Module.Assembly.Location
                     let onCancelled () = Logger.warning "Fuzzer canceled"
-                    let interactor = Fuzzer.Interactor(cancellationTokenSource.Token, outputDir, saveStatistic, onCancelled)
-                    do! interactor.StartFuzzing targetAssemblyPath methodsBase
+                    let interactor = Fuzzer.Interactor(
+                        targetAssemblyPath,
+                        methodsBase,
+                        cancellationTokenSource.Token,
+                        outputDir,
+                        saveStatistic,
+                        onCancelled
+                    )
+                    do! interactor.StartFuzzing ()
                 with e -> Logger.error $"Fuzzer unhandled exception: {e.Message}"
             }
 
