@@ -29,23 +29,30 @@ type internal Application (fuzzerOptions: Startup.FuzzerOptions) =
             } |> withExceptionLogging
 
         let onFuzz moduleName methodToken =
-            task {
-                failIfNull assembly "onFuzz called before assembly initialization"
 
-                let methodBase = Reflection.resolveMethodBaseFromAssembly assembly moduleName methodToken
-                traceFuzzing $"Resolved MethodBase {methodToken}"
 
-                let method = Application.getMethod methodBase
-                traceFuzzing $"Resolved Method {methodToken}"
+            System.Threading.Tasks.Task.Run(fun () ->
+                try
+                    failIfNull assembly "onFuzz called before assembly initialization"
 
-                coverageTool.SetEntryMain assembly moduleName methodToken
-                traceFuzzing $"Was set entry main {moduleName} {methodToken}"
+                    let methodBase = Reflection.resolveMethodBaseFromAssembly assembly moduleName methodToken
+                    traceFuzzing $"Resolved MethodBase {methodToken}"
 
-                do! fuzzer.AsyncFuzz method
-                traceFuzzing $"Successfully fuzzed {moduleName} {methodToken}"
+                    let method = Application.getMethod methodBase
+                    traceFuzzing $"Resolved Method {methodToken}"
 
-                do! masterProcessService.NotifyFinished (UnitData())
-            } |> withExceptionLogging |> fun x -> x.Forget() // TODO: make non-blocking
+                    coverageTool.SetEntryMain assembly moduleName methodToken
+                    traceFuzzing $"Was set entry main {moduleName} {methodToken}"
+
+                    let t = fuzzer.AsyncFuzz method
+                    t.Wait()
+                    traceFuzzing $"Successfully fuzzed {moduleName} {methodToken}"
+                    
+                    let t = masterProcessService.NotifyFinished (UnitData())
+                    t.Wait()
+                    traceFuzzing $"Notified master process: finished {moduleName} {methodToken}"
+                with e -> errorFuzzing $"{e}"
+            ).Forget()
 
             System.Threading.Tasks.Task.FromResult() :> System.Threading.Tasks.Task
             

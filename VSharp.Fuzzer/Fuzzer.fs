@@ -55,7 +55,6 @@ type internal Fuzzer(
 
     let mutable currentOutputDir = ""
     let mutable currentMillisecondsElapsed = 0
-
     let mutable generatedCount = 0
     let mutable abortedCount = 0
     let mutable ignoredCount = 0
@@ -129,7 +128,7 @@ type internal Fuzzer(
             (threadIds, data, invocationResults) |> Some
 
     let printStatistics (method: Method) =
-        printfn $"\nMethod[{method.Id}]: {method.Name}"
+        printfn $"\nMethod[{method.Name}]"
         printfn $"Generated: {generatedCount}"
         printfn $"Ignored: {ignoredCount}"
         printfn $"Aborted: {abortedCount}"
@@ -156,14 +155,12 @@ type internal Fuzzer(
                 }
 
                 let methods = System.Collections.Generic.Dictionary<_,_>(Seq.singleton mainMethod)
-                
-                
+
                 let! isNewCoverage = symbolicExecutionService.TrackCoverage({
                     rawData = coverageReport
                     methods = methods
                 })
-                
-                infoFuzzing $"{coverageReport.rawCoverageLocations.Length} {methods.Count}"
+
                 if isNewCoverage.boolValue then
                     let test = fuzzingResultToTest generationData invocationResult
                     match test with
@@ -174,7 +171,9 @@ type internal Fuzzer(
                             test.Serialize(testPath)
                             infoFuzzing $"Generated test: {testPath}"
                         ).ForgetUntilExecutionRequested() // TODO: Maybe just serialize after finished?
+                        infoFuzzing "Test will be generated"
                     | None ->
+                        infoFuzzing "Failed to create test"
                         ignoredCount <- ignoredCount + 1
                         ()
                 else
@@ -238,7 +237,7 @@ type internal Fuzzer(
                         | Some results -> do! handleResults method results
                         | None -> ()
 
-                        stopwatch.Stop()
+                        stopwatch.Stop() // TODO: Incorrect workflow with stopwatch 
                         currentMillisecondsElapsed <- currentMillisecondsElapsed + int stopwatch.ElapsedMilliseconds
 
                     printStatistics method

@@ -97,13 +97,16 @@ type Interactor (
 
     let mutable fuzzerService = Unchecked.defaultof<IFuzzerService>
     let mutable fuzzerProcess = Unchecked.defaultof<Process>
-    let mutable lastFinishedReceivedTime = DateTime.Now
-    let mutable handledMethodsCount = 0
+    let mutable lastFuzzedMethodTime = DateTime.Now
+    let mutable successfullyFuzzedMethodsCount = 0
+    let mutable failedFuzzedMethodsCount = 0
 
     let isAllMethodsWasSent () = queued.Count = 0
+
     let isFuzzingFinished () =
-        handledMethodsCount = methodsCount
+        successfullyFuzzedMethodsCount + failedFuzzedMethodsCount = methodsCount
         || cancellationToken.IsCancellationRequested
+
 
     let handleExit () =
         let unhandledExceptionPath = $"{Directory.GetCurrentDirectory()}{Path.DirectorySeparatorChar}kek.info"
@@ -149,8 +152,8 @@ type Interactor (
 
         let onFinished () =
             task {
-                handledMethodsCount <- handledMethodsCount + 1
-                lastFinishedReceivedTime <- DateTime.Now
+                successfullyFuzzedMethodsCount <- successfullyFuzzedMethodsCount + 1
+                lastFuzzedMethodTime <- DateTime.Now
                 if isAllMethodsWasSent () |> not then
                     do! fuzzNextMethod ()
                 else
@@ -183,13 +186,14 @@ type Interactor (
             task {
                 startFuzzer ()
                 do! setupFuzzer targetAssemblyPath
+                lastFuzzedMethodTime <- DateTime.Now
                 do! fuzzNextMethod ()
             }
 
         let restartFuzzing () =
             task {
                 handleExit ()
-                handledMethodsCount <- handledMethodsCount + 1
+                failedFuzzedMethodsCount <- failedFuzzedMethodsCount + 1
                 if isFuzzingFinished () then
                     logLoop "Fuzzing finished, no need to restart fuzzer"
                 else
@@ -213,21 +217,21 @@ type Interactor (
 
         task {
             try
-                logLoop "Start fuzzing"
+                logLoop $"Start fuzzing {methodsCount} methods"
                 do! startFuzzing ()
-                logLoop $"ABOBA: {isFuzzingFinished ()}"
                 while isFuzzingFinished () |> not do
-                    let timeFromLastResponse = DateTime.Now - lastFinishedReceivedTime
-                    logLoop $"Poll fuzzer, time from last response: {timeFromLastResponse.Seconds} seconds"
+                    let timeFromLastResponse = DateTime.Now - lastFuzzedMethodTime
                     do! Task.Delay(100)
                     if fuzzerProcess.HasExited then
-                        logLoop "Has unhandled methods but fuzzer exited, restarting"
+                        logLoop "Fuzzing not finished but fuzzer exited, restarting"
                         do! restartFuzzing ()
                     elif timeFromLastResponse > fuzzerExternalTimelimitPerMethod then
                         logLoop "Fuzzer external timeout per method achieved, restarting"
                         do! restartFuzzing ()
 
                 logLoop "Fuzzer finished, finish loop"
+                logLoop $"Successfully fuzzed: {successfullyFuzzedMethodsCount}"
+                logLoop $"Failed fuzzed: {failedFuzzedMethodsCount}"
                 do! finish ()
                 do! waitForExit ()
             with

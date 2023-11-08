@@ -392,7 +392,20 @@ namespace VSharp.Test
                     );
                 }
 
-                Core.API.ConfigureSolver(SolverPool.mkSolver(_timeout / 2 * 1000));
+                var fuzzingEnabled = _explorationMode switch
+                {
+                    ExplorationMode.Sili => false,
+                    ExplorationMode.Interleaving => true,
+                    ExplorationMode.Fuzzer => true,
+                };
+
+                var siliEnabled = _explorationMode switch
+                {
+                    ExplorationMode.Sili => true,
+                    ExplorationMode.Interleaving => true,
+                    ExplorationMode.Fuzzer => false,
+                };
+
                 var originMethodInfo = innerCommand.Test.Method.MethodInfo;
                 var exploredMethodInfo = (MethodInfo) AssemblyManager.NormalizeMethod(originMethodInfo);
                 var stats = new TestStatistics(
@@ -405,13 +418,6 @@ namespace VSharp.Test
 
                 try
                 {
-                    var fuzzingEnabled = _explorationMode switch
-                    {
-                        ExplorationMode.Sili => false,
-                        ExplorationMode.Interleaving => true,
-                        ExplorationMode.Fuzzer => true,
-                    };
-
                     var unitTests = new UnitTests(Directory.GetCurrentDirectory());
 
                     _options = new SVMOptions(
@@ -452,7 +458,7 @@ namespace VSharp.Test
                         new Tuple<MethodBase, string[]>[] {}
                     );
 
-                    if (!fuzzingEnabled && unitTests.UnitTestsCount == 0 && unitTests.ErrorsCount == 0 && explorer.Statistics.IncompleteStates.Count == 0)
+                    if (siliEnabled && unitTests.UnitTestsCount == 0 && unitTests.ErrorsCount == 0 && explorer.Statistics.IncompleteStates.Count == 0)
                     {
                         throw new Exception("No states were obtained! Most probably this is bug.");
                     }
@@ -468,7 +474,7 @@ namespace VSharp.Test
                         TestsOutputDirectory = unitTests.TestDirectory.FullName
                     };
 
-                    if (!fuzzingEnabled && unitTests.UnitTestsCount != 0 || unitTests.ErrorsCount != 0)
+                    if (fuzzingEnabled || siliEnabled && (unitTests.UnitTestsCount != 0 || unitTests.ErrorsCount != 0))
                     {
                         var testsDir = unitTests.TestDirectory;
                         var rendered = RenderTests(context, stats, exploredMethodInfo, reporter, testsDir);
