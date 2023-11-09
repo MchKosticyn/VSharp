@@ -1,6 +1,7 @@
 namespace VSharp
 
 open System.Collections.Generic
+open System.Diagnostics
 open System.Text
 
 module Logger =
@@ -24,6 +25,26 @@ module Logger =
     let mutable currentTextWriter = Console.Out
     let mutable writeTimestamps = true
 
+    let timers = System.Collections.Generic.Dictionary<string, Stopwatch>()
+
+    let withTimeMeasure name f =
+        let stopwatch = 
+            match timers.TryGetValue(name) with
+            | true, stopwatch -> stopwatch
+            | false, _ ->
+                let stopwatch = Stopwatch()
+                timers.Add(name, stopwatch)
+                stopwatch
+
+        stopwatch.Start()
+        let result = f ()
+        stopwatch.Stop ()
+
+        result
+
+    let printMeasures () =
+        for k in timers.Keys do
+            currentTextWriter.WriteLine $"{k}: {double timers[k].ElapsedMilliseconds / 1000.0}"
 
     let private enabledTags = Dictionary([
         KeyValuePair(defaultTag, Error)
@@ -71,6 +92,7 @@ module Logger =
             computeMessage.Invoke() |> writeLineString vLevel ""
 
     let public printLogWithTag tag vLevel format =
+        withTimeMeasure "printLogWithTag" <| fun () -> 
         Printf.ksprintf (fun message -> if currentLogLevel tag >= vLevel then writeLineString vLevel tag message) format
 
     let public printLog vLevel format = printLogWithTag defaultTag vLevel format

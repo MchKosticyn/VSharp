@@ -133,7 +133,7 @@ namespace VSharp.Test
             bool hasExternMocking = false,
             OsType supportedOs = OsType.All,
             FuzzerIsolation fuzzerIsolation = FuzzerIsolation.Process,
-            ExplorationMode explorationMode = ExplorationMode.Fuzzer,
+            ExplorationMode explorationMode = ExplorationMode.Sili,
             int randomSeed = 0,
             uint stepsLimit = 0)
         {
@@ -492,7 +492,7 @@ namespace VSharp.Test
                     context.CurrentResult.SetResult(ResultState.Error, e.Message, e.StackTrace);
                     reporter?.Report(stats with { Exception = e });
                 }
-
+                Logger.printMeasures();
                 return context.CurrentResult;
             }
 
