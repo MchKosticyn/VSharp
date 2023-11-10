@@ -1,6 +1,7 @@
 #include "corProfiler.h"
 #include "logging.h"
 #include "memory.h"
+#include "cComPtr.h"
 #include <locale>
 #include <string>
 #include <cstring>
@@ -12,9 +13,14 @@ using namespace vsharp;
 
 static std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> conv16;
 static FunctionID unwindFunctionId = incorrectFunctionId;
+static bool inFilter = false;
 
 void ConvertToWCHAR(const char *str, std::u16string &result) {
     result = conv16.from_bytes(str);
+}
+
+void ConvertFromWCHAR(const WCHAR *wcharStr, const char *&result) {
+    result = conv16.to_bytes(wcharStr).c_str();
 }
 
 CorProfiler::CorProfiler() : refCount(0), corProfilerInfo(nullptr), requestsResolving(0)
@@ -490,7 +496,7 @@ HRESULT STDMETHODCALLTYPE CorProfiler::ExceptionSearchFunctionLeave()
 HRESULT STDMETHODCALLTYPE CorProfiler::ExceptionSearchFilterEnter(FunctionID functionId)
 {
     LOG(tout << "EXCEPTION Search filter enter" << std::endl);
-
+    inFilter = true;
     UNUSED(functionId);
     return S_OK;
 }
@@ -498,6 +504,7 @@ HRESULT STDMETHODCALLTYPE CorProfiler::ExceptionSearchFilterEnter(FunctionID fun
 HRESULT STDMETHODCALLTYPE CorProfiler::ExceptionSearchFilterLeave()
 {
     LOG(tout << "EXCEPTION Search filter leave" << std::endl);
+    inFilter = false;
     return S_OK;
 }
 
@@ -524,7 +531,23 @@ HRESULT STDMETHODCALLTYPE CorProfiler::ExceptionOSHandlerLeave(UINT_PTR ptr)
 
 HRESULT STDMETHODCALLTYPE CorProfiler::ExceptionUnwindFunctionEnter(FunctionID functionId)
 {
-    LOG(tout << "EXCEPTION UNWIND FUNCTION ENTER!" << std::endl);
+    ModuleID newModuleId;
+    ClassID classId;
+    mdToken token;
+    IfFailRet(corProfilerInfo->GetFunctionInfo(functionId, &classId, &newModuleId, &token));
+
+    HRESULT hr;
+    CComPtr<IMetaDataImport> metadataImport;
+    IfFailRet(corProfilerInfo->GetModuleMetaData(newModuleId, ofRead | ofWrite, IID_IMetaDataImport, reinterpret_cast<IUnknown **>(&metadataImport)));
+    ULONG pchMethod;
+    metadataImport->GetMethodProps(token, NULL, new WCHAR[0], 0, &pchMethod, NULL, NULL, NULL, NULL, NULL);
+    LPWSTR szMethod = new WCHAR[pchMethod];
+    metadataImport->GetMethodProps(token, NULL, szMethod, pchMethod, &pchMethod, NULL, NULL, NULL, NULL, NULL);
+
+    const char *str = nullptr;
+    ConvertFromWCHAR(szMethod, str);
+    assert((token & 0xFF000000L) == mdtMethodDef);
+    LOG(tout << "EXCEPTION UNWIND FUNCTION ENTER! token = " << HEX(token) << " Name = " << str << std::endl);
     unwindFunctionId = functionId;
     return S_OK;
 }
@@ -536,7 +559,7 @@ HRESULT STDMETHODCALLTYPE CorProfiler::ExceptionUnwindFunctionLeave()
     if (isFinished || !areProbesEnabled) return S_OK;
     if (!rewriteMainOnly || vsharp::isMainFunction(unwindFunctionId)) {
         assertCorrectFunctionId(unwindFunctionId);
-        if (!stackBalanceDown() && isMainThread()) {
+        if ((!inFilter || stackBalance() > 1) && !stackBalanceDown() && isMainThread()) {
             // stack is empty; main left
             mainLeft();
         }

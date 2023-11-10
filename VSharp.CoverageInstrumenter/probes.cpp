@@ -167,7 +167,7 @@ CoverageHistory::~CoverageHistory() {
 }
 
 void vsharp::addCoverage(OFFSET offset, CoverageEvents event, int methodId) {
-    LOG(tout << "OFFSET: " << offset << std::endl);
+    LOG(tout << "OFFSET: " << HEX(offset) << std::endl);
     if (currentCoverage == nullptr) FAIL_LOUD("adding coverage on uninitialized node!");
     currentCoverage->AddCoverage(offset, event, methodId);
 }
@@ -256,6 +256,7 @@ void vsharp::Track_Leave(OFFSET offset, int methodId) {
 
 void vsharp::mainLeft() {
     unsetMainThread();
+    LOG(tout << "mainLeft" << std::endl);
     disableProbes();
     ::currentCoverage = nullptr;
 }

@@ -30,6 +30,7 @@ void stackBalanceUp();
 
 // returns true if the stack is not empty
 bool stackBalanceDown();
+int stackBalance();
 void emptyStacks();
 void setMainThread();
 void unsetMainThread();

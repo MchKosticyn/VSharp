@@ -57,14 +57,26 @@ bool vsharp::stackBalanceDown() {
     if (pos == ::stackBalances.end()) FAIL_LOUD("stack balance down on thread without stack!")
     ::stackBalances[thread]--;
     auto newBalance = ::stackBalances[thread];
+    assert(newBalance >= 0);
     LOG(tout << "stackBalance[" << thread << "] = " << ::stackBalances[thread] << std::endl);
     freeLock();
     return newBalance != 0;
 }
 
+int vsharp::stackBalance() {
+    ThreadID thread = currentThread();
+    getLock();
+    auto pos = stackBalances.find(thread);
+    if (pos == ::stackBalances.end()) FAIL_LOUD("stack balance down on thread without stack!")
+    int result = ::stackBalances[thread];
+    freeLock();
+    assert(result >= 0);
+    return result;
+}
+
 void vsharp::emptyStacks() {
     getLock();
-    ::stackBalances.empty();
+    ::stackBalances.clear();
     freeLock();
 }
 

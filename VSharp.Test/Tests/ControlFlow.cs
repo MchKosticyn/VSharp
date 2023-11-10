@@ -614,7 +614,7 @@ namespace IntegrationTests
             throw new DivideByZeroException("Exception was thrown explicitly");
         }
 
-        [Ignore("Fix coverage tool: second catch is not covered")]
+        [TestSvm(60)]
         public static int ExceptionThrownInFilter(int x, string s)
         {
             Console.WriteLine("Method: ExceptionThrownInFilter");
