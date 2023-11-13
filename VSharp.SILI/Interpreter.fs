@@ -1474,11 +1474,13 @@ type ILInterpreter() as this =
         let mutable ehcs = ehcs
         let observed = List<ExceptionHandlingClause>(observed)
         let mutable nextIp = None
+        let offset = location.offset
         while not (Option.isSome nextIp || List.isEmpty ehcs) do
             let ehc = List.head ehcs
             ehcs <- List.tail ehcs
             observed.Add ehc
             match ehc.ehcType with
+            | _ when x.InHandlerBlock offset ehc -> ()
             | Catch t when TypeUtils.isSubtypeOrEqual exceptionType.Value t ->
                 // Check type and go
                 let handlerLocation = Some {method = location.method; offset = ehc.handlerOffset}
