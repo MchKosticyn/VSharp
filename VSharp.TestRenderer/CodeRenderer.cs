@@ -104,6 +104,9 @@ internal class CodeRenderer
     public static Dictionary<object, CompactArrayRepr> CompactRepresentations = new ();
 
     // TODO: make non-static
+    public static Dictionary<nint, PointerInfo> PointerRepresentations = new ();
+
+    // TODO: make non-static
     public static HashSet<physicalAddress> BoxedLocations = new ();
 
     public static void PrepareCache()

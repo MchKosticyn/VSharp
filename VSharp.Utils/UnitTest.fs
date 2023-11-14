@@ -71,6 +71,7 @@ type UnitTest private (m : MethodBase, info : testInfo, mockStorage : MockStorag
     let errorMessage = info.errorMessage
     let expectedResult = memoryGraph.DecodeValue info.expectedResult
     let compactRepresentations = memoryGraph.CompactRepresentations()
+    let pointerRepresentations = memoryGraph.PointerRepresentations()
     let boxedLocations = memoryGraph.BoxedLocations()
     let mutable extraAssemblyLoadDirs : string list = [Directory.GetCurrentDirectory()]
     let mutable patchId = 0
@@ -125,6 +126,8 @@ type UnitTest private (m : MethodBase, info : testInfo, mockStorage : MockStorag
     member x.TypeMocks with get() : ResizeArray<Mocking.Type> = mockStorage.TypeMocks
 
     member x.CompactRepresentations with get() = compactRepresentations
+
+    member x.PointerRepresentations with get() = pointerRepresentations
 
     member x.BoxedLocations with get() = boxedLocations
 

@@ -828,6 +828,19 @@ internal class MethodRenderer : CodeRenderer
             return renderedResult;
         }
 
+        private unsafe ExpressionSyntax RenderPointer(Pointer ptr)
+        {
+            var intPtr = new IntPtr(Pointer.Unbox(ptr));
+            var pointerInfo = PointerRepresentations[intPtr];
+            var pointerBase = RenderObject(pointerInfo.obj, "pointerBase");
+            var varName = pointerBase switch
+            {
+                IdentifierNameSyntax id => id,
+                _ => AddDecl("pointerBase", null, pointerBase)
+            };
+            throw null;
+        }
+
         private ExpressionSyntax RenderReferenceType(
             object obj,
             string? preferredName = null,
@@ -842,7 +855,8 @@ internal class MethodRenderer : CodeRenderer
                 string s => LiteralExpression(SyntaxKind.StringLiteralExpression, Literal(s)),
                 System.Array a => RenderArray(a, preferredName),
                 CompactArrayRepr a => RenderCompactArray(a, preferredName),
-                Pointer => throw new NotImplementedException("RenderObject: implement rendering of pointers"),
+                Pointer =>
+                    throw new NotImplementedException("RenderObject: implement rendering of pointers"),
                 Delegate d when HasMockInfo(d.Method.DeclaringType?.Name) =>
                     RenderMock(obj, d.Method.DeclaringType, false, preferredName, explicitType),
                 Delegate =>

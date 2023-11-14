@@ -226,8 +226,17 @@ module TestGenerator =
             let obj = address2obj model state indices mockCache implementations test addr
             if obj :? referenceRepr then
                 let index = (obj :?> referenceRepr).index
-                test.MemoryGraph.RepresentPtr index sightType offset
+                test.MemoryGraph.RepresentHeapPtr index sightType offset
             else test.MemoryGraph.RepresentDetachedPtr sightType offset
+        | {term = Ptr(StackLocation(stackKey), sightType, offset)} ->
+            let offset = TypeUtils.convert (term2obj offset) typeof<int64> :?> int64
+            let position =
+                match stackKey with
+                | ThisKey _ -> 0
+                | ParameterKey pi when Reflection.hasThis test.Method -> pi.Position + 1
+                | ParameterKey pi -> pi.Position
+                | _ -> internalfail $"unexpected stackKey {stackKey}"
+            test.MemoryGraph.RepresentStackPtr position sightType offset
         | {term = HeapRef({term = ConcreteHeapAddress(addr)}, _)} ->
             address2obj model state indices mockCache implementations test addr
         | CombinedTerm(terms, t) ->

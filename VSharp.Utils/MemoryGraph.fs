@@ -110,13 +110,33 @@ with
     member x.Decode() =
         Convert.FromBase64String x.content |> Text.Encoding.UTF8.GetString
 
+type pointerKind =
+    | Heap = 0uy
+    | Stack = 1uy
+
 [<CLIMutable>]
 [<Serializable>]
 type pointerRepr = {
+    pointerKind : pointerKind
     index : int
     shift : int64
     sightType : int
 }
+    with
+    static member HeapPtr index shift sightType =
+        {
+            pointerKind = pointerKind.Heap
+            index = index
+            shift = shift
+            sightType = sightType
+        }
+    static member StackPtr position shift sightType =
+        {
+            pointerKind = pointerKind.Stack
+            index = position
+            shift = shift
+            sightType = sightType
+        }
 
 [<CLIMutable>]
 [<Serializable>]
@@ -239,6 +259,12 @@ type public CompactArrayRepr = {
     values : obj array
 }
 
+type public PointerInfo = {
+    obj : obj
+    sightType : Type
+    offset : int
+}
+
 type MockStorage() =
     let mocker = Mocking.Mocker()
     let mockedTypes = List<Mocking.Type>()
@@ -266,6 +292,7 @@ type MemoryGraph(repr : memoryRepr, mockStorage : MockStorage, createCompactRepr
 
     let sourceTypes = List<Type>(repr.types |> Array.map (fun t -> t.Decode()))
     let compactRepresentations = Dictionary<obj, CompactArrayRepr>()
+    let pointerRepresentations = Dictionary<IntPtr, PointerInfo>()
     let boxedLocations = HashSet<physicalAddress>()
 
     let intPtrIndex = Int32.MaxValue
@@ -333,19 +360,7 @@ type MemoryGraph(repr : memoryRepr, mockStorage : MockStorage, createCompactRepr
             let shift = decodeValue repr.shift :?> int64 |> uint64
             UIntPtr(shift) :> obj
         | :? pointerRepr as repr ->
-            let shift = decodeValue repr.shift :?> int64
-            let sightType = sourceTypes[repr.sightType]
-            let index = repr.index
-            let pointer =
-                if index <> nullSourceIndex then
-                    // Case for pointer, attached to address 'index'
-                    let obj = sourceObjects[repr.index]
-                    let ptr = System.Runtime.CompilerServices.Unsafe.AsPointer(ref obj)
-                    System.Runtime.CompilerServices.Unsafe.Add<byte>(ptr, int shift)
-                else
-                    // Case for detached pointer
-                    (nativeint shift).ToPointer()
-            Pointer.Box(pointer, sightType.MakePointerType())
+            decodePointer repr.index repr.sightType repr.shift repr.pointerKind
         | :? structureRepr as repr when repr.typ >= 0 ->
             // Case for structs or classes of .NET type
             let t = sourceTypes[repr.typ]
@@ -367,6 +382,31 @@ type MemoryGraph(repr : memoryRepr, mockStorage : MockStorage, createCompactRepr
         | :? stringRepr as str -> str.Decode()
         | :? typeRepr as t -> t.Decode()
         | _ -> obj
+
+    and decodePointer index sightType shift pointerKind =
+        let shift = decodeValue shift :?> int64
+        let sightType = sourceTypes[sightType]
+        let pointer =
+            match pointerKind with
+            | pointerKind.Heap when index <> nullSourceIndex ->
+                // Case for pointer, attached to address 'index'
+                let obj = sourceObjects[index]
+                let ptr = System.Runtime.CompilerServices.Unsafe.AsPointer(ref obj)
+                let shift = int shift
+                let ptr = System.Runtime.CompilerServices.Unsafe.Add<byte>(ptr, shift)
+                let pointerInfo = { obj = obj; sightType = sightType; offset = shift }
+                pointerRepresentations[IntPtr(ptr)] <- pointerInfo
+                ptr
+            | pointerKind.Heap ->
+                // Case for detached pointer
+                let ptr = (nativeint shift).ToPointer()
+                let pointerInfo = { obj = null; sightType = sightType; offset = int shift }
+                pointerRepresentations[IntPtr(ptr)] <- pointerInfo
+                ptr
+            | pointerKind.Stack ->
+                __notImplemented__()
+            | _ -> internalfail $"decodePointer: unsupported pointerKind {pointerKind}"
+        Pointer.Box(pointer, sightType.MakePointerType())
 
     and decodeAndCast repr (typ : Type) =
         match decodeValue repr with
@@ -444,6 +484,7 @@ type MemoryGraph(repr : memoryRepr, mockStorage : MockStorage, createCompactRepr
         | :? stringRepr
         | :? typeRepr
         | :? ValueType
+        | :? pointerRepr
         | :? enumRepr -> ()
         | _ -> internalfail $"decodeObject: unexpected object {obj}"
 
@@ -452,6 +493,8 @@ type MemoryGraph(repr : memoryRepr, mockStorage : MockStorage, createCompactRepr
     member x.DecodeValue (obj : obj) = decodeValue obj
 
     member x.CompactRepresentations() = compactRepresentations
+
+    member x.PointerRepresentations() = pointerRepresentations
 
     member x.BoxedLocations() = boxedLocations
 
@@ -562,23 +605,27 @@ type MemoryGraph(repr : memoryRepr, mockStorage : MockStorage, createCompactRepr
                     reference :> obj
 
     member x.RepresentIntPtr (shift : int64) =
-        let repr : pointerRepr = {index = nullSourceIndex; shift = shift; sightType = intPtrIndex}
+        let repr : pointerRepr = pointerRepr.HeapPtr nullSourceIndex shift intPtrIndex
         repr :> obj
 
     member x.RepresentUIntPtr (shift : int64) =
-        let repr : pointerRepr = {index = nullSourceIndex; shift = shift; sightType = uintPtrIndex}
+        let repr : pointerRepr = pointerRepr.HeapPtr nullSourceIndex shift uintPtrIndex
         repr :> obj
 
     member x.RepresentDetachedPtr (sightType : Type) (shift : int64) =
-        let repr : pointerRepr = {index = nullSourceIndex; shift = shift; sightType = x.RegisterType sightType}
+        let repr : pointerRepr = pointerRepr.HeapPtr nullSourceIndex shift (x.RegisterType sightType)
         repr :> obj
 
     member x.RepresentNullPtr (sightType : Type) =
-        let repr : pointerRepr = {index = nullSourceIndex; shift = 0; sightType = x.RegisterType sightType}
+        let repr : pointerRepr = pointerRepr.HeapPtr nullSourceIndex 0 (x.RegisterType sightType)
         repr :> obj
 
-    member x.RepresentPtr (index : int) (sightType : Type) (shift : int64) =
-        let repr : pointerRepr = {index = index; shift = shift; sightType = x.RegisterType sightType}
+    member x.RepresentHeapPtr (index : int) (sightType : Type) (shift : int64) =
+        let repr : pointerRepr = pointerRepr.HeapPtr index shift (x.RegisterType sightType)
+        repr :> obj
+
+    member x.RepresentStackPtr (position : int) (sightType : Type) (shift : int64) =
+        let repr : pointerRepr = pointerRepr.StackPtr position shift (x.RegisterType sightType)
         repr :> obj
 
     member x.RepresentStruct (typ : Type) (fields : obj array) =

@@ -608,6 +608,7 @@ public static class TestsRenderer
                 var method = test.Method;
                 var methodType = method.DeclaringType;
                 CompactRepresentations = test.CompactRepresentations;
+                PointerRepresentations = test.PointerRepresentations;
                 BoxedLocations = test.BoxedLocations;
                 Debug.Assert(methodType != null);
                 Debug.Assert(
