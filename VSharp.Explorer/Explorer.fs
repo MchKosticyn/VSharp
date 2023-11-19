@@ -24,7 +24,7 @@ type IReporter =
 
 type private IExplorer =
     abstract member Reset: seq<Method> -> unit
-    abstract member StartExploration: (Method * state) list -> (Method * string[] * state) list -> Task
+    abstract member StartExploration: (Method * state) list -> (Method * string[] * state) list -> unit
 
 type private SVMExplorer(explorationOptions: ExplorationOptions, statistics: SVMStatistics, reporter: IReporter) =
 
@@ -381,10 +381,63 @@ type private SVMExplorer(explorationOptions: ExplorationOptions, statistics: SVM
                     isCoverageAchieved <- checkCoverage
             | StackTraceReproductionMode _ -> __notImplemented__()
 
+        // try
+        //     reportInternalFail <- wrapOnInternalFail onInternalFail
+        //     reportStateInternalFail <- wrapOnStateInternalFail onInternalFail
+        //     reportCrash <- wrapOnCrash onCrash
+        //     reportIncomplete <- wrapOnIIE onIIE
+        //     reportStateIncomplete <- wrapOnStateIIE onIIE
+        //     reportFinished <- wrapOnTest onFinished
+        //     reportError <- wrapOnError onException false
+        //     reportFatalError <- wrapOnError onException true
+        //     try
+        //         let initializeAndStart () =
+        //             let trySubstituteTypeParameters method =
+        //                 let emptyState = Memory.EmptyState()
+        //                 (Option.defaultValue method (x.TrySubstituteTypeParameters emptyState method), emptyState)
+        //             interpreter.ConfigureErrorReporter reportError reportFatalError
+        //             let isolated =
+        //                 isolated
+        //                 |> Seq.map trySubstituteTypeParameters
+        //                 |> Seq.map (fun (m, s) -> Application.getMethod m, s) |> Seq.toList
+        //             let entryPoints =
+        //                 entryPoints
+        //                 |> Seq.map (fun (m, a) ->
+        //                     let m, s = trySubstituteTypeParameters m
+        //                     (Application.getMethod m, a, s))
+        //                 |> Seq.toList
+        //             x.Reset ((isolated |> List.map fst) @ (entryPoints |> List.map (fun (m, _, _) -> m)))
+        //             let isolatedInitialStates = isolated |> List.collect x.FormIsolatedInitialStates
+        //             let entryPointsInitialStates = entryPoints |> List.collect x.FormEntryPointInitialStates
+        //             let iieStates, initialStates =
+        //                 isolatedInitialStates @ entryPointsInitialStates
+        //                 |> List.partition (fun state -> state.iie.IsSome)
+        //             iieStates |> List.iter reportStateIncomplete
+        //             statistics.SetStatesGetter(fun () -> searcher.States())
+        //             statistics.SetStatesCountGetter(fun () -> searcher.StatesCount)
+        //             if not initialStates.IsEmpty then
+        //                 x.AnswerPobs initialStates
+        //         let explorationTask = Task.Run(initializeAndStart)
+        //         let finished =
+        //             if hasTimeout then explorationTask.Wait(int (timeout * 1.5))
+        //             else explorationTask.Wait(); true
+        //         if not finished then Logger.warning "Execution was cancelled due to timeout"
+        //     with
+        //     | :? AggregateException as e ->
+        //         Logger.warning "Execution was cancelled"
+        //         reportCrash e.InnerException
+        //     | e -> reportCrash e
+        // finally
+        //     try
+        //         statistics.ExplorationFinished()
+        //         API.Restore()
+        //         searcher.Reset()
+        //     with e -> reportCrash e
+        //
         member x.StartExploration isolated entryPoints =
-            task {
+            try
                 try
-                    try
+                    let initializeAndStart () =
                         interpreter.ConfigureErrorReporter reportError reportFatalError
                         let isolatedInitialStates = isolated |> List.collect x.FormIsolatedInitialStates
                         let entryPointsInitialStates = entryPoints |> List.collect x.FormEntryPointInitialStates
@@ -396,14 +449,18 @@ type private SVMExplorer(explorationOptions: ExplorationOptions, statistics: SVM
                         statistics.SetStatesCountGetter(fun () -> searcher.StatesCount)
                         if not initialStates.IsEmpty then
                             x.AnswerPobs initialStates
-                    with e -> reportCrash e
-                finally
-                    try
-                        statistics.ExplorationFinished()
-                        API.Restore()
-                        searcher.Reset()
-                    with e -> reportCrash e
-            }
+                    let task = Task.Run(initializeAndStart)
+                    let finished = task.Wait(10000)
+                    if not finished then Logger.warning "Exploration cancelled"
+
+                with e -> reportCrash e
+            finally
+                try
+                    statistics.ExplorationFinished()
+                    API.Restore()
+                    searcher.Reset()
+                with e -> reportCrash e
+
 
     member private x.Stop() = isStopped <- true
 
@@ -489,18 +546,16 @@ type public Explorer(options : ExplorationOptions, reporter: IReporter) =
             @ (List.map (fun (x, _, _) -> x) entryPoints)
             |> x.Reset
 
-            let explorationTasks =
-                explorers
-                |> Array.map (fun e -> e.StartExploration isolated entryPoints)
+            for e in explorers do
+                e.StartExploration isolated entryPoints
+            // let explorationTasks =
+            //     explorers
+            //     |> Array.map (fun e -> e.StartExploration isolated entryPoints)
 
-            let finished = Task.WaitAll(explorationTasks, options.timeout)
-
-            if not finished then Logger.warning "Exploration cancelled"
-
-            for explorationTask in explorationTasks do
-                if explorationTask.IsFaulted then
-                    for ex in explorationTask.Exception.InnerExceptions do
-                    reporter.ReportCrash ex
+            // for explorationTask in explorationTasks do
+            //     if explorationTask.IsFaulted then
+            //         for ex in explorationTask.Exception.InnerExceptions do
+            //         reporter.ReportCrash ex
 
         with e -> reporter.ReportCrash e
 
