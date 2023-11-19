@@ -145,7 +145,7 @@ type private SVMExplorer(explorationOptions: ExplorationOptions, statistics: SVM
         with :? InsufficientInformationException as e ->
             cilState.iie <- Some e
             reportStateIncomplete cilState
-    
+
     let reportStateInternalFail (state : cilState) (e : Exception) =
         match e with
         | :? InsufficientInformationException as e ->
@@ -407,53 +407,20 @@ type private SVMExplorer(explorationOptions: ExplorationOptions, statistics: SVM
 
     member private x.Stop() = isStopped <- true
 
-
-type private FuzzerExplorer(explorationOptions: ExplorationOptions, statistics: SVMStatistics) =
-    
-    interface IExplorer with
-
-        member x.Reset _ = ()
-
-        member x.StartExploration isolated _ =
-            let saveStatistic = statistics.SetBasicBlocksAsCoveredByTest
-            let outputDir = explorationOptions.outputDirectory.FullName
-            let cancellationTokenSource = new CancellationTokenSource()
-            cancellationTokenSource.CancelAfter(explorationOptions.timeout)
-            let methodsBase = isolated |> List.map (fun (m, _) -> (m :> IMethod).MethodBase) 
-            task {
-                try
-                    let targetAssemblyPath = (Seq.head methodsBase).Module.Assembly.Location
-                    let onCancelled () = Logger.warning "Fuzzer canceled"
-                    let interactor = Fuzzer.Interactor(
-                        targetAssemblyPath,
-                        methodsBase,
-                        cancellationTokenSource.Token,
-                        outputDir,
-                        saveStatistic,
-                        onCancelled
-                    )
-                    do! interactor.StartFuzzing ()
-                with e -> Logger.error $"Fuzzer unhandled exception: {e.Message}"
-            }
-
-
 type public Explorer(options : ExplorationOptions, reporter: IReporter) =
 
     let statistics = new SVMStatistics(Seq.empty)
 
     let explorers =
-        let createFuzzer () =
-            FuzzerExplorer(options, statistics) :> IExplorer
-
         let createSVM () =
             SVMExplorer(options, statistics, reporter) :> IExplorer
 
         match options.explorationModeOptions with
-        | Fuzzing _ -> createFuzzer() |> Array.singleton
+        | Fuzzing _ -> __notImplemented__()
         | SVM _ -> createSVM() |> Array.singleton
         | Combined _ ->
             [|
-                createFuzzer()
+                __notImplemented__()
                 createSVM()
             |]
 
@@ -517,7 +484,7 @@ type public Explorer(options : ExplorationOptions, reporter: IReporter) =
                     let m, s = trySubstituteTypeParameters m
                     (Application.getMethod m, a, s))
                 |> Seq.toList
-            
+
             (List.map fst isolated)
             @ (List.map (fun (x, _, _) -> x) entryPoints)
             |> x.Reset
@@ -529,7 +496,7 @@ type public Explorer(options : ExplorationOptions, reporter: IReporter) =
             let finished = Task.WaitAll(explorationTasks, options.timeout)
 
             if not finished then Logger.warning "Exploration cancelled"
-            
+
             for explorationTask in explorationTasks do
                 if explorationTask.IsFaulted then
                     for ex in explorationTask.Exception.InnerExceptions do
