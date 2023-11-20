@@ -2,6 +2,7 @@ module VSharp.Fuzzer.Startup
 
 open System
 open VSharp
+open VSharp.CSharpUtils
 open VSharp.Fuzzer.Utils
 
 type internal FuzzerOptions = {
@@ -66,7 +67,7 @@ let internal isCoverageToolAttached () =
 let internal startFuzzer options developerOptions =
     let info = Diagnostics.ProcessStartInfo()
     info.WorkingDirectory <- IO.Directory.GetCurrentDirectory()
-    info.FileName <- "dotnet"
+    info.FileName <- DotnetExecutablePath.ExecutablePath
     info.Arguments <- "VSharp.Fuzzer.dll"
 
     info.EnvironmentVariables["CORECLR_PROFILER"] <- coreclrProfiler
@@ -118,6 +119,9 @@ let internal startFuzzer options developerOptions =
         || developerOptions.waitDebuggerAttachedCoverageTool
         || developerOptions.waitDebuggerAttachedOnAssertCoverageTool then
         Logger.warning $"One of \"Wait debugger\" options is enabled, you may attach to process by pid {proc.Id}"
+
+    if proc.HasExited then
+        failwith "Cannot start fuzzer process"
 
     Logger.traceCommunication "Fuzzer process started"
     proc

@@ -103,6 +103,13 @@ type Interactor (
         let unhandledExceptionPath = $"{Directory.GetCurrentDirectory()}{Path.DirectorySeparatorChar}exception.info"
         if File.Exists(unhandledExceptionPath) then
             testRestorer.RestoreTest unhandledExceptionPath
+        else
+            errorCommunication "Fuzzing failed without exception dump"
+            (*
+                In case of StackOverflowException fuzzer can't write exception.info,
+                but will exited with code 0
+            *)
+            assert (fuzzerProcess.ExitCode = 0)
 
     let setupFuzzer targetAssemblyPath =
         task {
