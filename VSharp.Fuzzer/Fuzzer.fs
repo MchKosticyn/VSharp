@@ -190,11 +190,17 @@ type internal Fuzzer(
                 methods = coverages.methods
                 reports = Array.sortBy (fun x -> x.threadId) coverages.reports
             }
+            for j in indices do
+                Logger.error $"indices: {coverages.reports[j].threadId}"
+            for thi in threadIds do
+                Logger.error $"threadIds: {thi}"
             for i in indices do
                 let coverage = coverages.reports[i]
                 let threadId = threadIds[i]
                 let invocationResult = invocationResults[i]
                 let generationData = data[i]
+
+
                 assert (int coverage.threadId = threadId)
 
                 traceFuzzing $"Handler result for {threadIds[i]}"

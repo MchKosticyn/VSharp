@@ -87,6 +87,7 @@ type internal TypeSolver() =
 
         match SolveGenericMethodParameters typeStorage method with
         | Some(classParams, methodParams) ->
+            Logger.traceTypeSolving "Before substitution"
             let method = substituteGenerics classParams methodParams
             Logger.traceTypeSolving $"Solved generics for {method.Name}"
             Some (method, typeStorage)

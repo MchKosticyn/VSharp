@@ -395,7 +395,10 @@ module TypeSolver =
             let typeVars = List.fold collectVars typeVars inputConstraints |> Array.ofList
 
             let solveWithSubst subst =
-                solveTypesConstraints getMock inputConstraints subst |> Option.map (makePair (decodeTypeSubst subst))
+                VSharp.Logger.traceWithTag "TypeSolver" "solveWithSubst: enter"
+                let result = solveTypesConstraints getMock inputConstraints subst |> Option.map (makePair (decodeTypeSubst subst))
+                VSharp.Logger.traceWithTag "TypeSolver" "solveWithSubst: leave"
+                result
             solveParams getMock (pdict.Empty()) typeVars |> Seq.tryPick solveWithSubst |> Option.map (fun (a, b) -> b, a)
 
     let private getGenericParameters (m : IMethod) =
