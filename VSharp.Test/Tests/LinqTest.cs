@@ -63,6 +63,15 @@ namespace IntegrationTests
             return result;
         }
 
+        enum State
+        {
+            Ready,
+            Steady,
+            Go,
+            Done,
+            Stopped
+        }
+
         [TestSvm]
         public static int ConcreteLinqTest1()
         {
@@ -71,6 +80,14 @@ namespace IntegrationTests
             var intList = scores.Cast<int>().ToList();
 
             return intList.Max();
+        }
+
+        [TestSvm]
+        public static int ConcreteLinqTest2()
+        {
+            var max = Enum.GetValues(typeof(State)).Cast<int>().Max();
+
+            return max;
         }
 
         [TestSvm(89)]

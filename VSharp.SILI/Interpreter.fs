@@ -127,6 +127,8 @@ module internal InstructionsSet =
         let right = pop cilState
         let location = referenceLocalVariable variableIndex m
         let typ = TypeOfLocation location
+        if shiftedOffset = Offset.from 264 then
+            Logger.error ""
         let value = Types.Cast right typ
         write cilState location value
     let private simplifyConditionResult state res k =
@@ -1366,6 +1368,8 @@ type ILInterpreter() as this =
         let nonExceptionCont (cilState : cilState) res k =
             push res cilState
             k [cilState]
+        if IsReference obj |> not then
+            Logger.error ""
         assert(IsReference obj)
         assert(Types.IsValueType t)
         let nullCase (cilState : cilState) k =

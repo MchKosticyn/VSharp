@@ -300,20 +300,32 @@ module public Reflection =
         assert interfaceType.IsInterface
         if interfaceType = targetType then interfaceMethod
         else
-            let genericMethod, _, _ = generalizeMethodBase interfaceMethod
+            let genericMethod, args, defs = generalizeMethodBase interfaceMethod
             assert(genericMethod :? MethodInfo)
             let sign = createSignature (genericMethod :?> MethodInfo)
             let hasTargetSignature (mi : MethodInfo) =
-                let genericMethod, _, _ = generalizeMethodBase mi
+                // reflectedType.GetMemberWithSameMetadataDefinitionAs(genericDefinition)
+                let genericMethod, args1, defs1 = generalizeMethodBase mi
                 assert(genericMethod :? MethodInfo)
                 // TODO: try to check this without signatures
-                createSignature (genericMethod :?> MethodInfo) = sign
+                let suits = createSignature (genericMethod :?> MethodInfo) = sign
+                if suits then
+                    if not mi.ContainsGenericParameters then Some mi
+                    else
+                        let reflectedType = interfaceMethod.ReflectedType
+                        let reflectedType =
+                            if reflectedType.ContainsGenericParameters then reflectedType
+                        let typeArgs = interfaceMethod.ReflectedType.GetGenericArguments()
+                else None
             match targetType with
-            | _ when targetType.IsArray -> getArrayMethods targetType |> Seq.find hasTargetSignature
-            | _ when targetType.IsInterface -> getAllMethods targetType |> Seq.find hasTargetSignature
+            | _ when targetType.IsArray ->
+                getArrayMethods targetType |> Array.choose hasTargetSignature
+            | _ when targetType.IsInterface ->
+                let sign = createSignature (genericMethod :?> MethodInfo)
+                getAllMethods targetType |> Array.choose hasTargetSignature
             | _ ->
                 let interfaceMap = targetType.GetInterfaceMap(interfaceType)
-                let targetMethodIndex = Array.findIndex hasTargetSignature interfaceMap.InterfaceMethods
+                let targetMethodIndex = Array.IndexOf(interfaceMap.InterfaceMethods, interfaceMethod)
                 interfaceMap.TargetMethods[targetMethodIndex]
 
     let private virtualBindingFlags =
@@ -365,31 +377,27 @@ module public Reflection =
 
     // TODO: unify with 'lastOverrideType'
     let resolveOverridingMethod targetType (virtualMethod : MethodInfo) =
+        assert(targetType <> null)
         assert virtualMethod.IsVirtual
-        let isGeneric = virtualMethod.IsGenericMethod
-        let genericDefinition =
+        match virtualMethod.DeclaringType with
+        | i when i.IsInterface -> resolveInterfaceOverride targetType virtualMethod
+        | _ when targetType = virtualMethod.DeclaringType -> virtualMethod
+        | _ ->
+            let isGeneric = virtualMethod.IsGenericMethod
+            let resolved =
+                let genericDefinition =
+                    if isGeneric then getGenericMethodDefinition virtualMethod
+                    else virtualMethod
+                let declaredMethods = targetType.GetMethods(virtualBindingFlags)
+                let resolvedMethod = declaredMethods |> Seq.tryFind (isOverrideOf genericDefinition)
+                match resolvedMethod with
+                | Some resolvedMethod -> resolvedMethod
+                | None -> genericDefinition
             if isGeneric then
-                getGenericMethodDefinition virtualMethod
-            else
-                virtualMethod
-        let resolved =
-            match genericDefinition.DeclaringType with
-            | i when i.IsInterface -> resolveInterfaceOverride targetType genericDefinition
-            | _ ->
-                assert(targetType <> null)
-                if targetType = genericDefinition.DeclaringType then genericDefinition
-                else
-                    let declaredMethods = targetType.GetMethods(virtualBindingFlags)
-                    let resolvedMethod = declaredMethods |> Seq.tryFind (isOverrideOf genericDefinition)
-                    match resolvedMethod with
-                    | Some resolvedMethod -> resolvedMethod
-                    | None -> genericDefinition
-        if isGeneric then
-            let genericArgs = virtualMethod.GetGenericArguments()
-            let resolvedDefinition = getGenericMethodDefinition resolved
-            resolvedDefinition.MakeGenericMethod(genericArgs)
-        else
-            resolved
+                let genericArgs = virtualMethod.GetGenericArguments()
+                let resolvedDefinition = getGenericMethodDefinition resolved
+                resolvedDefinition.MakeGenericMethod(genericArgs)
+            else resolved
 
     let typeImplementsMethod targetType (virtualMethod : MethodInfo) =
         let method = resolveOverridingMethod targetType virtualMethod
