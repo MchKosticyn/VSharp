@@ -19,8 +19,8 @@ module Logger =
     let Info = 4
     let Trace = 5
 
-
-    let mutable currentTextWriter = Console.Out
+    let mutable currentTextWriter : IO.TextWriter = Console.Out
+    // let mutable currentTextWriter : IO.TextWriter = new System.IO.StreamWriter(System.IO.File.OpenWrite("log.txt"))
     let mutable writeTimestamps = true
 
     let private enabledTags = Dictionary([

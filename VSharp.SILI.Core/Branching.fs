@@ -39,6 +39,10 @@ module internal Branching =
             merge2Results thenResult elseResult |> k))
         conditionInvocation state (fun (condition, conditionState) ->
         let pc = state.pc
+        if PC.toSeq pc |> conjunction |> state.model.Eval |> isTrue |> not then
+            let wrong = PC.toSeq pc |> List.ofSeq |> List.filter (fun x -> x |> state.model.Eval |> isTrue |> not)
+            let evaled = wrong |> List.map (fun x -> x |> state.model.Eval)
+            internalfail "branching failed (at start)"
         assert(PC.toSeq pc |> conjunction |> state.model.Eval |> isTrue)
         let typeStorage = conditionState.typeStorage
         let evaled = state.model.Eval condition
@@ -69,6 +73,10 @@ module internal Branching =
                     let thenState = conditionState
                     let elseState = Memory.copy conditionState elsePc
                     elseState.model <- model.mdl
+                    if PC.toSeq elsePc |> conjunction |> elseState.model.Eval |> isTrue |> not then
+                        let wrong = PC.toSeq elsePc |> List.ofSeq |> List.filter (fun x -> x |> elseState.model.Eval |> isTrue |> not)
+                        let evaled = wrong |> List.map (fun x -> x |> elseState.model.Eval)
+                        internalfail $"branching failed (at then), wrong = {wrong}, evaled = {evaled}"
                     assert(PC.toSeq elsePc |> conjunction |> elseState.model.Eval |> isTrue)
                     thenState.pc <- PC.add pc condition
                     TypeStorage.addTypeConstraint typeStorageCopy.Constraints condition
@@ -105,6 +113,10 @@ module internal Branching =
                     let thenState = conditionState
                     let elseState = Memory.copy conditionState (PC.add pc notCondition)
                     thenState.model <- model.mdl
+                    if PC.toSeq thenPc |> conjunction |> thenState.model.Eval |> isTrue |> not then
+                        let wrong = PC.toSeq thenPc |> List.ofSeq |> List.filter (fun x -> x |> thenState.model.Eval |> isTrue |> not)
+                        let evaled = wrong |> List.map (fun x -> x |> thenState.model.Eval)
+                        internalfail "branching failed (at else)"
                     assert(PC.toSeq thenPc |> conjunction |> thenState.model.Eval |> isTrue)
                     TypeStorage.addTypeConstraint typeStorageCopy.Constraints notCondition
                     elseState.typeStorage <- typeStorageCopy

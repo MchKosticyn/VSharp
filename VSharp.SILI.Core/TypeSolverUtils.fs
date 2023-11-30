@@ -1083,6 +1083,8 @@ type typeStorage private (constraints, addressesTypes, typeMocks, classesParams,
             if addressesTypes.TryGetValue(address, t) then Some t.Value
             else None
         and set (address : term) (candidates : candidates) =
+            if candidates.IsEmpty then
+                internalfail "empty candidates!"
             assert(candidates.IsEmpty |> not)
             addressesTypes[address] <- candidates
 

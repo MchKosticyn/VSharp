@@ -538,10 +538,14 @@ module TypeSolver =
             let evaledType =
                 let address = Seq.head same
                 let candidates = addressesTypes[address]
+                if candidates.IsEmpty then
+                    internalfail "evalInModel failed (1)"
                 assert(candidates.IsEmpty |> not)
                 if same.Count > 1 then
                     let merged = mergeConstraints constraints same
                     let refined = refineCandidates getMock merged candidates
+                    if refined.IsEmpty then
+                        internalfail "evalInModel failed (2)"
                     assert(refined.IsEmpty |> not)
                     refined.Pick()
                 else candidates.Pick()

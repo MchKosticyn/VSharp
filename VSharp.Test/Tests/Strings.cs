@@ -269,6 +269,7 @@ namespace IntegrationTests
 
             throw new ArgumentException("invalid string");
         }
+
         [TestSvm(75)]
         public static Kind ConcreteEnumTryParse()
         {
