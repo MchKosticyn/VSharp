@@ -742,9 +742,27 @@ type ILInterpreter() as this =
         let state = cilState.state
         if method.CanCallConcrete then
             // Before term args, type args are located
-            let termArgs = List.skip (List.length args - method.Parameters.Length) args
+            let args = List.toArray args
+            let argsLength = Array.length args
+            let parameters = method.Parameters
+            assert(argsLength = Array.length parameters)
             // TODO: support out parameters
-            let objArgs = List.choose (TryTermToObj state) termArgs
+            let mutable argsConcrete = true
+            let mutable hasByRef = false
+            let objArgs = Array.zeroCreate argsLength
+            for i = 0 to argsLength - 1 do
+                if argsConcrete then
+                    let arg = args[i]
+                    let parameter = parameters[i]
+                    let arg =
+                        if parameter.ParameterType.IsByRef then
+                            assert(IsRefOrPtr arg)
+                            hasByRef <- true
+                            Memory.Read state arg
+                        else arg
+                    match TryTermToObj state arg with
+                    | Some obj -> objArgs[i] <- obj
+                    | None -> argsConcrete <- false
             let hasThis = Option.isSome thisOption
             let declaringType = method.DeclaringType
             let thisIsStruct = declaringType.IsValueType
@@ -756,11 +774,11 @@ type ILInterpreter() as this =
                 | Some thisRef -> TryTermToObj state thisRef
                 | None -> None
             match thisObj with
-            | _ when List.length objArgs <> List.length termArgs -> false
+            | _ when not argsConcrete -> false
             | None when hasThis -> false
             | _ ->
                 try
-                    let result = method.Invoke thisObj (List.toArray objArgs)
+                    let result = method.Invoke thisObj objArgs
                     let resultType = TypeUtils.getTypeOfConcrete result
                     let returnType = method.ReturnType
                     match resultType with
@@ -782,6 +800,17 @@ type ILInterpreter() as this =
                             assert(List.length states = 1 && List.head states = state)
                         | _ -> __unreachable__()
                     | _ -> ()
+                    if hasByRef then
+                        for i = 0 to parameters.Length - 1 do
+                            let p = parameters[i]
+                            let parameterType = p.ParameterType
+                            if parameterType.IsByRef then
+                                let obj = objArgs[i]
+                                let t = parameterType.GetElementType()
+                                let term = Memory.ObjectToTerm state obj t
+                                let states = Memory.Write state args[i] term
+                                assert(List.length states = 1 && states[0] = state)
+
                 with :? TargetInvocationException as e ->
                     let isRuntime = method.IsRuntimeException
                     x.ConcreteInvokeCatch e.InnerException cilState isRuntime
@@ -801,7 +830,24 @@ type ILInterpreter() as this =
                 ILInterpreter.FallThroughCall cilState
             cilState
 
-        if x.TryConcreteInvoke method typeAndMethodArgs thisOption cilState then
+        // if method.IsConcretelyInvokable && not method.IsConcreteCall then
+        //     let state = cilState.state
+        //     let objArgs = List.choose (TryTermToObj state) args
+        //     let kek =
+        //         if List.length objArgs = List.length args then
+        //             let declaringType = method.DeclaringType
+        //             let thisIsStruct = declaringType.IsValueType
+        //             match thisOption with
+        //             | Some thisRef when thisIsStruct ->
+        //                 let structTerm = Memory.Read state thisRef
+        //                 TryTermToObj state structTerm |> Option.isSome
+        //             | Some thisRef -> TryTermToObj state thisRef |> Option.isSome
+        //             | None -> false
+        //         else false
+        //     if kek then
+        //         Logger.error $"{method.FullGenericMethodName}"
+
+        if x.TryConcreteInvoke method args thisOption cilState then
             fallThroughCall cilState |> List.singleton |> k
         elif method.IsFSharpInternalCall then
             let thisAndArguments = optCons typeAndMethodArgs thisOption
