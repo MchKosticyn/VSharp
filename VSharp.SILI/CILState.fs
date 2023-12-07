@@ -77,7 +77,6 @@ module CilState =
     and cilState private (
         ipStack : ipStack,
         prefixContext : prefix list,
-        currentLoc : codeLocation,
         stackArrays : pset<concreteHeapAddress>,
         errorReported : bool,
         filterResult : term option,
@@ -95,9 +94,6 @@ module CilState =
         let mutable ipStack : ipStack = ipStack
         // This field stores information about instruction prefix (for example, '.constrained' prefix)
         let mutable prefixContext : prefix list = prefixContext
-        // TODO: get rid of currentLoc!
-        // This field stores only approximate information and can't be used for getting the precise location. Instead, use ipStack.Head
-        let mutable currentLoc : codeLocation = currentLoc
         let mutable stackArrays : pset<concreteHeapAddress> = stackArrays
         let mutable errorReported : bool = errorReported
         let mutable filterResult : term option = filterResult
@@ -126,7 +122,6 @@ module CilState =
             let ip = Instruction(0<offsets>, m)
             let ipStack = List.singleton ip
             let listEmpty = List.empty
-            let currentLoc = ip.ToCodeLocation() |> Option.get
             let pSetEmpty = PersistentSet.empty
             let pDictEmpty = PersistentDict.empty
             let setEmpty = Set.empty
@@ -228,16 +223,14 @@ module CilState =
         member x.CurrentOffset with get() = x.CurrentIp.Offset
 
         member x.PushToIp (ip : instructionPointer) =
-            let loc = currentLoc
+            let currentLocation = x.CurrentLoc
             match ip.ToCodeLocation() with
-            | Some loc' when loc'.method.HasBody ->
-                currentLoc <- loc'
-                Application.addCallEdge loc loc'
+            | Some location when location.method.HasBody ->
+                Application.addCallEdge currentLocation location
             | _ -> ()
             ipStack <- ip :: ipStack
 
         member x.SetCurrentIp (ip : instructionPointer) =
-            x.MoveCodeLoc ip
             assert(List.isEmpty ipStack |> not)
             ipStack <- ip :: List.tail ipStack
 
@@ -270,11 +263,6 @@ module CilState =
             ipStack
             |> List.takeWhile (fun ip -> not ip.IsFilter)
             |> List.map (fun ip -> ip.ForceCodeLocation())
-
-        member private x.MoveCodeLoc (ip : instructionPointer) =
-            match ip.ToCodeLocation() with
-            | Some loc when loc.method.HasBody -> currentLoc <- loc
-            | _ -> ()
 
         // -------------------- Prefix context operations --------------------
 
@@ -422,9 +410,6 @@ module CilState =
             Memory.PopFrame state
             let ip = List.tail ipStack
             ipStack <- ip
-            match ip with
-            | ip :: _ -> x.MoveCodeLoc ip
-            | [] -> ()
 
         member x.Read ref =
             Memory.ReadUnsafe errorReporter.Value state ref
@@ -494,7 +479,7 @@ module CilState =
 
         member x.Copy(state : state) =
             cilState(
-                ipStack, prefixContext, currentLoc, stackArrays, errorReported, filterResult, iie, level,
+                ipStack, prefixContext, stackArrays, errorReported, filterResult, iie, level,
                 initialEvaluationStackSize, stepsNumber, suspended, targets, history, entryMethod, startingIp, state
             )
 
@@ -519,7 +504,7 @@ module CilState =
         override x.GetHashCode() = System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode x
 
         interface IGraphTrackableState with
-            override this.CodeLocation = currentLoc
+            override this.CodeLocation = this.CurrentLoc
             override this.CallStack = Memory.StackTrace state.stack |> List.map (fun m -> m :?> Method)
 
 module CilStateOperations =
