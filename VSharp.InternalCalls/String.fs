@@ -6,10 +6,10 @@ open global.System
 open VSharp
 open VSharp.Core
 open VSharp.Interpreter.IL
-open VSharp.Interpreter.IL.CilStateOperations
+open VSharp.Interpreter.IL.CilState
 open VSharp.Core.API.Arithmetics
 
-// ------------------------------- mscorlib.System.Array -------------------------------
+// ------------------------------- System.String -------------------------------
 
 module internal String =
 
@@ -30,11 +30,11 @@ module internal String =
         let this, span = args[0], args[1]
         let ref = ReadOnlySpan.GetContentsRef cilState span
         let len = ReadOnlySpan.GetLength cilState span
-        let state = cilState.state
+        let state = cilState.State
         let t = MostConcreteTypeOfRef state ref
         assert(TypeUtils.isArrayType t || t = typeof<string> || t = typeof<char>)
         let states = Memory.StringCtorOfCharArrayAndLen state ref this len
-        List.map (changeState cilState) states
+        List.map cilState.ChangeState states
 
     let CtorFromPtr (i : IInterpreter) (cilState : cilState) (args : term list) =
         assert(List.length args = 4)
@@ -46,27 +46,27 @@ module internal String =
         let rangeCheck() =
             (length >>= zero)
             &&& (startIndex >>= zero)
-        let copy cilState k =
-            let cilStates = writeClassField cilState this Reflection.stringLengthField length
+        let copy (cilState : cilState) k =
+            let cilStates = cilState.WriteClassField this Reflection.stringLengthField length
             let bytesCount = Mul length (MakeNumber sizeof<char>)
             let memMove cilState =
                 Buffer.CommonMemmove cilState this None ptr (Some startIndex) bytesCount
             List.collect memMove cilStates |> k
-        let checkPtr cilState k =
-            StatedConditionalExecutionCIL cilState
+        let checkPtr (cilState : cilState) k =
+            cilState.StatedConditionalExecutionCIL
                 (fun state k -> k (!!(IsBadRef ptr), state))
                 copy
                 (i.Raise i.ArgumentOutOfRangeException)
                 k
-        let emptyStringCase cilState k =
-            writeClassField cilState this Reflection.stringLengthField zero |> k
-        let checkLength cilState k =
-            StatedConditionalExecutionCIL cilState
+        let emptyStringCase (cilState : cilState) k =
+            cilState.WriteClassField this Reflection.stringLengthField zero |> k
+        let checkLength (cilState : cilState) k =
+            cilState.StatedConditionalExecutionCIL
                 (fun state k -> k (length === zero, state))
                 emptyStringCase
                 checkPtr
                 k
-        StatedConditionalExecutionCIL cilState
+        cilState.StatedConditionalExecutionCIL
             (fun state k -> k (rangeCheck(), state))
             checkLength
             (i.Raise i.ArgumentOutOfRangeException)
@@ -137,7 +137,7 @@ module internal String =
 
     let FillStringChecked (interpreter : IInterpreter) (cilState : cilState) (args : term list) =
         assert(List.length args = 3)
-        let state = cilState.state
+        let state = cilState.State
         let dest, destPos, src = args[0], args[1], args[2]
         let srcPos = MakeNumber 0
         let srcLength = Memory.StringLength state src
@@ -145,9 +145,9 @@ module internal String =
         let (<<=) = Arithmetics.(<<=)
         let check = srcLength <<= (Sub destLength destPos)
         let copy (cilState : cilState) k =
-            Memory.CopyStringArray cilState.state src srcPos dest destPos srcLength
+            Memory.CopyStringArray cilState.State src srcPos dest destPos srcLength
             k [cilState]
-        StatedConditionalExecutionCIL cilState
+        cilState.StatedConditionalExecutionCIL
             (fun state k -> k (check, state))
             copy
             (interpreter.Raise interpreter.IndexOutOfRangeException)
@@ -157,10 +157,10 @@ module internal String =
         assert(List.length args = 2)
         let this = args[0]
         let index = args[1]
-        let length = Memory.StringLength cilState.state this
-        let getChar cilState k =
-            let char = Memory.ReadStringChar cilState.state this index
-            push char cilState
+        let length = Memory.StringLength cilState.State this
+        let getChar (cilState : cilState) k =
+            let char = Memory.ReadStringChar cilState.State this index
+            cilState.Push char
             List.singleton cilState |> k
         let arrayLength = Add length (MakeNumber 1)
         interpreter.AccessArray getChar cilState arrayLength index id

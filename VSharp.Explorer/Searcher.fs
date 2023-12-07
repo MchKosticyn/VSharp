@@ -4,6 +4,7 @@ open System.Collections.Generic
 open FSharpx.Collections
 open VSharp
 open VSharp.Interpreter.IL
+open VSharp.Interpreter.IL.CilState
 open VSharp.Utils
 
 type action =
@@ -34,14 +35,14 @@ type IForwardSearcher =
     abstract member StatesCount : int
 
 type ITargetedSearcher =
-    abstract member SetTargets : ip -> ip seq -> unit
+    abstract member SetTargets : instructionPointer -> instructionPointer seq -> unit
     abstract member Update : cilState -> cilState seq -> cilState seq // returns states that reached its target
     abstract member Pick : unit -> cilState option
     abstract member Reset : unit -> unit
     abstract member Remove : cilState -> unit
     abstract member StatesCount : int
 
-type backwardAction = Propagate of cilState * pob | InitTarget of ip * pob seq | NoAction
+type backwardAction = Propagate of cilState * pob | InitTarget of instructionPointer * pob seq | NoAction
 
 type IBackwardSearcher =
     abstract member Init : pob seq -> unit
@@ -57,7 +58,7 @@ type IBackwardSearcher =
 type IpStackComparer() =
     interface IComparer<cilState> with
         override _.Compare(x : cilState, y : cilState) =
-            let res = (List.length x.ipStack).CompareTo(List.length y.ipStack)
+            let res = (List.length x.IpStack).CompareTo(List.length y.IpStack)
             res
 
 type DFSSearcher() =
@@ -123,7 +124,7 @@ type WeightedSearcher(weighter : IWeighter, storage : IPriorityCollection<cilSta
             weighter.Weight s
         with
         | :? InsufficientInformationException as e ->
-            s.iie <- Some e
+            s.SetIIE e
             None
         | :? InternalException as e ->
             Logger.error $"WeightedSearcher: failed to get weight of state {e}"

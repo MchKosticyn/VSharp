@@ -535,8 +535,9 @@ module API =
             Branching.guardedStatedMap write state reference
 
         let WriteUnsafe (reporter : IErrorReporter) state reference value =
-            reporter.ConfigureState state
-            let write state reference = Memory.write reporter state reference value
+            let write state reference =
+                reporter.ConfigureState state
+                Memory.write reporter state reference value
             Branching.guardedStatedMap write state reference
 
         let WriteStructField structure field value = Memory.writeStruct structure field value
@@ -545,28 +546,25 @@ module API =
             reporter.ConfigureState state
             Memory.writeStruct structure field value
 
-        let WriteClassField state reference field value =
-            Branching.guardedStatedMap
-                (fun state reference ->
-                    match reference.term with
-                    | HeapRef(addr, _) -> Memory.writeClassField state addr field value
-                    | _ -> internalfailf "Writing field of class: expected reference, but got %O" reference
-                    state)
-                state reference
+        let WriteClassFieldUnsafe (reporter : IErrorReporter) state reference field value =
+            let write state reference =
+                reporter.ConfigureState state
+                match reference.term with
+                | HeapRef(addr, _) -> Memory.writeClassField state addr field value
+                | _ -> internalfail $"Writing field of class: expected reference, but got {reference}"
+                state
+            Branching.guardedStatedMap write state reference
 
-        let CommonWriteArrayIndex reporter state reference indices value valueType =
+        let WriteClassField state reference field value =
+            WriteClassFieldUnsafe Memory.emptyReporter state reference field value
+
+        let WriteArrayIndexUnsafe (reporter : IErrorReporter) state reference indices value valueType =
+            reporter.ConfigureState state
             let ref = ReferenceArrayIndex state reference indices valueType
             let value =
                 if isPtr ref then Option.fold (fun _ -> Types.Cast value) value valueType
                 else MostConcreteTypeOfRef state reference |> symbolicTypeToArrayType |> fst3 |> Types.Cast value
             WriteUnsafe reporter state ref value
-
-        let WriteArrayIndex state reference indices value valueType =
-            CommonWriteArrayIndex Memory.emptyReporter state reference indices value valueType
-
-        let WriteArrayIndexUnsafe (reporter : IErrorReporter) state reference indices value valueType =
-            reporter.ConfigureState state
-            CommonWriteArrayIndex reporter state reference indices value valueType
 
         let WriteStaticField state typ field value = Memory.writeStaticField state typ field value
 

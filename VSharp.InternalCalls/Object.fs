@@ -5,14 +5,14 @@ open global.System
 open VSharp
 open VSharp.Core
 open VSharp.Interpreter.IL
-open VSharp.Interpreter.IL.CilStateOperations
+open VSharp.Interpreter.IL.CilState
 
 module internal Object =
 
     let internal MemberwiseClone (_ : IInterpreter) (cilState : cilState) (args : term list) =
         assert(List.length args = 1)
         let object = args[0]
-        let state = cilState.state
+        let state = cilState.State
         let t = MostConcreteTypeOfRef state object
         if TypeUtils.isArrayType t then
             if not t.IsSZArray then
@@ -21,12 +21,12 @@ module internal Object =
             let zero = MakeNumber 0
             let len = Memory.ArrayLengthByDimension state object zero
             Memory.CopyArray state object zero t newObject zero t len
-            push newObject cilState
+            cilState.Push newObject
             List.singleton cilState
         elif t.IsValueType then
-            let v = read cilState object
-            let ref = Memory.BoxValueType cilState.state v
-            push ref cilState
+            let v = cilState.Read object
+            let ref = Memory.BoxValueType state v
+            cilState.Push ref
             List.singleton cilState
         else
             let t =
@@ -42,11 +42,11 @@ module internal Object =
             let newObject = Memory.AllocateDefaultClass state t
             let fields = Reflection.fieldsOf false t
             let copyField cilStates (field, _) =
-                let copyForState cilState =
-                    let v = readField cilState object field
-                    writeClassField cilState newObject field v
+                let copyForState (cilState : cilState) =
+                    let v = cilState.ReadField object field
+                    cilState.WriteClassField newObject field v
                 List.collect copyForState cilStates
             let cilStates = Array.fold copyField (List.singleton cilState) fields
             for cilState in cilStates do
-                push newObject cilState
+                cilState.Push newObject
             cilStates
