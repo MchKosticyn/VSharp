@@ -122,7 +122,8 @@ module CilState =
 
         let errorReporter = lazy ErrorReporter(this)
 
-        new (entryMethod : Method, ip : instructionPointer, initialEvaluationStackSize : uint32, state : state) =
+        new (m : Method, state : state) =
+            let ip = Instruction(0<offsets>, m)
             let ipStack = List.singleton ip
             let listEmpty = List.empty
             let currentLoc = ip.ToCodeLocation() |> Option.get
@@ -130,13 +131,9 @@ module CilState =
             let pDictEmpty = PersistentDict.empty
             let setEmpty = Set.empty
             cilState(
-                ipStack, listEmpty, currentLoc, pSetEmpty, false, None, None, pDictEmpty,
-                initialEvaluationStackSize, 0u, false, setEmpty, setEmpty, Some entryMethod, ip, state
+                ipStack, listEmpty, pSetEmpty, false, None, None, pDictEmpty,
+                0u, 0u, false, setEmpty, setEmpty, Some m, ip, state
             )
-
-        new (m : Method, state : state) =
-            let ip = Instruction(0<offsets>, m)
-            cilState(m, ip, 0u, state)
 
         member x.IsIsolated with get() = entryMethod.IsNone
 
