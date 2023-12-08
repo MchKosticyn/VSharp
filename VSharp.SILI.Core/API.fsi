@@ -1,6 +1,5 @@
 namespace VSharp.Core
 
-open System.Collections.Generic
 open VSharp
 open System
 open System.Reflection
@@ -303,7 +302,6 @@ module API =
         val DefaultOf : Type -> term
 
         val MakeSymbolicThis : IMethod -> term
-        val MakeSymbolicValue : ISymbolicConstantSource -> string -> Type -> term
 
         val CallStackContainsFunction : state -> IMethod -> bool
         val CallStackSize : state -> int
