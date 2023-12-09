@@ -833,7 +833,7 @@ namespace IntegrationTests
             return 0;
         }
 
-        [Ignore("fix composition with concrete memory")]
+        [TestSvm(100)]
         public static int ConcreteDictionaryTest1(int a, int b)
         {
             var d = new Dictionary<int, List<int>>();

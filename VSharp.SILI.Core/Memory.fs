@@ -849,13 +849,14 @@ module internal Memory =
 // ------------------------------- Safe reading -------------------------------
 
     let commonReadClassFieldSymbolic state address (field : fieldId) =
+        let cm = state.concreteMemory
         let symbolicType = field.typ
         let extractor state =
             let field = substituteTypeVariablesIntoField state field
             let typ = substituteTypeVariables state symbolicType
             accessRegion state.classFields field typ
-        let region = extractor state
-        let mkName = fun (key : heapAddressKey) -> $"{key.address}.{field}"
+        let region = extractor state // TODO: memset from concrete memory! #symbAddress
+        let mkName (key : heapAddressKey) = $"{key.address}.{field}"
         let isDefault state (key : heapAddressKey) = isHeapAddressDefault state key.address
         let key = {address = address}
         let instantiate typ memory =

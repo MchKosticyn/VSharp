@@ -241,6 +241,7 @@ module internal Z3 =
             let constant = ctx.MkConst(x.ValidateId name, sort)
             let assumptions =
                 if typ = addressType then
+                    // TODO: can be > 0 #symbAddress
                     let zero = ctx.MkNumeral(0, sort)
                     ctx.MkBVSLE(constant :?> BitVecExpr, zero :?> BitVecExpr) |> List.singleton
                 else List.empty
@@ -1320,7 +1321,7 @@ module internal Z3 =
         member x.MkModel (m : Model) =
             try
                 let stackEntries = Dictionary<stackKey, term ref>()
-                // TODO: compose memory region with concrete memory
+                // TODO: compose memory region with concrete memory to use 'memoryMode = ConcreteMode'
                 let state = { Memory.EmptyState() with complete = true; memoryMode = SymbolicMode }
                 let primitiveModel = Dictionary<ISymbolicConstantSource, term ref>()
 

@@ -5,14 +5,26 @@ open System.Collections.Generic
 open System.Runtime.CompilerServices
 open VSharp
 
-type public ConcreteMemory private (physToVirt, virtToPhys) =
+type public ConcreteMemory private (physToVirt, virtToPhys, types) =
+
+// ----------------------------- Helpers -----------------------------
+
+    let addToTypes (types : Dictionary<Type, List<concreteHeapAddress>>) t address =
+        let exists, list = types.TryGetValue t
+        if exists then
+            list.Add address
+        else
+            let list = List<concreteHeapAddress>()
+            list.Add address
+            types.Add(t, list)
 
 // ----------------------------- Constructor -----------------------------
 
     internal new () =
         let physToVirt = Dictionary<physicalAddress, concreteHeapAddress>()
         let virtToPhys = Dictionary<concreteHeapAddress, physicalAddress>()
-        ConcreteMemory(physToVirt, virtToPhys)
+        let types = Dictionary<Type, List<concreteHeapAddress>>()
+        ConcreteMemory(physToVirt, virtToPhys, types)
 
 // ----------------------------- Primitives -----------------------------
 
@@ -39,6 +51,7 @@ type public ConcreteMemory private (physToVirt, virtToPhys) =
     member internal x.Copy() =
         let physToVirt' = Dictionary<physicalAddress, concreteHeapAddress>()
         let virtToPhys' = Dictionary<concreteHeapAddress, physicalAddress>()
+        let types' = Dictionary<Type, List<concreteHeapAddress>>(types)
         // Need to copy all addresses from physToVirt, because:
         // 1. let complex object (A) contains another object (B),
         // if object (B) was unmarshalled, physToVirt will contain mapping
@@ -55,7 +68,7 @@ type public ConcreteMemory private (physToVirt, virtToPhys) =
             // Empty string is interned
             if phys' = {object = String.Empty} then physToVirt'[phys'] <- virt
             else physToVirt'.Add(phys', virt)
-        ConcreteMemory(physToVirt', virtToPhys')
+        ConcreteMemory(physToVirt', virtToPhys', types')
 
 // ----------------------------- Primitives -----------------------------
 
@@ -93,6 +106,7 @@ type public ConcreteMemory private (physToVirt, virtToPhys) =
         virtToPhys.Add(address, physicalAddress)
         // TODO: take type as parameter?
         let t = obj.GetType()
+        addToTypes types t address
         physToVirt[physicalAddress] <- address
 
 // ------------------------------- Reading -------------------------------
@@ -101,6 +115,17 @@ type public ConcreteMemory private (physToVirt, virtToPhys) =
         let object = x.ReadObject address
         let fieldInfo = Reflection.getFieldInfo field
         fieldInfo.GetValue(object)
+
+    member internal x.GetClassFieldData fieldId =
+        let fieldInfo = Reflection.getFieldInfo fieldId
+        let declaringType = fieldInfo.DeclaringType
+        seq {
+            for KeyValue(t, addresses) in types do
+                if declaringType.IsAssignableFrom t then
+                    for address in addresses do
+                        let obj = x.ReadObject address
+                        yield address, fieldInfo.GetValue(obj)
+        }
 
     member internal x.ReadArrayIndex address (indices : int list) =
         match x.ReadObject address with
@@ -119,17 +144,45 @@ type public ConcreteMemory private (physToVirt, virtToPhys) =
         | :? String as string -> string.ToCharArray() |> Array.getArrayIndicesWithValues
         | obj -> internalfail $"reading array data concrete memory: expected to read array, but got {obj}"
 
+    member internal x.GetArraysData arrayType =
+        seq {
+            for KeyValue(t, addresses) in types do
+                if arrayType = t then
+                    for address in addresses do
+                        yield address, x.GetAllArrayData address
+        }
+
     member internal x.ReadArrayLowerBound address dimension =
         match x.ReadObject address with
         | :? Array as array -> array.GetLowerBound(dimension)
         | :? String when dimension = 0 -> 0
         | obj -> internalfail $"reading array lower bound from concrete memory: expected to read array, but got {obj}"
 
+    member internal x.GetLowerBoundsData arrayType =
+        seq {
+            for KeyValue(t, addresses) in types do
+                if arrayType = t then
+                    for address in addresses do
+                        let array = x.ReadObject address :?> Array
+                        let lowerBounds = Array.init array.Rank (fun i -> i, array.GetLowerBound i) :> seq<int * int>
+                        yield address, lowerBounds
+        }
+
     member internal x.ReadArrayLength address dimension =
         match x.ReadObject address with
         | :? Array as array -> array.GetLength(dimension)
         | :? String as string when dimension = 0 -> 1 + string.Length
         | obj -> internalfail $"reading array length from concrete memory: expected to read array, but got {obj}"
+
+    member internal x.GetLengthsData arrayType =
+        seq {
+            for KeyValue(t, addresses) in types do
+                if arrayType = t then
+                    for address in addresses do
+                        let array = x.ReadObject address :?> Array
+                        let lengths = Array.init array.Rank (fun i -> i, array.GetLength i) :> seq<int * int>
+                        yield address, lengths
+        }
 
 // ------------------------------- Writing -------------------------------
 

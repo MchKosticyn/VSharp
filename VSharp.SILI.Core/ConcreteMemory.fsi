@@ -13,10 +13,14 @@ type public ConcreteMemory =
     member internal TryPhysToVirt : obj -> concreteHeapAddress option
     member internal Allocate : concreteHeapAddress -> obj -> unit
     member internal ReadClassField : concreteHeapAddress -> fieldId -> obj
+    member internal GetClassFieldData : fieldId -> seq<concreteHeapAddress * obj>
     member internal ReadArrayIndex : concreteHeapAddress -> int list -> obj
     member internal GetAllArrayData : concreteHeapAddress -> seq<int list * obj>
+    member internal GetArraysData : Type -> seq<concreteHeapAddress * seq<int list * obj>>
     member internal ReadArrayLowerBound : concreteHeapAddress -> int -> int
+    member internal GetLowerBoundsData : Type -> seq<concreteHeapAddress * seq<int * int>>
     member internal ReadArrayLength : concreteHeapAddress -> int -> int
+    member internal GetLengthsData : Type -> seq<concreteHeapAddress * seq<int * int>>
     member internal WriteClassField : concreteHeapAddress -> fieldId -> obj -> unit
     member internal WriteArrayIndex : concreteHeapAddress -> int list -> obj -> unit
     member internal InitializeArray : concreteHeapAddress -> RuntimeFieldHandle -> unit
