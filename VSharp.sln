@@ -34,6 +34,8 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "VSharp.Fuzzer", "VSharp.Fuz
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "VSharp.Explorer", "VSharp.Explorer\VSharp.Explorer.fsproj", "{9455C456-51A6-4CA3-B33A-4F168CBADADA}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Solver", "Solver\Solver.csproj", "{A2941643-85D4-4DDA-A2AC-813530A4D922}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -143,5 +145,11 @@ Global
 		{9455C456-51A6-4CA3-B33A-4F168CBADADA}.Release|Any CPU.Build.0 = Release|Any CPU
 		{9455C456-51A6-4CA3-B33A-4F168CBADADA}.DebugTailRec|Any CPU.ActiveCfg = DebugTailRec|Any CPU
 		{9455C456-51A6-4CA3-B33A-4F168CBADADA}.DebugTailRec|Any CPU.Build.0 = DebugTailRec|Any CPU
+		{A2941643-85D4-4DDA-A2AC-813530A4D922}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A2941643-85D4-4DDA-A2AC-813530A4D922}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A2941643-85D4-4DDA-A2AC-813530A4D922}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A2941643-85D4-4DDA-A2AC-813530A4D922}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A2941643-85D4-4DDA-A2AC-813530A4D922}.DebugTailRec|Any CPU.ActiveCfg = Debug|Any CPU
+		{A2941643-85D4-4DDA-A2AC-813530A4D922}.DebugTailRec|Any CPU.Build.0 = Debug|Any CPU
 	EndGlobalSection
 EndGlobal
