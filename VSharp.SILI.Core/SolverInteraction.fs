@@ -21,6 +21,7 @@ module public SolverInteraction =
         abstract Assert : term -> unit
 
         abstract SetMaxBufferSize : int -> unit
+        abstract Reset : unit -> unit
 
     let mutable private solver : ISolver option = None
     let mutable private onSolverStarted : unit -> unit = id

@@ -3,24 +3,33 @@ open Microsoft.Z3
 open VSharp.Core.SolverInteraction
 open VSharp.Solver.Encoding
 open VSharp.Solver.ISolver
+open VSharp
+
 type public SupportedSolvers =
     | Yices
     | Z3
 
 module public SolverPool =
 
-    let mutable private currentSolver = Z3
+    let mutable private currentSolverType = Z3
+
+    let mutable private currentSolver : ISolver option = None
 
     let switchSolver (solver : SupportedSolvers) =
-        currentSolver <- solver
+        currentSolverType <- solver
 
-    let mkSolver (timeoutMs : int, solver : SupportedSolvers) : ISolver =
+    let mkSolver (timeoutMs : int) : ISolver =
         let timeoutOpt = if timeoutMs > 0 then Some(uint timeoutMs) else None
-        match currentSolver with
+        match currentSolverType with
         | Z3 ->
             let ctx = new Context()
-            let builder = Z3Solver.Z3Solver(ctx) :> ISolverCommon<Expr, BoolExpr, BitVecExpr, FPExpr, ArrayExpr, BitVecNum, FPNum, FuncDecl, Sort, Model, Solver, Params>
-            Encoding.CommonSolver(builder, timeoutOpt) :> ISolver
-        | Yices -> failwith "Yices not implemented yet"
+            let solver = Z3Solver.Z3Solver(ctx) :> ISolverCommon<Expr, BoolExpr, BitVecExpr, FPExpr, ArrayExpr, BitVecNum, FPNum, FuncDecl, Sort, Model, Solver>
+            let builder = SolverBuilder(solver)
+            let commonSolver = CommonSolver(builder, timeoutOpt) :> ISolver
+            currentSolver <- Some commonSolver
+            commonSolver
+        | Yices -> internalfail "Yices not implemented yet"
+
     let reset() =
-        Z3Solver.reset()
+        assert(Option.isSome currentSolver)
+        currentSolver.Value.Reset()

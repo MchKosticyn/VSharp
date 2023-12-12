@@ -108,10 +108,10 @@ module internal Encoding =
             | _ -> None
 
     type internal SolverBuilder<'IExpr, 'IBoolExpr, 'IBitVecExpr, 'IFPExpr, 'IArrayExpr, 'IBitVecNum, 'IFPNum, 'IFuncDecl,
-        'ISort, 'IModel, 'ISolver, 'IParams when 'IExpr : equality and 'IBoolExpr : equality and 'IBitVecExpr : equality
+        'ISort, 'IModel, 'ISolver when 'IExpr : equality and 'IBoolExpr : equality and 'IBitVecExpr : equality
         and 'IArrayExpr : equality and 'IBitVecNum : equality and 'IFPExpr : equality and 'ISort : equality and 'IArrayExpr : null and 'IFuncDecl : null>
-        (ctx : ISolverCommon<'IExpr, 'IBoolExpr, 'IBitVecExpr, 'IFPExpr, 'IArrayExpr, 'IBitVecNum, 'IFPNum, 'IFuncDecl,
-         'ISort, 'IModel, 'ISolver, 'IParams>) =
+            (ctx : ISolverCommon<'IExpr, 'IBoolExpr, 'IBitVecExpr, 'IFPExpr, 'IArrayExpr, 'IBitVecNum, 'IFPNum, 'IFuncDecl,
+            'ISort, 'IModel, 'ISolver>) =
 
         // ------------------------------- Cache -------------------------------
 
@@ -178,10 +178,7 @@ module internal Encoding =
             | _ when expr = FalseExpr -> Some(False)
             | _ -> None
 
-        member x.MkSolver() = ctx.MkSolver()
-        member x.MkParams = ctx.MkParams()
-        member x.MkParamsAdd (p : 'IParams, name : string, time : uint32) = ctx.MkParamsAdd(p, name, time)
-        member x.MkSAddParams(s : 'ISolver, p : 'IParams) = ctx.MkSAddParams(s, p)
+        member x.MkSolver(timeoutMs) = ctx.MkSolver(timeoutMs)
         member x.MkSCheck(s : 'ISolver, cond : 'IExpr array) = ctx.CheckSat(s, cond)
         member x.MkSModel(s : 'ISolver) = ctx.MkSModel s
         member x.GetReasonUnknown(s : 'ISolver) = ctx.GetReasonUnknown s
@@ -1451,17 +1448,12 @@ module internal Encoding =
                 StateModel state
             with e -> internalfail $"MkModel: caught exception {e}"
 
-    type CommonSolver(ctx : SolverBuilder<'IExpr, 'IBoolExpr, 'IBitVecExpr, 'IFPExpr, 'IArrayExpr, 'IBitVecNum, 'IFPNum, 'IFuncDecl,
-        'ISort, 'IModel, 'ISolver, 'IParams>, timeoutMs : uint option) =
-        let solver = ctx.MkSolver()
-
-        do
-            match timeoutMs with
-            | Some timeoutMs ->
-                let parameters = ctx.MkParams
-                let parameters = ctx.MkParamsAdd(parameters, "timeout", timeoutMs)
-                ctx.MkSAddParams(solver, parameters)
-            | None -> ()
+    type CommonSolver<'IExpr, 'IBoolExpr, 'IBitVecExpr, 'IFPExpr, 'IArrayExpr, 'IBitVecNum, 'IFPNum, 'IFuncDecl,
+        'ISort, 'IModel, 'ISolver when 'IExpr : equality and 'IBoolExpr : equality and 'IBitVecExpr : equality
+        and 'IArrayExpr : equality and 'IBitVecNum : equality and 'IFPExpr : equality and 'ISort : equality and 'IArrayExpr : null and 'IFuncDecl : null>
+            (ctx : SolverBuilder<'IExpr, 'IBoolExpr, 'IBitVecExpr, 'IFPExpr, 'IArrayExpr, 'IBitVecNum, 'IFPNum, 'IFuncDecl,
+            'ISort, 'IModel, 'ISolver>, timeoutMs : uint option) =
+        let solver = ctx.MkSolver(timeoutMs)
 
         interface ISolver with
             member x.CheckSat (q : term) : smtResult =
@@ -1501,6 +1493,8 @@ module internal Encoding =
                 finally
                     ctx.Reset()
 
+            member t.Reset() = ctx.Reset()
+
             member x.Assert (fml : term) =
                 Logger.printLogLazy Logger.Trace "SOLVER: Asserting: %s" (lazy fml.ToString())
                 let encoded = ctx.EncodeTerm fml
@@ -1509,5 +1503,3 @@ module internal Encoding =
 
             member x.SetMaxBufferSize size =
                 ctx.SetMaxBufferSize size
-
-        member t.reset() = ctx.Reset()

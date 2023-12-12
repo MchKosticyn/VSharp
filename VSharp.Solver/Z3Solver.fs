@@ -6,7 +6,7 @@ open Microsoft.Z3
 
 module internal Z3Solver =
     type Z3Solver(ctx : Context) =
-        interface ISolverCommon<Expr, BoolExpr, BitVecExpr, FPExpr, ArrayExpr, BitVecNum, FPNum, FuncDecl, Sort, Model, Solver, Params> with
+        interface ISolverCommon<Expr, BoolExpr, BitVecExpr, FPExpr, ArrayExpr, BitVecNum, FPNum, FuncDecl, Sort, Model, Solver> with
             // Creation of constant expressions
             member t.MkTrue() = ctx.MkTrue()
             member t.MkFalse() = ctx.MkFalse()
@@ -44,10 +44,17 @@ module internal Z3Solver =
             member t.MkRangeSelect (x : ArrayExpr, y : Expr array) = ctx.MkSelect (x, y)
 
             //Solver creating
-            member t.MkSolver() = ctx.MkSolver()
+            member t.MkSolver(timeoutMs : uint option) =
+                let solver = ctx.MkSolver()
+                match timeoutMs with
+                | Some timeoutMs ->
+                    let parameters = ctx.MkParams().Add("timeout", timeoutMs);
+                    solver.Parameters <- parameters
+                | None -> ()
+                solver
 
             //Terms conversion
-            member t.MkFPToIEEEBV (x : FPExpr) = ctx.MkFPToIEEEBV (x)
+            member t.MkFPToIEEEBV (x : FPExpr) = ctx.MkFPToIEEEBV x
             member t.MkFPToBV(x : Expr, y : FPExpr, z : uint, signed : bool) =
                 ctx.MkFPToBV(x :?> FPRMExpr, y, z, signed)
 
@@ -216,11 +223,6 @@ module internal Z3Solver =
 
             member t.Assert (x : Solver, [<ParamArray>] y : BoolExpr array) = x.Assert y
             member t.GetReasonUnknown (x : Solver) = x.ReasonUnknown
-            member t.MkSAddParams (x: Solver, y : Params) = x.Parameters <- y
 
             //Model operations
             member t.Eval (x : Model, y : Expr, z : bool) = x.Eval(y, z)
-
-            //Configuration methods
-            member t.MkParams() = ctx.MkParams()
-            member t.MkParamsAdd(x : Params, y : string, z : uint32) = x.Add(y, z)

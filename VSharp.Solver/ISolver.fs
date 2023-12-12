@@ -7,7 +7,7 @@ type IStatus =
     |UNSATISFIABLE = 1
     |UNKNOWN = 2
 
-type ISolverCommon<'IExpr, 'IBoolExpr, 'IBitVecExpr, 'IFPExpr,'IArrayExpr, 'IBitVecNum, 'IFPNum, 'IFuncDecl, 'ISort, 'IModel, 'ISolver, 'IParams when
+type ISolverCommon<'IExpr, 'IBoolExpr, 'IBitVecExpr, 'IFPExpr, 'IArrayExpr, 'IBitVecNum, 'IFPNum, 'IFuncDecl, 'ISort, 'IModel, 'ISolver when
     'IExpr : equality and 'IBoolExpr : equality and 'IBitVecExpr : equality and 'IArrayExpr : equality and 'IFPExpr : equality and 'IBitVecNum : equality and 'ISort : equality and 'IArrayExpr : null and 'IFuncDecl : null> =
 
 // Creation of constant expressions
@@ -37,7 +37,7 @@ type ISolverCommon<'IExpr, 'IBoolExpr, 'IBitVecExpr, 'IFPExpr,'IArrayExpr, 'IBit
     abstract member MkBool: bool -> 'IBoolExpr
     abstract member MkFPToFP: 'IExpr * 'IFPExpr * 'ISort -> 'IFPExpr
     abstract member MkFPToFP: 'IExpr * 'IBitVecExpr * 'ISort * bool -> 'IFPExpr
-    abstract member MkApp: 'IFuncDecl * [<ParamArray>] params : 'IExpr array -> 'IExpr
+    abstract member MkApp: 'IFuncDecl * [<ParamArray>] parameters : 'IExpr array -> 'IExpr
     abstract member MkFuncDecl: string * 'ISort array * 'ISort -> 'IFuncDecl
     abstract member MkFP: 'IBitVecExpr * 'IBitVecExpr * 'IBitVecExpr -> 'IFPExpr
 //Array operations
@@ -45,7 +45,7 @@ type ISolverCommon<'IExpr, 'IBoolExpr, 'IBitVecExpr, 'IFPExpr,'IArrayExpr, 'IBit
     abstract member MkRangeSelect: 'IArrayExpr * 'IExpr array -> 'IExpr
 
 //Solver operations
-    abstract member MkSolver: unit -> 'ISolver
+    abstract member MkSolver: uint option -> 'ISolver
 
 //Terms conversion
     //FP to BV and vice versa
@@ -206,11 +206,6 @@ type ISolverCommon<'IExpr, 'IBoolExpr, 'IBitVecExpr, 'IFPExpr,'IArrayExpr, 'IBit
     abstract member CheckSat: 'ISolver * 'IExpr array -> IStatus
     abstract member Assert: 'ISolver * [<ParamArray>] x : 'IBoolExpr array  -> unit
     abstract member GetReasonUnknown: 'ISolver -> string
-    abstract member MkSAddParams: 'ISolver * 'IParams -> unit
 
     //Model methods
     abstract member Eval: 'IModel * 'IExpr * bool -> 'IExpr
-
-    //Configuration methods
-    abstract member MkParams: unit -> 'IParams
-    abstract member MkParamsAdd: 'IParams * string * uint32-> 'IParams
