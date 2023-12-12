@@ -19,7 +19,7 @@
     <ItemGroup>
         <Compile Include="ISolver.fs" />
         <Compile Include="Z3Solver.fs" />
-        <Compile Include="CommonSolver.fs" />
+        <Compile Include="Encoding.fs" />
         <Compile Include="SolverPool.fs" />
     </ItemGroup>
 

@@ -7,9 +7,8 @@ type IStatus =
     |UNSATISFIABLE = 1
     |UNKNOWN = 2
 
-type ISolverCommon<'IExpr, 'IBoolExpr, 'IBitVecExpr, 'IFPExpr,'IArrayExpr, 'IBitVecNum, 'IFPNum, 'IFuncDecl, 'ISort,
-    'IModel, 'ISolver, 'IParams when 'IExpr : equality and 'IBoolExpr : equality and 'IBitVecExpr : equality
-    and 'IArrayExpr : equality and 'IFPExpr : equality and 'IBitVecNum : equality and 'ISort : equality and 'IArrayExpr : null and 'IFuncDecl : null> =
+type ISolverCommon<'IExpr, 'IBoolExpr, 'IBitVecExpr, 'IFPExpr,'IArrayExpr, 'IBitVecNum, 'IFPNum, 'IFuncDecl, 'ISort, 'IModel, 'ISolver, 'IParams when
+    'IExpr : equality and 'IBoolExpr : equality and 'IBitVecExpr : equality and 'IArrayExpr : equality and 'IFPExpr : equality and 'IBitVecNum : equality and 'ISort : equality and 'IArrayExpr : null and 'IFuncDecl : null> =
 
 // Creation of constant expressions
     abstract member MkTrue: unit -> 'IBoolExpr

@@ -9,7 +9,7 @@ open VSharp.TypeUtils
 open VSharp.Core
 open VSharp.Core.SolverInteraction
 
-module internal CommonSolver =
+module internal Encoding =
 
 // ------------------------------- Exceptions -------------------------------
 
@@ -20,7 +20,7 @@ module internal CommonSolver =
 
 // ---------------------------- Encoding result -----------------------------
     [<CustomEquality;NoComparison>]
-    type encodingResult<'IExpr,'IBoolExpr  when 'IExpr : equality> =
+    type encodingResult<'IExpr,'IBoolExpr when 'IExpr : equality> =
         // TODO: use new type for assumptions -- add only if element is not True
         {expr : 'IExpr; assumptions: 'IBoolExpr list}
         static member Create(expr : 'IExpr) =
@@ -107,80 +107,61 @@ module internal CommonSolver =
                 Path(path, s) |> Some
             | _ -> None
 
-// ------------------------------- Cache -------------------------------
-
-    type private encodingCache<'IExpr, 'IBoolExpr, 'IArrayExpr, 'ISort, 'IFuncDecl when 'IExpr : equality and 'ISort : equality> = {
-        sorts : IDictionary<Type, 'ISort>
-        e2t : IDictionary<'IExpr, term>
-        t2e : IDictionary<term, encodingResult<'IExpr, 'IBoolExpr>>
-        heapAddresses : IDictionary<'IExpr, vectorTime>
-        staticKeys : IDictionary<'IExpr, Type>
-        regionConstants : Dictionary<regionSort * path, 'IArrayExpr>
-        defaultValues : IDictionary<regionSort, HashSet<'IExpr[]>>
-        funcDecls : IDictionary<string * 'ISort[] * 'ISort, 'IFuncDecl>
-        mutable lastSymbolicAddress : int32
-    } with
-        member x.Get(term, encoder : unit -> 'IExpr) =
-            Dict.tryGetValue2 x.t2e term (fun () ->
-                let result = {expr = encoder(); assumptions = List.empty}
-                x.e2t[result.expr] <- term
-                x.t2e[term] <- result
-                result)
-        member x.Get(term, encoder : unit -> encodingResult<'IExpr,'IBoolExpr>) =
-            Dict.tryGetValue2 x.t2e term (fun () ->
-                let result = encoder()
-                x.e2t[result.expr] <- term
-                x.t2e[term] <- result
-                result)
-
-    let private freshCache<'IExpr, 'IBoolExpr, 'IArrayExpr, 'ISort, 'IFuncDecl when 'IExpr : equality and 'ISort : equality> () = {
-        sorts = Dictionary<Type, 'ISort>()
-        e2t = Dictionary<'IExpr, term>()
-        t2e = Dictionary<term, encodingResult<'IExpr, 'IBoolExpr>>()
-        heapAddresses = Dictionary<'IExpr, vectorTime>()
-        staticKeys = Dictionary<'IExpr, Type>()
-        regionConstants = Dictionary<regionSort * path, 'IArrayExpr>()
-        defaultValues = Dictionary<regionSort, HashSet<'IExpr[]>>()
-        funcDecls = Dictionary<string * 'ISort[] * 'ISort, 'IFuncDecl>()
-        lastSymbolicAddress = 0
-    }
-
-// ------------------------------- Encoding: primitives -------------------------------
-
     type internal SolverBuilder<'IExpr, 'IBoolExpr, 'IBitVecExpr, 'IFPExpr, 'IArrayExpr, 'IBitVecNum, 'IFPNum, 'IFuncDecl,
         'ISort, 'IModel, 'ISolver, 'IParams when 'IExpr : equality and 'IBoolExpr : equality and 'IBitVecExpr : equality
         and 'IArrayExpr : equality and 'IBitVecNum : equality and 'IFPExpr : equality and 'ISort : equality and 'IArrayExpr : null and 'IFuncDecl : null>
         (ctx : ISolverCommon<'IExpr, 'IBoolExpr, 'IBitVecExpr, 'IFPExpr, 'IArrayExpr, 'IBitVecNum, 'IFPNum, 'IFuncDecl,
          'ISort, 'IModel, 'ISolver, 'IParams>) =
+
+        // ------------------------------- Cache -------------------------------
+
+        let sorts = Dictionary<Type, 'ISort>()
+        let e2t = Dictionary<'IExpr, term>()
+        let t2e = Dictionary<term, encodingResult<'IExpr, 'IBoolExpr>>()
+        let heapAddresses = Dictionary<'IExpr, vectorTime>()
+        let staticKeys = Dictionary<'IExpr, Type>()
+        let regionConstants = Dictionary<regionSort * path, 'IArrayExpr>()
+        let defaultValues = Dictionary<regionSort, HashSet<'IExpr[]>>()
+        let funcDecls = Dictionary<string * 'ISort[] * 'ISort, 'IFuncDecl>()
+        let mutable lastSymbolicAddress : int32 = 0
+
+        let getEncodingResult term (createResult : unit -> encodingResult<'IExpr,'IBoolExpr>) =
+            let exists, result = t2e.TryGetValue term
+            if exists then result
+            else
+                let result = createResult()
+                e2t[result.expr] <- term
+                t2e[term] <- result
+                result
+
         let toTuple encodingResult = encodingResult.assumptions, encodingResult.expr
 
-        let mutable encodingCache = freshCache<'IExpr, 'IBoolExpr, 'IArrayExpr, 'ISort, 'IFuncDecl>()
         let emptyState = Memory.EmptyState()
         let mutable maxBufferSize = 128
 
         let getMemoryConstant mkConst (typ : regionSort * path) =
-            let result : 'IArrayExpr ref = ref null
-            if encodingCache.regionConstants.TryGetValue(typ, result) then result.Value
+            let exists, result = regionConstants.TryGetValue typ
+            if exists then result
             else
                 let regConst = mkConst()
-                encodingCache.regionConstants.Add(typ, regConst)
+                regionConstants.Add(typ, regConst)
                 regConst
 
         let getDefaultValues (regionSort : regionSort) =
-            let result : HashSet<'IExpr[]> ref = ref null
-            if encodingCache.defaultValues.TryGetValue(regionSort, result) then result.Value
+            let exists, result = defaultValues.TryGetValue regionSort
+            if exists then result
             else
                 let suitableKeys = HashSet<'IExpr[]>()
-                encodingCache.defaultValues.Add(regionSort, suitableKeys)
+                defaultValues.Add(regionSort, suitableKeys)
                 suitableKeys
 
         let getFuncDecl (name : string) (argsSort : 'ISort[]) (resultSort : 'ISort) =
-            let result : 'IFuncDecl ref = ref null
             let key = name, argsSort, resultSort
-            if encodingCache.funcDecls.TryGetValue(key, result) then result.Value
+            let exists, result = funcDecls.TryGetValue key
+            if exists then result
             else
                 let funcDecl = ctx.MkFuncDecl(name, argsSort, resultSort)
-                encodingCache.funcDecls.Add(key, funcDecl)
+                funcDecls.Add(key, funcDecl)
                 funcDecl
 
         let RoundNearest = ctx.MkFPRoundNearestTiesToEven()
@@ -207,7 +188,17 @@ module internal CommonSolver =
         member x.MkEToBE(expr : 'IExpr) = ctx.MkEToBE expr
         member x.MkSAssert(s: 'ISolver, [<ParamArray>] cond : 'IBoolExpr array) = ctx.Assert(s, cond)
         member x.Reset() =
-            encodingCache <- freshCache<'IExpr, 'IBoolExpr, 'IArrayExpr, 'ISort, 'IFuncDecl>()
+            sorts.Clear()
+            e2t.Clear()
+            t2e.Clear()
+            heapAddresses.Clear()
+            staticKeys.Clear()
+            regionConstants.Clear()
+            defaultValues.Clear()
+            funcDecls.Clear()
+            lastSymbolicAddress <- 0
+
+        // ------------------------------- Encoding: primitives -------------------------------
 
         member x.SetMaxBufferSize size =
             maxBufferSize <- size
@@ -216,8 +207,6 @@ module internal CommonSolver =
             assert(not <| String.IsNullOrWhiteSpace id)
             if Char.IsDigit id[0] then "_" + id else id
 
-        member private x.AddressSort = ctx.MkBitVecSort(32u)
-
         member private x.SizeOfBV (typ : Type) : uint =
             match typ with
             | typ when isNumeric typ -> numericBitSizeOf typ
@@ -225,15 +214,15 @@ module internal CommonSolver =
             | _ -> __unreachable__()
 
         member private x.Type2Sort typ =
-            Dict.getValueOrUpdate encodingCache.sorts typ (fun () ->
+            Dict.getValueOrUpdate sorts typ (fun () ->
                 match typ with
                 | Bool -> ctx.MkBoolSort()
                 | typ when typ.IsEnum -> ctx.MkBitVecSort(numericSizeOf typ)
                 | typ when isIntegral typ -> ctx.MkBitVecSort(numericSizeOf typ)
                 | typ when typ = typeof<single> -> ctx.MkFPSort32()
                 | typ when typ = typeof<double> -> ctx.MkFPSort64()
-                | AddressType -> x.AddressSort
-                | StructType _ -> internalfailf "struct should not appear while encoding! type: %O" typ
+                | AddressType -> ctx.MkBitVecSort(32u)
+                | StructType _ -> internalfail $"struct should not appear while encoding! type: {typ}"
                 | Numeric _ -> __notImplemented__()
                 | ArrayType _
                 | ClassType _
@@ -249,7 +238,7 @@ module internal CommonSolver =
 
         member private x.EncodeConcreteAddress (address : concreteHeapAddress) =
             let encoded = ctx.MkNumeral(VectorTime.extractFromSingleton address, x.Type2Sort addressType)
-            encodingCache.heapAddresses[encoded] <- address
+            heapAddresses[encoded] <- address
             encoded
 
         member private x.CreateConstant name typ =
@@ -565,7 +554,7 @@ module internal CommonSolver =
                 let typ = TypeOf t
                 let result = if typ.IsEnum then x.AddEnumAssumptions typ result else result
                 { result with assumptions = x.SimplifyAndElements result.assumptions |> List.ofSeq }
-            encodingCache.Get(t, getResult)
+            getEncodingResult t getResult
 
         member private x.AddEnumAssumptions typ (encodingResult : encodingResult<'IExpr, 'IBoolExpr>) =
             // TODO: support "Flags"
@@ -800,56 +789,55 @@ module internal CommonSolver =
             ctx.MkApp(decl, args)
 
         member private x.EncodeExpression term op args typ =
-            encodingCache.Get(term, fun () ->
-                match op with
-                | Operator operation ->
-                    x.EncodeOperation operation args typ
-                | Application sf ->
-                    x.MakeOperation (x.EncodeApplication sf typ) args
-                | Cast(Numeric t1, Numeric t2) when isReal t1 && isReal t2 ->
-                    let arg = x.EncodeTerm (List.head args)
-                    let sort = x.Type2Sort t2
-                    let res = ctx.MkFPEToE(ctx.MkFPToFP(RoundNearest,ctx.MkEToFPE arg.expr, sort))
-                    {expr = res; assumptions = arg.assumptions}
-                | Cast(Numeric t1, Numeric t2) when isReal t1 ->
-                    let arg = x.EncodeTerm (List.head args)
-                    let size = numericBitSizeOf t2
-                    let sign = isSigned t2
-                    let res = ctx.MkFPToBV(RoundNearest, ctx.MkEToFPE(arg.expr), size, sign)
-                    {expr = ctx.MkBVEToE res; assumptions = arg.assumptions}
-                | Cast(Numeric t1, Numeric t2) when isReal t2 ->
-                    let arg = x.EncodeTerm (List.head args)
-                    let argExpr = ctx.MkEToBVE arg.expr
-                    let sort = x.Type2Sort t2
-                    let sign = isSigned t1
-                    let res = ctx.MkFPToFP(RoundNearest, argExpr, sort, sign)
-                    {expr = ctx.MkFPEToE res; assumptions = arg.assumptions}
-                | Cast(Numeric t1, Numeric t2) when isLessForNumericTypes t1 t2 ->
-                    let expr = x.EncodeTerm (List.head args)
-                    let difference = numericBitSizeOf t2 - numericBitSizeOf t1
-                    let extend = if isUnsigned t2 then ctx.MkZeroExt else ctx.MkSignExt
-                    {expr = ctx.MkBVEToE(extend(difference, ctx.MkEToBVE expr.expr)); assumptions = expr.assumptions}
-                | Cast(Numeric t1, Numeric t2) when isLessForNumericTypes t2 t1 ->
-                    let expr = x.EncodeTerm (List.head args)
-                    let from = numericBitSizeOf t2 - 1u
-                    {expr =  ctx.MkBVEToE(ctx.MkExtract(from, 0u, ctx.MkEToBVE expr.expr)); assumptions = expr.assumptions}
-                | Cast(Numeric t1, Numeric t2) when numericBitSizeOf t1 = numericBitSizeOf t2 ->
-                    x.EncodeTerm (List.head args)
-                | Cast(Bool, Numeric t) ->
-                    let arg = x.EncodeTerm (List.head args)
-                    let expr = ctx.MkEToBE arg.expr
-                    let sort = x.Type2Sort(t)
-                    let converted = x.MkITE(expr, ctx.MkNumeral(1, sort), ctx.MkNumeral(0, sort))
-                    {expr = converted; assumptions = arg.assumptions}
-                | Cast(Numeric t, Bool) ->
-                    let arg = x.EncodeTerm (List.head args)
-                    let expr = ctx.MkEToBVE arg.expr
-                    let sort = x.Type2Sort(t)
-                    let converted = x.MkEq(ctx.MkBVEToE expr, ctx.MkNumeral(0, sort)) |> ctx.MkBEToE |> x.MkNot |> ctx.MkBEToE
-                    {expr = converted; assumptions = arg.assumptions}
-                | Cast(fromType, toType) ->
-                    internalfail $"EncodeExpression: encoding of term {term} from {fromType} to {toType} is not supported"
-                | Combine -> x.EncodeCombine args typ)
+            match op with
+            | Operator operation ->
+                x.EncodeOperation operation args typ
+            | Application sf ->
+                x.MakeOperation (x.EncodeApplication sf typ) args
+            | Cast(Numeric t1, Numeric t2) when isReal t1 && isReal t2 ->
+                let arg = x.EncodeTerm (List.head args)
+                let sort = x.Type2Sort t2
+                let res = ctx.MkFPEToE(ctx.MkFPToFP(RoundNearest,ctx.MkEToFPE arg.expr, sort))
+                {expr = res; assumptions = arg.assumptions}
+            | Cast(Numeric t1, Numeric t2) when isReal t1 ->
+                let arg = x.EncodeTerm (List.head args)
+                let size = numericBitSizeOf t2
+                let sign = isSigned t2
+                let res = ctx.MkFPToBV(RoundNearest, ctx.MkEToFPE(arg.expr), size, sign)
+                {expr = ctx.MkBVEToE res; assumptions = arg.assumptions}
+            | Cast(Numeric t1, Numeric t2) when isReal t2 ->
+                let arg = x.EncodeTerm (List.head args)
+                let argExpr = ctx.MkEToBVE arg.expr
+                let sort = x.Type2Sort t2
+                let sign = isSigned t1
+                let res = ctx.MkFPToFP(RoundNearest, argExpr, sort, sign)
+                {expr = ctx.MkFPEToE res; assumptions = arg.assumptions}
+            | Cast(Numeric t1, Numeric t2) when isLessForNumericTypes t1 t2 ->
+                let expr = x.EncodeTerm (List.head args)
+                let difference = numericBitSizeOf t2 - numericBitSizeOf t1
+                let extend = if isUnsigned t2 then ctx.MkZeroExt else ctx.MkSignExt
+                {expr = ctx.MkBVEToE(extend(difference, ctx.MkEToBVE expr.expr)); assumptions = expr.assumptions}
+            | Cast(Numeric t1, Numeric t2) when isLessForNumericTypes t2 t1 ->
+                let expr = x.EncodeTerm (List.head args)
+                let from = numericBitSizeOf t2 - 1u
+                {expr =  ctx.MkBVEToE(ctx.MkExtract(from, 0u, ctx.MkEToBVE expr.expr)); assumptions = expr.assumptions}
+            | Cast(Numeric t1, Numeric t2) when numericBitSizeOf t1 = numericBitSizeOf t2 ->
+                x.EncodeTerm (List.head args)
+            | Cast(Bool, Numeric t) ->
+                let arg = x.EncodeTerm (List.head args)
+                let expr = ctx.MkEToBE arg.expr
+                let sort = x.Type2Sort(t)
+                let converted = x.MkITE(expr, ctx.MkNumeral(1, sort), ctx.MkNumeral(0, sort))
+                {expr = converted; assumptions = arg.assumptions}
+            | Cast(Numeric t, Bool) ->
+                let arg = x.EncodeTerm (List.head args)
+                let expr = ctx.MkEToBVE arg.expr
+                let sort = x.Type2Sort(t)
+                let converted = x.MkEq(ctx.MkBVEToE expr, ctx.MkNumeral(0, sort)) |> ctx.MkBEToE |> x.MkNot |> ctx.MkBEToE
+                {expr = converted; assumptions = arg.assumptions}
+            | Cast(fromType, toType) ->
+                internalfail $"EncodeExpression: encoding of term {term} from {fromType} to {toType} is not supported"
+            | Combine -> x.EncodeCombine args typ
 
         member private this.MakeUnary
                 (constructor : 'IExpr -> 'IExpr)
@@ -1053,7 +1041,7 @@ module internal CommonSolver =
                 let regionSort = GetHeapReadingRegionSort source
                 let array = x.GetRegionConstant name sort path regionSort
                 let encodedKey = ctx.MkConst(key.ToString(), keyType)
-                encodingCache.staticKeys.Add(encodedKey, key.typ)
+                staticKeys.Add(encodedKey, key.typ)
                 let defaultValues = getDefaultValues regionSort
                 defaultValues.Add(Array.singleton encodedKey) |> ignore
                 {expr = ctx.MkSelect(array, encodedKey); assumptions = List.empty}
@@ -1117,21 +1105,19 @@ module internal CommonSolver =
             else __unreachable__()
 
         member private x.DecodeConcreteHeapAddress (expr : 'IExpr) : vectorTime =
-            let addresses = encodingCache.heapAddresses
-            let result = ref vectorTime.Empty
-            let existing = addresses.TryGetValue(expr, result)
+            let exists, result = heapAddresses.TryGetValue expr
             match expr with
             | _ when ctx.MkCheckEToBVNum expr && ctx.Int64 (ctx.MkEToBVNum expr) = 0L -> VectorTime.zero
-            | _ when existing -> result.Value
+            | _ when exists -> result
             | _ ->
-                encodingCache.lastSymbolicAddress <- encodingCache.lastSymbolicAddress - 1
-                let address = [encodingCache.lastSymbolicAddress]
-                addresses.Add(expr, address)
+                lastSymbolicAddress <- lastSymbolicAddress - 1
+                let address = [lastSymbolicAddress]
+                heapAddresses.Add(expr, address)
                 address
 
         member private x.DecodeSymbolicTypeAddress (expr : 'IExpr) =
             let result = ref typeof<Void>
-            if encodingCache.staticKeys.TryGetValue(expr, result) then result.Value
+            if staticKeys.TryGetValue(expr, result) then result.Value
             else __notImplemented__()
 
         member private x.DecodeMemoryKey (reg : regionSort) (exprs : 'IExpr array) =
@@ -1213,12 +1199,14 @@ module internal CommonSolver =
             | _ when ctx.MkCheckEToBVNum expr && Types.IsNumeric t -> x.DecodeFPNum t (ctx.MkEToFPNum expr)
             | _ when ctx.MkCheckEToBVE expr && ctx.IsConst expr->
                 let bv = ctx.MkEToBVE expr
-                if encodingCache.e2t.ContainsKey(expr) then encodingCache.e2t[expr]
+                let exists, result = e2t.TryGetValue expr
+                if exists then result
                 else x.GetTypeOfBV bv |> Concrete (ctx.String expr)
             | _ when ctx.MkCheckEToINum expr -> Concrete (ctx.GetIntFromIntNum expr) typeof<int>
             | _ when ctx.MkCheckEToRNum expr -> Concrete (ctx.GetValueFromRatNum expr) typeof<int>
             | _ ->
-                if encodingCache.e2t.ContainsKey(expr) then encodingCache.e2t[expr]
+                let exists, result = e2t.TryGetValue expr
+                if exists then result
                 elif ctx.IsTrue expr then True()
                 elif ctx.IsFalse expr then False()
                 elif ctx.IsNot expr then x.DecodeBoolExpr OperationType.LogicalNot expr
@@ -1354,7 +1342,7 @@ module internal CommonSolver =
                 let state = { Memory.EmptyState() with complete = true; memoryMode = SymbolicMode }
                 let primitiveModel = Dictionary<ISymbolicConstantSource, term ref>()
 
-                for KeyValue(key, value) in encodingCache.t2e do
+                for KeyValue(key, value) in t2e do
                     match key with
                     | {term = Constant(_, Path.Path(path, StackReading(key)), t)} as constant ->
                         let refinedExpr = ctx.Eval(m, value.expr, false)
@@ -1388,7 +1376,7 @@ module internal CommonSolver =
 
                 let stores = Dictionary<address * path, term * regionSort>()
                 let defaultValues = Dictionary<regionSort, term ref>()
-                for KeyValue((region, path), constant) in encodingCache.regionConstants do
+                for KeyValue((region, path), constant) in regionConstants do
                     let arr = ctx.Eval(m, ctx.MkAEToE constant, false)
                     let typeOfRegion = region.TypeOfLocation
                     let typeOfLocation =
@@ -1451,9 +1439,9 @@ module internal CommonSolver =
                     let constantValue = value.Value
                     x.FillRegion state m regionSort constantValue
 
-                state.startingTime <- [encodingCache.lastSymbolicAddress - 1]
+                state.startingTime <- [lastSymbolicAddress - 1]
 
-                encodingCache.heapAddresses.Clear()
+                heapAddresses.Clear()
 
                 let subst = Dictionary<ISymbolicConstantSource, term>()
                 for KeyValue(k, v) in primitiveModel do
@@ -1462,8 +1450,6 @@ module internal CommonSolver =
                 state.model <- PrimitiveModel subst
                 StateModel state
             with e -> internalfail $"MkModel: caught exception {e}"
-
-
 
     type CommonSolver(ctx : SolverBuilder<'IExpr, 'IBoolExpr, 'IBitVecExpr, 'IFPExpr, 'IArrayExpr, 'IBitVecNum, 'IFPNum, 'IFuncDecl,
         'ISort, 'IModel, 'ISolver, 'IParams>, timeoutMs : uint option) =

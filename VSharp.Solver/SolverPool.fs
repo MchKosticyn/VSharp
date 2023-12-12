@@ -1,7 +1,7 @@
 namespace VSharp.Solver
 open Microsoft.Z3
 open VSharp.Core.SolverInteraction
-open VSharp.Solver.CommonSolver
+open VSharp.Solver.Encoding
 open VSharp.Solver.ISolver
 type public SupportedSolvers =
     | Yices
@@ -20,7 +20,7 @@ module public SolverPool =
         | Z3 ->
             let ctx = new Context()
             let builder = Z3Solver.Z3Solver(ctx) :> ISolverCommon<Expr, BoolExpr, BitVecExpr, FPExpr, ArrayExpr, BitVecNum, FPNum, FuncDecl, Sort, Model, Solver, Params>
-            CommonSolver.CommonSolver(builder, timeoutOpt) :> ISolver
+            Encoding.CommonSolver(builder, timeoutOpt) :> ISolver
         | Yices -> failwith "Yices not implemented yet"
     let reset() =
         Z3Solver.reset()
