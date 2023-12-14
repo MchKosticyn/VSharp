@@ -1056,6 +1056,11 @@ module internal Memory =
         | Constant _, _
         | Expression _, _ ->
             sliceTerm term startByte endByte pos stablePos |> List.singleton
+        | Union gvs, _ ->
+            let mapper term = commonReadTermUnsafe reporter term startByte endByte pos stablePos sightType
+            let mapped = Merging.guardedMapWithoutMerge mapper gvs
+            assert List.forall (fun (_, list) -> List.length list = 1) mapped
+            mapped |> List.map (fun (g, list) -> g, List.head list) |> Union |> List.singleton
         | _ -> internalfailf $"readTermUnsafe: unexpected term {term}"
 
     and private readTermUnsafe reporter term startByte endByte sightType =
@@ -1563,6 +1568,9 @@ module internal Memory =
                 let valueSlices = readTermUnsafe reporter value (neg startByte) (sub termSize startByte) None
                 let right = readTermPartUnsafe reporter term (add startByte valueSize) termSize None
                 combine (left @ valueSlices @ right) termType
+        | Union gvs ->
+            let mapper term = writeTermUnsafe reporter term startByte value
+            Merging.guardedMap mapper gvs
         | _ -> internalfailf $"writeTermUnsafe: unexpected term {term}"
 
     and private writeStructUnsafe reporter structTerm fields structType startByte value =
