@@ -9,19 +9,12 @@ public class GraphUtilsTests
 {
     public class Graph
     {
-        public class GraphNode : GraphUtils.IGraphNode<GraphNode>
+        public class GraphNode(Graph graph, int index) : GraphUtils.IGraphNode<GraphNode>
         {
-            private readonly Graph _myGraph;
-            private readonly int _myIndex;
-
-            public GraphNode(Graph graph, int index)
-            {
-                _myGraph = graph;
-                _myIndex = index;
-            }
+            private readonly int _myIndex = index;
 
             public IEnumerable<GraphNode> OutgoingEdges =>
-                _myGraph._adjacencyLists[_myIndex].Where(a => a != _myIndex).Select(a => new GraphNode(_myGraph, a));
+                graph._adjacencyLists[_myIndex].Where(a => a != _myIndex).Select(a => new GraphNode(graph, a));
 
             public override bool Equals(object obj)
             {
@@ -44,7 +37,7 @@ public class GraphUtilsTests
             _adjacencyLists = new HashSet<int>[vertexCount];
             for (var i = 0; i < vertexCount; i++)
             {
-                _adjacencyLists[i] = new HashSet<int> { i };
+                _adjacencyLists[i] = [i];
             }
         }
 

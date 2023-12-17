@@ -34,7 +34,7 @@ internal class ParameterRenderInfo
 {
     private readonly SyntaxTokenList _modifiers;
     public string ParameterName { get; }
-    public TypeSyntax Type { get; }
+    private TypeSyntax Type { get; }
 
     public ParameterRenderInfo(string parameterName, TypeSyntax type)
     {
@@ -86,7 +86,7 @@ internal class MethodRenderer : CodeRenderer
     private bool _finished;
     private readonly IBlock _body;
 
-    public IdentifierNameSyntax[] ParametersIds { get; }
+    private IdentifierNameSyntax[] ParametersIds { get; }
     public SimpleNameSyntax MethodId { get; }
 
     // TODO: allow method mutation after render?
@@ -112,7 +112,6 @@ internal class MethodRenderer : CodeRenderer
         var methodIdCache = new IdentifiersCache(cache);
         // Creating rendered objects cache
         var methodObjectsCache = new Dictionary<physicalAddress, ExpressionSyntax>();
-        var methodMocksCache = new Dictionary<physicalAddress, ExpressionSyntax>();
         // Marking, that method was not already rendered
         _finished = false;
         // Creating method declaration
@@ -165,7 +164,7 @@ internal class MethodRenderer : CodeRenderer
             _declaration
                 .AddModifiers(modifiers)
                 .WithParameterList(parameterList);
-        _body = new BlockBuilder(methodIdCache, referenceManager, methodObjectsCache, methodMocksCache);
+        _body = new BlockBuilder(methodIdCache, referenceManager, methodObjectsCache);
     }
 
     public void CallBaseConstructor(IEnumerable<ExpressionSyntax> args)
@@ -213,40 +212,27 @@ internal class MethodRenderer : CodeRenderer
         return _declaration;
     }
 
-    private class BlockBuilder : CodeRenderer, IBlock
+    private class BlockBuilder(
+        IdentifiersCache idCache,
+        IReferenceManager referenceManager,
+        Dictionary<physicalAddress, ExpressionSyntax> renderedObjects)
+        : CodeRenderer(referenceManager), IBlock
     {
         // Variables cache
-        private readonly IdentifiersCache _idCache;
         // Variables cache
-        private readonly IReferenceManager _referenceManager;
         // Rendering objects cache
-        private readonly Dictionary<physicalAddress, ExpressionSyntax> _renderedObjects;
-        private readonly Dictionary<physicalAddress, ExpressionSyntax> _renderedMocks;
-        private readonly HashSet<physicalAddress> _startToRender;
+        private readonly HashSet<physicalAddress> _startToRender = new();
 
         private readonly List<StatementSyntax> _statements = new();
 
-        public BlockBuilder(
-            IdentifiersCache idCache,
-            IReferenceManager referenceManager,
-            Dictionary<physicalAddress, ExpressionSyntax> renderedObjects,
-            Dictionary<physicalAddress, ExpressionSyntax> renderedMocks) : base(referenceManager)
-        {
-            _idCache = idCache;
-            _referenceManager = referenceManager;
-            _renderedObjects = renderedObjects;
-            _renderedMocks = renderedMocks;
-            _startToRender = new HashSet<physicalAddress>();
-        }
-
         public IdentifierNameSyntax NewIdentifier(string idName)
         {
-            return _idCache.GenerateIdentifier(idName);
+            return idCache.GenerateIdentifier(idName);
         }
 
         public IBlock NewBlock()
         {
-            return new BlockBuilder(new IdentifiersCache(_idCache), _referenceManager, _renderedObjects, _renderedMocks);
+            return new BlockBuilder(new IdentifiersCache(idCache), ReferenceManager, renderedObjects);
         }
 
         public IdentifierNameSyntax AddDecl(
@@ -257,16 +243,16 @@ internal class MethodRenderer : CodeRenderer
         {
             // TODO: to check for equality of syntax nodes use 'AreEquivalent'
             string initializerString = init.ToString();
-            if (reuse && _idCache.TryGetIdByInit(initializerString, out var result))
+            if (reuse && idCache.TryGetIdByInit(initializerString, out var result))
             {
                 Debug.Assert(result != null);
                 return result;
             }
 
-            var var = _idCache.GenerateIdentifier(varName);
+            var var = idCache.GenerateIdentifier(varName);
             var varDecl = RenderVarDecl(type, var.Identifier, init);
             _statements.Add(LocalDeclarationStatement(varDecl));
-            _idCache.SetIdInit(var, initializerString);
+            idCache.SetIdInit(var, initializerString);
             return var;
         }
 
@@ -530,7 +516,7 @@ internal class MethodRenderer : CodeRenderer
                 var createArray = RenderArrayCreation(type, lengths);
                 var arrayId = AddDecl(arrayPreferredName, type, createArray);
                 var physAddress = new physicalAddress(array);
-                _renderedObjects[physAddress] = arrayId;
+                renderedObjects[physAddress] = arrayId;
 
                 if (defaultValue != null)
                 {
@@ -652,20 +638,14 @@ internal class MethodRenderer : CodeRenderer
             type ??= obj.GetType();
 
             // Rendering field values of object
-            (ExpressionSyntax, ExpressionSyntax)[] fieldsWithValues;
-            if (_startToRender.Contains(physAddress))
-            {
-                fieldsWithValues = System.Array.Empty<(ExpressionSyntax, ExpressionSyntax)>();
-            }
-            else
-            {
-                _startToRender.Add(physAddress);
-                fieldsWithValues = RenderFieldValues(type, obj);
-            }
+            (ExpressionSyntax, ExpressionSyntax)[] fieldsWithValues =
+                !_startToRender.Add(physAddress)
+                    ? System.Array.Empty<(ExpressionSyntax, ExpressionSyntax)>()
+                    : RenderFieldValues(type, obj);
 
             // Rendering allocator arguments
             ExpressionSyntax[] args;
-            var wasRendered = _renderedObjects.TryGetValue(physAddress, out var rendered);
+            var wasRendered = renderedObjects.TryGetValue(physAddress, out var rendered);
             if (wasRendered)
             {
                 Debug.Assert(rendered != null);
@@ -817,9 +797,8 @@ internal class MethodRenderer : CodeRenderer
                     break;
             }
 
-            if (!_renderedObjects.ContainsKey(physAddress))
+            if (renderedObjects.TryAdd(physAddress, renderedResult))
             {
-                _renderedObjects.Add(physAddress, renderedResult);
                 var setupValues = RenderClausesSetup(typeOfMock, mockInfo.SetupClauses);
                 foreach (var (setupMethod, renderedValues) in setupValues)
                     AddExpression(RenderCall(mockId, setupMethod, renderedValues));
@@ -834,7 +813,7 @@ internal class MethodRenderer : CodeRenderer
             bool explicitType = false)
         {
             var physAddress = new physicalAddress(obj);
-            if (_renderedObjects.TryGetValue(physAddress, out var renderedResult))
+            if (renderedObjects.TryGetValue(physAddress, out var renderedResult))
                 return renderedResult;
 
             ExpressionSyntax result = obj switch
@@ -853,7 +832,7 @@ internal class MethodRenderer : CodeRenderer
             };
 
             // Adding rendered expression to '_renderedObjects'
-            _renderedObjects[physAddress] = result;
+            renderedObjects[physAddress] = result;
 
             return result;
         }
@@ -864,7 +843,7 @@ internal class MethodRenderer : CodeRenderer
             Type? explicitType = null)
         {
             var physAddress = new physicalAddress(obj);
-            if (_renderedObjects.TryGetValue(physAddress, out var renderedResult))
+            if (renderedObjects.TryGetValue(physAddress, out var renderedResult))
                 return renderedResult;
 
             var isBoxed = BoxedLocations.Contains(physAddress);
@@ -909,7 +888,7 @@ internal class MethodRenderer : CodeRenderer
             }
 
             // Adding rendered expression to '_renderedObjects'
-            _renderedObjects[physAddress] = result;
+            renderedObjects[physAddress] = result;
 
             return result;
         }

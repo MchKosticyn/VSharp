@@ -167,12 +167,12 @@ type points<'a when 'a : equality> =
 // -------------------- Cartesian product of regions  --------------------
 
 module private CartesianRegions =
-    let isEmpty ((a, b) : ('a * 'b) when 'a :> IRegion<'a> and 'b :> IRegion<'b>) = a.IsEmpty || b.IsEmpty
+    let isEmpty ((a, b) : 'a * 'b when 'a :> IRegion<'a> and 'b :> IRegion<'b>) = a.IsEmpty || b.IsEmpty
 
     let intersect (r1 : ('a * 'b) seq when 'a :> IRegion<'a> and 'b :> IRegion<'b>) (r2 : ('a * 'b) seq) =
         seq {
-            for (a, b) in r1 do
-                for ((c, d) as rect) in r2 do
+            for a, b in r1 do
+                for c, d as rect in r2 do
                     match a.CompareTo c, b.CompareTo d with
                     | Disjoint, _
                     | _, Disjoint -> ()
@@ -180,12 +180,12 @@ module private CartesianRegions =
                     | _ -> yield (a.Intersect c, b.Intersect d)
         } |> List.ofSeq
 
-    let subtractRect (r : ('a * 'b) list when 'a :> IRegion<'a> and 'b :> IRegion<'b>) ((c, d) as rect2 : ('a * 'b)) =
+    let subtractRect (r : ('a * 'b) list when 'a :> IRegion<'a> and 'b :> IRegion<'b>) (c, d as rect2 : 'a * 'b) =
         if isEmpty rect2 then (r, true)
         else
             let mutable unchanged = true
             seq {
-                for ((a, b) as rect1) in r do
+                for a, b as rect1 in r do
                     match c.CompareTo a, d.CompareTo b with
                     | Disjoint, _
                     | _, Disjoint -> yield rect1

@@ -91,8 +91,6 @@ type public ConcreteMemory private (physToVirt, virtToPhys) =
         GC.SuppressFinalize(obj)
         let physicalAddress = {object = obj}
         virtToPhys.Add(address, physicalAddress)
-        // TODO: take type as parameter?
-        let t = obj.GetType()
         physToVirt[physicalAddress] <- address
 
 // ------------------------------- Reading -------------------------------

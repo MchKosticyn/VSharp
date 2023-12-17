@@ -1,4 +1,3 @@
-using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using static Microsoft.CodeAnalysis.CSharp.SyntaxFactory;
 
@@ -35,8 +34,7 @@ public class IdentifiersCache
 
     public IdentifierNameSyntax GenerateIdentifier(string identifierName)
     {
-        int i = 0;
-        _idNames.TryGetValue(identifierName, out i);
+        _idNames.TryGetValue(identifierName, out int i);
 
         var uniqueName = identifierName;
         IdentifierNameSyntax identifier;
@@ -61,5 +59,4 @@ public class IdentifiersCache
     {
         _idInitializers[initializerString] = varId;
     }
-
 }

@@ -563,7 +563,7 @@ public static class Renderer
         var outputDir = solutionForTests.Directory;
         Debug.Assert(outputDir is { Exists: true });
         // TODO: update and refactor, when plugin is released
-        var references = new List<Assembly>();
+        var references = Enumerable.Empty<Assembly>();
         var testProjectPath =
             GenerateTestProject(outputDir, testingProject, solutionForTests, references, targetFramework);
 

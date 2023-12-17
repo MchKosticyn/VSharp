@@ -175,7 +175,7 @@ module internal Propositional =
         // TODO: sort terms to avoid permutation checking
         | _, Expression(Operator co', ys, _)  when co' = co && isPermutationOf list ys -> matched x
         // Co(...) op OP(...) -> pairwise
-        | _, Expression(Operator op', y', _) when op = op' ->
+        | _, Expression(Operator op', _, _) when op = op' ->
             // Trying to simplify pairwise combinations of x- and y-summands
 //            simplifyPairwiseCombinations [x] y' Bool id (simplifyExtWithType op co stopValue ignoreValue) (simplifyConnective op co stopValue ignoreValue) matched unmatched
             unmatched ()

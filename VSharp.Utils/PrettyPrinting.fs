@@ -9,7 +9,7 @@ module PrettyPrinting =
         sb.Append(str).Append('\n')
 
     let dumpSection section (sb : StringBuilder) =
-        sprintf "--------------- %s: ---------------" section |> appendLine sb
+        $"--------------- %s{section}: ---------------" |> appendLine sb
 
     let dumpDict section sort keyToString valueToString (sb : StringBuilder) d =
         if PersistentDict.isEmpty d then sb

@@ -5,7 +5,6 @@ open System
 open System.Collections.Generic
 open System.Reflection
 open System.Reflection.Emit
-open FSharpx.Collections
 
 [<StructuralEquality;StructuralComparison>]
 type arrayDimensionType =
@@ -131,7 +130,7 @@ module TypeUtils =
         let t1 = if t1.IsEnum then getEnumUnderlyingTypeChecked t1 else t1
         let t2 = if t2.IsEnum then getEnumUnderlyingTypeChecked t2 else t2
         assert(isNumeric t1 && isNumeric t2)
-        Array.contains t2 isWiderForNumericTypesMap.[t1]
+        Array.contains t2 isWiderForNumericTypesMap[t1]
 
     let isDelegate typ = typeof<Delegate>.IsAssignableFrom typ
 
@@ -206,13 +205,13 @@ module TypeUtils =
         | (t : Type) when t.IsGenericParameter ->
             if isValueTypeParameter t then true
             elif isReferenceTypeParameter t then false
-            else __insufficientInformation__ "Can't determine if %O is a value type or not!" t
+            else __insufficientInformation__ $"Can't determine if {t} is a value type or not!"
         | t -> t.IsValueType && t <> addressType && t <> typeof<Void>
 
     let isNullable = function
         | (t : Type) when t.IsGenericParameter ->
             if isReferenceTypeParameter t then false
-            else __insufficientInformation__ "Can't determine if %O is a nullable type or not!" t
+            else __insufficientInformation__ $"Can't determine if {t} is a nullable type or not!"
         | t -> Nullable.GetUnderlyingType(t) <> null
 
     let isBoxedType t =
@@ -329,7 +328,7 @@ module TypeUtils =
 
     let elementType = function
         | ArrayType(t, _) -> t
-        | t -> internalfailf "expected array type, but got %O" t
+        | t -> internalfail $"expected array type, but got {t}"
 
     let isArrayType = function
         | ArrayType _ -> true
@@ -353,7 +352,7 @@ module TypeUtils =
             | Vector -> 1
             | ConcreteDimension d -> d
             | SymbolicDimension -> __insufficientInformation__ "Can't get precise array rank of System.Array object!"
-        | t -> internalfailf "Getting rank of an array: expected array type, but got %O" t
+        | t -> internalfail $"Getting rank of an array: expected array type, but got {t}"
 
     // Performs syntactical unification of types, returns the infimum of x and y (where x < y iff x is more generic).
     let rec structuralInfimum (x : Type) (y : Type) =
@@ -380,7 +379,7 @@ module TypeUtils =
         } |> Array.ofSeq
 
     let typeImplementsInterface (t : Type) (targetInterface : Type) =
-        assert(targetInterface.IsInterface)
+        assert targetInterface.IsInterface
         let matches (i : Type) =
             i = targetInterface
             || i.IsGenericType && targetInterface.IsGenericType
@@ -540,7 +539,7 @@ module TypeUtils =
     // --------------------------------------- Operation target type ---------------------------------------
 
     let failDeduceBinaryTargetType op x y =
-        internalfailf "%s (%O x, %O y); is not a binary arithmetical operator" op x y
+        internalfail $"{op} ({x} x, {y} y); is not a binary arithmetical operator"
 
     let inline deduceComparisonTargetType _ _ = typeof<bool>
 

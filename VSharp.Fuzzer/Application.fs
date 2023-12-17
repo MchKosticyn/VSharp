@@ -1,6 +1,5 @@
 namespace VSharp.Fuzzer
 
-open System
 open System.Reflection
 open System.Threading
 open VSharp.Fuzzer.Communication.Contracts
@@ -10,7 +9,6 @@ open VSharp.CSharpUtils
 open VSharp.Fuzzer.Communication
 open Logger
 open VSharp.Fuzzer.Communication.Services
-
 
 type internal Application (fuzzerOptions: Startup.FuzzerOptions) =
     let fuzzerCancellationToken = new CancellationTokenSource()

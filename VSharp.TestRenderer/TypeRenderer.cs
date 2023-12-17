@@ -10,34 +10,21 @@ namespace VSharp.TestRenderer;
 internal class TypeRenderer : CodeRenderer
 {
     private readonly IdentifiersCache _cache;
-    private readonly IReferenceManager _referenceManager;
     private TypeDeclarationSyntax _declaration;
     private bool _finished;
     private readonly List<FieldDeclarationSyntax> _fields = new ();
     private readonly List<MethodRenderer> _renderingMethods = new ();
 
-    private struct PropertyAccessors
+    private struct PropertyAccessors()
     {
-        public MethodRenderer? Get;
-        public MethodRenderer? Set;
-
-        public PropertyAccessors()
-        {
-            Get = null;
-            Set = null;
-        }
+        public MethodRenderer? Get = null;
+        public MethodRenderer? Set = null;
     }
 
-    private readonly struct PropertyWrapper
+    private readonly struct PropertyWrapper(PropertyInfo property, BasePropertyDeclarationSyntax declaration)
     {
-        private readonly PropertyInfo _property;
-        public readonly BasePropertyDeclarationSyntax Declaration;
-
-        public PropertyWrapper(PropertyInfo property, BasePropertyDeclarationSyntax declaration)
-        {
-            _property = property;
-            Declaration = declaration;
-        }
+        private readonly PropertyInfo _property = property;
+        public readonly BasePropertyDeclarationSyntax Declaration = declaration;
 
         public override bool Equals(object? obj)
         {
@@ -70,7 +57,6 @@ internal class TypeRenderer : CodeRenderer
         // Creating identifiers cache
         _cache = new IdentifiersCache(cache);
         // Remembering referenceManager
-        _referenceManager = referenceManager;
         // Marking, that type was not already rendered
         _finished = false;
         // Creating type declaration
@@ -81,7 +67,7 @@ internal class TypeRenderer : CodeRenderer
             _declaration = ClassDeclaration(TypeId.Identifier);
 
         var baseTypesArray = baseTypes as List<Type> ?? baseTypes?.ToList();
-        if (baseTypesArray != null && baseTypesArray.Count > 0)
+        if (baseTypesArray is { Count: > 0 })
         {
             var rendered = baseTypesArray.Select(t => SimpleBaseType(RenderType(t)));
             _declaration = _declaration.WithBaseList(BaseList(SeparatedList<BaseTypeSyntax>(rendered)));
@@ -121,7 +107,7 @@ internal class TypeRenderer : CodeRenderer
         var method =
             new MethodRenderer(
                 _cache,
-                _referenceManager,
+                ReferenceManager,
                 methodId,
                 attributes,
                 modifiers,
@@ -183,7 +169,7 @@ internal class TypeRenderer : CodeRenderer
         var renderer =
             new MethodRenderer(
                 _cache,
-                _referenceManager,
+                ReferenceManager,
                 propertyId,
                 null,
                 System.Array.Empty<SyntaxToken>(),
@@ -258,7 +244,7 @@ internal class TypeRenderer : CodeRenderer
         var method =
             new MethodRenderer(
                 _cache,
-                _referenceManager,
+                ReferenceManager,
                 TypeId,
                 attributes,
                 modifiers,

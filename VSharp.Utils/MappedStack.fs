@@ -38,11 +38,11 @@ module public MappedStack =
         let idx = peakIdx peaks key + 1ul
         addWithIdx key value stack idx
 
-    let add key value ((_, peaks) as stack) =
+    let add key value (_, peaks as stack) =
         let idx = Dict.tryGetValue peaks key 1ul
         addWithIdx key value stack idx
 
-    let containsKey key (contents, peaks) = Map.containsKey key peaks && Map.containsKey (makeExtendedKey key peaks.[key]) contents
+    let containsKey key (contents, peaks) = Map.containsKey key peaks && Map.containsKey (makeExtendedKey key peaks[key]) contents
 
     let remove (contents, peaks) key =
         let idx = peakIdx peaks key
@@ -107,7 +107,7 @@ module public MappedStack =
         let newEntries = contents2 |> Map.toSeq |> Seq.choose (fun (k, _) -> if Map.containsKey k contents1 then None else Some k)
         let modifiedEntries =
             contents1 |> Map.toSeq |> Seq.choose (fun (k, v) ->
-                if not <| Map.containsKey k contents2 || contents2.[k] <> v then Some k else None)
+                if not <| Map.containsKey k contents2 || contents2[k] <> v then Some k else None)
         let relevantEntries = System.Collections.Generic.HashSet<_>(newEntries)
         relevantEntries.UnionWith(modifiedEntries)
         let mergeOneKey result k =

@@ -47,15 +47,15 @@ module internal Z3 =
         { parts : pathPart list }
         with
         member x.StructField fieldId =
-            { x with parts = StructFieldPart fieldId :: x.parts }
+            { parts = StructFieldPart fieldId :: x.parts }
 
         member x.PointerAddress() =
             assert(List.isEmpty x.parts)
-            { x with parts = PointerAddress :: x.parts }
+            { parts = PointerAddress :: x.parts }
 
         member x.PointerOffset() =
             assert(List.isEmpty x.parts)
-            { x with parts = PointerOffset :: x.parts }
+            { parts = PointerOffset :: x.parts }
 
         member x.TypeOfLocation with get() =
             assert(List.isEmpty x.parts |> not)
@@ -245,7 +245,7 @@ module internal Z3 =
                 | typ when typ = typeof<single> -> ctx.MkFPSort32() :> Sort
                 | typ when typ = typeof<double> -> ctx.MkFPSort64() :> Sort
                 | AddressType -> x.AddressSort
-                | StructType _ -> internalfailf "struct should not appear while encoding! type: %O" typ
+                | StructType _ -> internalfail $"struct should not appear while encoding! type: {typ}"
                 | Numeric _ -> __notImplemented__()
                 | ArrayType _
                 | ClassType _
@@ -1249,8 +1249,8 @@ module internal Z3 =
                 let recurred = x.WriteByPath contents[field] value parts
                 Memory.WriteStructField term field recurred
             | StructFieldPart _ :: _, _ -> internalfail $"WriteByPath: expected structure, but got {term}"
-            | PointerOffset _ :: parts, _
-            | PointerAddress _ :: parts, _ when List.isEmpty parts |> not ->
+            | PointerOffset :: parts, _
+            | PointerAddress :: parts, _ when List.isEmpty parts |> not ->
                 internalfail $"WriteByPath: unexpected path {path}"
             | _ -> internalfail $"WriteByPath: unexpected term {term} and path {path}"
 
@@ -1465,8 +1465,8 @@ module internal Z3 =
                         | _ -> __unreachable__()
                     with
                     | :? EncodingException as e ->
-                        Logger.printLog Logger.Info "SOLVER: exception was thrown: %s" e.Message
-                        SmtUnknown (sprintf "Z3 has thrown an exception: %s" e.Message)
+                        Logger.printLog Logger.Info $"SOLVER: exception was thrown: %s{e.Message}"
+                        SmtUnknown $"Z3 has thrown an exception: %s{e.Message}"
                 finally
                     builder.Reset()
 

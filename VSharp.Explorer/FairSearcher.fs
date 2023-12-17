@@ -5,7 +5,6 @@ open System.Collections.Generic
 open System.Diagnostics
 
 open VSharp
-open VSharp.Interpreter.IL
 open VSharp.Interpreter.IL.CilState
 
 /// <summary>

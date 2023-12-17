@@ -1,7 +1,6 @@
 namespace VSharp.Utils
 
 open System.Collections.Generic
-open System.Linq
 
 open VSharp
 
@@ -28,26 +27,26 @@ type BidictionaryPriorityQueue<'a when 'a : equality>() =
         priorityList.AddFirst item |> ignore
     let remove item =
         assert(valuesToPriority.ContainsKey item)
-        let priority = valuesToPriority.[item]
+        let priority = valuesToPriority[item]
         valuesToPriority.Remove item |> ignore
-        let priorityList = priorityToList.[priority]
+        let priorityList = priorityToList[priority]
         priorityList.Remove item |> ignore
         if Seq.isEmpty priorityList then
             priorityToList.Remove priority |> ignore
     let chooseWithSelector selector =
         let sortedPriorities = priorityToList.Keys |> List.ofSeq
         if not <| Seq.isEmpty sortedPriorities then
-            sortedPriorities |> Seq.tryPick (fun p -> priorityToList.[p] |> Seq.tryFind selector)
+            sortedPriorities |> Seq.tryPick (fun p -> priorityToList[p] |> Seq.tryFind selector)
         else None
     let choose () =
         let sortedPriorities = priorityToList.Keys |> List.ofSeq
         if not <| Seq.isEmpty sortedPriorities then
-            priorityToList.[sortedPriorities.Head].First.Value |> Some
+            priorityToList[sortedPriorities.Head].First.Value |> Some
         else None
     let contains item = valuesToPriority.ContainsKey item
     let tryGetPriority item =
         if valuesToPriority.ContainsKey item then
-            Some <| valuesToPriority.[item]
+            Some <| valuesToPriority[item]
         else None
     let clear () =
         valuesToPriority.Clear()

@@ -1,12 +1,11 @@
-namespace VSharp.CSharpUtils
+namespace VSharp.CSharpUtils;
+
+public static class CLRConfig
 {
-    public static class CLRConfig
+    [Implements("System.Boolean System.CLRConfig.GetConfigBoolValue(System.String, System.Boolean&)")]
+    public static bool GetConfigBoolValue(object o, out bool exists)
     {
-        [Implements("System.Boolean System.CLRConfig.GetConfigBoolValue(System.String, System.Boolean&)")]
-        public static bool GetConfigBoolValue(object o, out bool exists)
-        {
-            exists = true;
-            return false;
-        }
+        exists = true;
+        return false;
     }
 }

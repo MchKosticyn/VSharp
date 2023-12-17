@@ -1954,10 +1954,10 @@ type ILInterpreter() as this =
             try
                 let allStates = x.MakeStep cilState
                 let newErrors, restStates =
-                    allStates |> List.partition (fun cilState -> cilState.IsUnhandledExceptionOrError)
+                    allStates |> List.partition _.IsUnhandledExceptionOrError
                 let errors = errors @ newErrors
                 let newIieStates, goodStates =
-                    restStates |> List.partition (fun cilState -> cilState.IsIIEState)
+                    restStates |> List.partition _.IsIIEState
                 let incompleteStates = newIieStates @ incompleteStates
                 match goodStates with
                 | _ when List.forall (fun (cilState : cilState) -> condition cilState.CurrentIp) goodStates ->

@@ -1,8 +1,7 @@
-namespace VSharp.CSharpUtils
+namespace VSharp.CSharpUtils;
+
+public static class Monitor
 {
-    public static class Monitor
-    {
-        [Implements("System.Void System.Threading.Monitor.Exit(System.Object)")]
-        public static void Exit(object o) {}
-    }
+    [Implements("System.Void System.Threading.Monitor.Exit(System.Object)")]
+    public static void Exit(object o) {}
 }

@@ -2,32 +2,34 @@
 using Microsoft.Extensions.DependencyModel;
 using Microsoft.Extensions.DependencyModel.Resolution;
 
-namespace VSharp.CSharpUtils
+namespace VSharp.CSharpUtils;
+
+public class CompositeCompilationAssemblyResolver : ICompilationAssemblyResolver
 {
-    public class CompositeCompilationAssemblyResolver : ICompilationAssemblyResolver
+    private readonly ICompilationAssemblyResolver[] _resolvers;
+
+    public CompositeCompilationAssemblyResolver(ICompilationAssemblyResolver[] resolvers)
     {
-        private readonly ICompilationAssemblyResolver[] _resolvers;
+        _resolvers = resolvers;
+    }
 
-        public CompositeCompilationAssemblyResolver(ICompilationAssemblyResolver[] resolvers)
+    public bool TryResolveAssemblyPaths(CompilationLibrary library, List<string> assemblies)
+    {
+        foreach (ICompilationAssemblyResolver resolver in _resolvers)
         {
-            _resolvers = resolvers;
-        }
-
-        public bool TryResolveAssemblyPaths(CompilationLibrary library, List<string> assemblies)
-        {
-            foreach (ICompilationAssemblyResolver resolver in _resolvers)
+            try
             {
-                try
+                if (resolver.TryResolveAssemblyPaths(library, assemblies))
                 {
-                    if (resolver.TryResolveAssemblyPaths(library, assemblies))
-                    {
-                        return true;
-                    }
+                    return true;
                 }
-                catch { }
             }
-
-            return false;
+            catch
+            {
+                // ignored
+            }
         }
+
+        return false;
     }
 }

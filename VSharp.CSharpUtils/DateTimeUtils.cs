@@ -1,8 +1,7 @@
-﻿namespace VSharp.CSharpUtils
+﻿namespace VSharp.CSharpUtils;
+
+public static class DateTimeUtils
 {
-    public static class DateTimeUtils
-    {
-        [Implements("System.Void System.DateTime..cctor()")]
-        public static void DateTimeStaticConstructor() { }
-    }
+    [Implements("System.Void System.DateTime..cctor()")]
+    public static void DateTimeStaticConstructor() { }
 }

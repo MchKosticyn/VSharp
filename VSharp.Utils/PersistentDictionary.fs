@@ -42,14 +42,14 @@ module public PersistentDict =
     let public toSeq (d : pdict<'a, 'b>) = d.impl :> seq<'a * 'b>
 
     let public contains (key : 'a) (d : pdict<'a, 'b>) = d.impl.ContainsKey key
-    let public find (d : pdict<'a, 'b>) (key : 'a) = d.impl.[key]
+    let public find (d : pdict<'a, 'b>) (key : 'a) = d.impl[key]
 
     // [NOTE] if PersistentDict already contains key, 'add' will replace it with new value
     let public add (key : 'a) (value : 'b) (d : pdict<'a, 'b>) = {impl = d.impl.Add(key, value); hash = None}
     let public remove key (d : pdict<'a, 'b>) = {impl = d.impl.Remove key; hash = None}
     let public tryFind (d : pdict<'a, 'b>) key =
         // TODO: speed it up by scanning only once! Perhaps we should migrate to System.Collections.Immutable to support this
-        if d.impl.ContainsKey key then d.impl.[key] |> Some
+        if d.impl.ContainsKey key then d.impl[key] |> Some
         else None
     let public update (d : pdict<'a, 'b>) key defaultValue (mapper : 'b -> 'b) =
         match tryFind d key with
@@ -76,7 +76,7 @@ module public PersistentDict =
     let public partition predicate (d : pdict<'a, 'b>) =
         let mutable sat = empty
         let mutable unsat = empty
-        for (k, v) in toSeq d do
+        for k, v in toSeq d do
             if predicate k v then sat <- add k v sat
             else unsat <- add k v unsat
         sat, unsat
@@ -98,7 +98,7 @@ module public PersistentDict =
 
     // WARNING: Assumes that d1 and d2 have the same set of keys, but does not validate it!
     let public unify2 acc (d1 : pdict<'a, 'b>) (d2 : pdict<'a, 'b>) unifier =
-        let unifyIfShould acc key = unifier acc key d1.[key] d2.[key]
+        let unifyIfShould acc key = unifier acc key d1[key] d2[key]
         Seq.fold unifyIfShould acc (keys d1)
 
     // WARNING: Assumes that d1 and d2 have the same set of keys, but does not validate it!

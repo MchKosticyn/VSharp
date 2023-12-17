@@ -2,7 +2,7 @@ namespace VSharp.Utils
 
 open System
 open System.Collections.Generic
-open System.Runtime.Serialization
+open System.Runtime.CompilerServices
 open System.Threading
 open VSharp
 
@@ -74,7 +74,7 @@ type Copier () =
             targetField.SetValue(obj', target'.object)
             phys'
         | _ when typ.IsClass || typ.IsValueType ->
-            let obj' = FormatterServices.GetUninitializedObject typ
+            let obj' = RuntimeHelpers.GetUninitializedObject typ
             let phys' = {object = obj'}
             copiedObjects.Add(phys, phys')
             let fields = Reflection.fieldsOf false typ
@@ -82,6 +82,6 @@ type Copier () =
                 let v' = deepCopyObject {object = field.GetValue obj}
                 field.SetValue(obj', v'.object)
             phys'
-        | _ -> internalfailf "ConcreteMemory, deepCopyObject: unexpected object %O" obj
+        | _ -> internalfail $"ConcreteMemory, deepCopyObject: unexpected object {obj}"
 
     member this.DeepCopy (phys : physicalAddress) = deepCopyObject phys

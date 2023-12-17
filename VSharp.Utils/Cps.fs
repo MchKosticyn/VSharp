@@ -44,7 +44,7 @@ module public Cps =
             match xs with
             | [] -> k ([], a)
             | x::xs' ->
-                let (x', a') = f a x
+                let x', a' = f a x
                 mapFold f a' xs' (fun (ys, b) -> k (x' :: ys, b))
 
         let rec mapFoldk f a xs k =
@@ -101,7 +101,7 @@ module public Cps =
             match xs with
             | Seq.Empty -> k ([], a)
             | Seq.Cons(x, xs') ->
-                let (x', a') = f a x
+                let x', a' = f a x
                 mapFold f a' xs' (fun (ys, b) -> k (x'::ys, b))
 
         let rec mapFoldk f a xs k =
@@ -115,7 +115,7 @@ module public Cps =
             match xs, ys with
             | Seq.Empty, Seq.Empty -> k ([], a)
             | Seq.Cons(x, xs'), Seq.Cons(y, ys') ->
-                let (z, a') = f a x y
+                let z, a' = f a x y
                 mapFold2 f a' xs' ys' (fun (zs, b) -> k (z::zs, b))
             | _ -> raise (System.ArgumentException("Sequences must have the same lengths"))
 
@@ -129,5 +129,5 @@ module public Cps =
 
         let rec unfoldk f s k =
             match f s with
-            | (None, s') -> k ([], s')
-            | (Some x, s') -> unfoldk f s' (fun (xs, b) -> k (x :: xs, b))
+            | None, s' -> k ([], s')
+            | Some x, s' -> unfoldk f s' (fun (xs, b) -> k (x :: xs, b))

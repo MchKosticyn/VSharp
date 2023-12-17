@@ -21,15 +21,15 @@ module GraphUtils =
                 dist.Add((i, j), infinity)
 
         for i in offsets do
-            dist.[(i, i)] <- 0u
-            for j in graph.[i] do
-                dist.[(i, j)] <- 1u
+            dist[(i, i)] <- 0u
+            for j in graph[i] do
+                dist[(i, j)] <- 1u
 
         for k in offsets do
             for i in offsets do
                 for j in offsets do
-                    if dist.[i, j] > infinitySum dist.[i, k] dist.[k, j] then
-                        dist.[(i,j)] <- infinitySum dist.[i, k] dist.[k, j]
+                    if dist[i, j] > infinitySum dist[i, k] dist[k, j] then
+                        dist[(i,j)] <- infinitySum dist[i, k] dist[k, j]
         dist
 
     let sourcedShortestDistanceBfs source (graph : graph<'a>) =
@@ -39,9 +39,9 @@ module GraphUtils =
         queue.Enqueue source
         while not <| Seq.isEmpty queue do
             let parent = queue.Dequeue()
-            for children in graph.[parent] do
+            for children in graph[parent] do
                 if not <| dist.ContainsKey children then
-                    dist.Add (children, dist.[parent] + 1u)
+                    dist.Add (children, dist[parent] + 1u)
                     queue.Enqueue children
         dist
 
@@ -85,7 +85,7 @@ module GraphUtils =
                         (*
                             2.
                             If the vertex was added to queue, then it will never be added again:
-                    
+
                                 If we write newDistanceToAdjacentVertex to dictionary here, newDistanceToAdjacentVertex >= currentDistanceToAdjacentVertex
                                 will always hold because of BFS. It won't be broken by cache because currentDistanceToAdjacentVertex won't be rewritten from cache (see 1.)
                         *)

@@ -5,7 +5,6 @@ open VSharp.GraphUtils
 open global.System
 open System.Reflection
 open System.Collections.Generic
-open FSharpx.Collections
 open Microsoft.FSharp.Collections
 open VSharp
 

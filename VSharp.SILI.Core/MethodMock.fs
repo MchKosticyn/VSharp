@@ -2,7 +2,6 @@ namespace VSharp.Core
 
 open System
 open System.Reflection
-open FSharpx.Collections
 open VSharp
 open VSharp.Core
 

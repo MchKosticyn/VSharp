@@ -41,7 +41,7 @@ module VectorTime =
         let res = compare t1 t2
         res = 1 || res = 0
 
-    let isDescending (t : vectorTime) =
+    let isDescending (_ : vectorTime) =
         true
 //        t |> Seq.pairwise |> Seq.forall (fun (a, b) -> a >= b)
 

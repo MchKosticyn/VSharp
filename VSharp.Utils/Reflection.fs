@@ -4,6 +4,7 @@ open System
 open System.Collections.Generic
 open System.Reflection
 open System.Reflection.Emit
+open System.Runtime.CompilerServices
 open System.Runtime.InteropServices
 
 [<CustomEquality; CustomComparison>]
@@ -142,7 +143,7 @@ module public Reflection =
 //        let typeParams =
 //            if not methodBase.IsGenericMethod then ""
 //            else methodBase.GetGenericArguments() |> Seq.map getFullTypeName |> join ", " |> sprintf "[%s]"
-        sprintf "%s %s.%s(%s)" returnType declaringType methodBase.Name parameters
+        $"{returnType} {declaringType}.{methodBase.Name}({parameters})"
 
     let isArrayConstructor (methodBase : MethodBase) =
         methodBase.IsConstructor && methodBase.DeclaringType.IsArray
@@ -178,7 +179,7 @@ module public Reflection =
         let method = getMethods methodType |> Array.tryFind (fun (x : #MethodBase) -> x.MetadataToken = m.MetadataToken)
         match method with
         | Some x -> x
-        | None -> internalfailf "unable to find method %s token" m.Name
+        | None -> internalfail $"unable to find method %s{m.Name} token"
 
     let private substituteMethodInfo methodType (mi : MethodInfo) groundK genericK =
         let getMethods (t : Type) = getAllMethods t
@@ -262,7 +263,7 @@ module public Reflection =
 
     let private isOverrideWithCovarianceReturnType (sourceMethod : MethodInfo) (method : MethodInfo) =
         // Return type covariance case
-        Attribute.IsDefined(method, typeof<System.Runtime.CompilerServices.PreserveBaseOverridesAttribute>) &&
+        Attribute.IsDefined(method, typeof<PreserveBaseOverridesAttribute>) &&
         method.Name = sourceMethod.Name &&
             let sourceSig = sourceMethod.GetParameters()
             let targetSig = method.GetParameters()
@@ -448,7 +449,7 @@ module public Reflection =
         | _ when TypeUtils.isNullable t -> null
         | _ when t.IsArray -> Array.CreateInstance(typeof<obj>, 1)
         | _ when t.ContainsGenericParameters -> internalfail $"Creating object of open generic type {t}"
-        | _ -> System.Runtime.Serialization.FormatterServices.GetUninitializedObject t
+        | _ -> RuntimeHelpers.GetUninitializedObject t
 
     let defaultOf (t : Type) =
         assert(not t.IsByRefLike)
@@ -488,7 +489,7 @@ module public Reflection =
         let returnsSomething = hasNonVoidResult m
         let argsCount = m.GetParameters().Length
         if m.DeclaringType = null then m.Name
-        else sprintf "%s %s.%s(%s)" (if returnsSomething then "nonvoid" else "void") m.DeclaringType.Name m.Name (if hasThis then sprintf "%d+1" argsCount else toString argsCount)
+        else sprintf "%s %s.%s(%s)" (if returnsSomething then "nonvoid" else "void") m.DeclaringType.Name m.Name (if hasThis then $"%d{argsCount}+1" else toString argsCount)
 
     let concretizeTypeParameters (typ : Type) (values : Type[]) =
         if typ.IsGenericType then
@@ -644,7 +645,7 @@ module public Reflection =
         || t.IsValueType && fieldsOf false t |> Array.forall (fun (f, _) -> isUnmanaged f.typ)
 
     let hasNonPublicAbstractMethods (t : Type) =
-        t.GetMethods(instanceNonPublicBindingFlags) |> Seq.exists (fun m -> m.IsAbstract)
+        t.GetMethods(instanceNonPublicBindingFlags) |> Seq.exists _.IsAbstract
 
     let isInstanceOfType (typeOfObj : Type) =
         typeOfObj = typeof<Type> || typeOfObj = TypeUtils.systemRuntimeType

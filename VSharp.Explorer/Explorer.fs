@@ -393,7 +393,7 @@ type private SVMExplorer(explorationOptions: ExplorationOptions, statistics: SVM
                         let entryPointsInitialStates = entryPoints |> List.collect x.FormEntryPointInitialStates
                         let iieStates, initialStates =
                             isolatedInitialStates @ entryPointsInitialStates
-                            |> List.partition (fun state -> state.IsIIEState)
+                            |> List.partition _.IsIIEState
                         iieStates |> List.iter reportStateIncomplete
                         statistics.SetStatesGetter(fun () -> searcher.States())
                         statistics.SetStatesCountGetter(fun () -> searcher.StatesCount)

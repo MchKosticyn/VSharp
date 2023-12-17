@@ -804,9 +804,9 @@ and genericCandidate private (
             ts |> List.filter (fun t -> t.IsGenericType && t.GetGenericArguments().Length = 1)
         let notEqual = filterSingleGeneric toPropagate.notEqual
         let nSptInterfaces, nSupertypes =
-            filterSingleGeneric toPropagate.notSupertypes |> List.partition (fun t -> t.IsInterface)
+            filterSingleGeneric toPropagate.notSupertypes |> List.partition _.IsInterface
         let nSbtInterfaces, nSubtypes =
-            filterSingleGeneric toPropagate.notSubtypes |> List.partition (fun t -> t.IsInterface)
+            filterSingleGeneric toPropagate.notSubtypes |> List.partition _.IsInterface
 
         // TODO: try to propagate 'nSbtInterfaces'
         let parametersCount = Array.length parameters

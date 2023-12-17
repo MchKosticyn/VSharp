@@ -1,5 +1,6 @@
 namespace VSharp
 
+open System.Runtime.CompilerServices
 open global.System
 open System.Reflection
 open System.Reflection.Emit
@@ -93,7 +94,7 @@ type MethodWithBody internal (m : MethodBase) =
                     maxStackSize = uint methodBodyBytes.MaxStackSize
                     signatureTokensLength = 0u
                 }
-            let tokens = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof<signatureTokens>) :?> signatureTokens
+            let tokens = RuntimeHelpers.GetUninitializedObject(typeof<signatureTokens>) :?> signatureTokens
             let createEH (eh : System.Reflection.ExceptionHandlingClause) : rawExceptionHandler =
                 let matcher = if eh.Flags = ExceptionHandlingClauseOptions.Filter then eh.FilterOffset else eh.HandlerOffset // TODO: need catch type token?
                 ehcs.Add(matcher, eh)
@@ -358,7 +359,7 @@ module MethodBody =
     let private inlineBrTarget extract (opCode : OpCode) ilBytes (pos : offset) =
         let opcodeSize = Offset.from opCode.Size
         let offset = extract ilBytes (pos + opcodeSize)
-        let nextInstruction = pos + opcodeSize + operandType2operandSize.[int opCode.OperandType]
+        let nextInstruction = pos + opcodeSize + operandType2operandSize[int opCode.OperandType]
         ConditionalBranch(nextInstruction, [nextInstruction + offset])
 
     let private inlineSwitch (opCode : OpCode) ilBytes (pos : offset) =

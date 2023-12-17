@@ -2,14 +2,13 @@ namespace VSharp.Core
 
 open System
 open System.Reflection
-open System.Runtime.InteropServices
 open VSharp
 open TypeUtils
 
 module internal ArrayInitialization =
 
     let private boolTermCreator (rawData : byte []) index =
-        match rawData.[index] with
+        match rawData[index] with
         | 0uy -> False()
         | 1uy -> True()
         | _ -> __unreachable__()

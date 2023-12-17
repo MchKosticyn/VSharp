@@ -8,7 +8,7 @@ open System.Collections.Generic
 /// </summary>
 module public IdGenerator =
     let private defaultPrefix = "v#!"
-    let private values = persistent((fun () -> new Dictionary<string, uint32>()), fun x -> new Dictionary<string, uint32>(x))
+    let private values = persistent((fun () -> Dictionary<string, uint32>()), fun x -> Dictionary<string, uint32>(x))
 
     /// <summary>
     /// Generates new string identifiers starting from the given prefix unique per application domain
@@ -16,8 +16,8 @@ module public IdGenerator =
     let public startingWith prefix =
         let nonEmptyPrefix = if String.IsNullOrWhiteSpace(prefix) then defaultPrefix else prefix
         // Generated ids may actually still collide if prefix ends with digit. Adding
-        let validPrefix = if Char.IsDigit(nonEmptyPrefix.[nonEmptyPrefix.Length - 1]) then nonEmptyPrefix + "!!" else nonEmptyPrefix
-        let id = if values.Value.ContainsKey(validPrefix) then values.Value.[validPrefix] + 1u else 1u
+        let validPrefix = if Char.IsDigit(nonEmptyPrefix[nonEmptyPrefix.Length - 1]) then nonEmptyPrefix + "!!" else nonEmptyPrefix
+        let id = if values.Value.ContainsKey(validPrefix) then values.Value[validPrefix] + 1u else 1u
         values.Value.Remove(validPrefix) |> ignore
         values.Value.Add(validPrefix, id)
         validPrefix + string(id)

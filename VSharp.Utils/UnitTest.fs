@@ -1,7 +1,6 @@
 namespace VSharp
 
 open System
-open System.Diagnostics
 open System.IO
 open System.Reflection
 open System.Xml.Serialization

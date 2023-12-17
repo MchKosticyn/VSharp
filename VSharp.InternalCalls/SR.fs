@@ -1,7 +1,6 @@
 namespace VSharp.System
 
 open global.System
-open VSharp
 open VSharp.Core
 
 // ------------------------------ System.SR --------------------------------

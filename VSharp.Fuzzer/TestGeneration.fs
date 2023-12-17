@@ -1,7 +1,6 @@
 namespace VSharp.Fuzzer
 
 open System.Reflection
-open FSharpx.Collections
 open VSharp
 open VSharp.Core
 open VSharp.Fuzzer

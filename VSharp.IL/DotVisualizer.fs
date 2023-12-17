@@ -19,10 +19,10 @@ type DotVisualizer(drawInterproceduralEdges: bool, outputDirectory : DirectoryIn
     let visitedEdges = HashSet<BasicBlock * BasicBlock>()
     let states = ResizeArray<IGraphTrackableState>()
     let leave loc =
-        stateMarkers.[loc] <- stateMarkers.[loc] - 1
+        stateMarkers[loc] <- stateMarkers[loc] - 1
     let visit loc =
         visitedVertices.Add loc |> ignore
-        if stateMarkers.ContainsKey loc then stateMarkers.[loc] <- stateMarkers.[loc] + 1
+        if stateMarkers.ContainsKey loc then stateMarkers[loc] <- stateMarkers[loc] + 1
         else stateMarkers.Add(loc, 1)
     let move fromLoc toLoc =
         visit toLoc

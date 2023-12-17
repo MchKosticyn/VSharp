@@ -8,14 +8,9 @@ using static Microsoft.CodeAnalysis.CSharp.SyntaxFactory;
 
 namespace VSharp.TestRenderer;
 
-internal class CodeRenderer
+internal class CodeRenderer(IReferenceManager referenceManager)
 {
-    private readonly IReferenceManager _referenceManager;
-
-    public CodeRenderer(IReferenceManager referenceManager)
-    {
-        _referenceManager = referenceManager;
-    }
+    protected IReferenceManager ReferenceManager => referenceManager;
 
     internal enum AccessorType
     {
@@ -41,24 +36,17 @@ internal class CodeRenderer
         ExplicitConv
     }
 
-    internal class MockInfo
+    internal class MockInfo(
+        SimpleNameSyntax mockName,
+        Mocking.Type typeMock,
+        List<(MethodInfo, Type, SimpleNameSyntax)> setupClauses)
     {
-        public readonly SimpleNameSyntax MockName;
-        public readonly Mocking.Type TypeMock;
+        public readonly SimpleNameSyntax MockName = mockName;
+        public readonly Mocking.Type TypeMock = typeMock;
         // TODO: need to save type of clauses from mock definition?
-        public readonly List<(MethodInfo, Type, SimpleNameSyntax)> SetupClauses;
+        public readonly List<(MethodInfo, Type, SimpleNameSyntax)> SetupClauses = setupClauses;
 
-        public MockInfo(
-            SimpleNameSyntax mockName,
-            Mocking.Type typeMock,
-            List<(MethodInfo, Type, SimpleNameSyntax)> setupClauses)
-        {
-            MockName = mockName;
-            TypeMock = typeMock;
-            SetupClauses = setupClauses;
-        }
-
-        public bool Equals(MockInfo mockInfo)
+        private bool Equals(MockInfo mockInfo)
         {
             // TODO: need to compare all parts?
             return MockName.Identifier.ToString() == mockInfo.MockName.Identifier.ToString();
@@ -79,21 +67,16 @@ internal class CodeRenderer
         }
     }
 
-    internal class DelegateMockInfo : MockInfo
+    internal class DelegateMockInfo(
+        SimpleNameSyntax mockName,
+        Mocking.Type typeMock,
+        List<(MethodInfo, Type, SimpleNameSyntax)> setupClauses,
+        SimpleNameSyntax delegateMethod,
+        Type delegateType)
+        : MockInfo(mockName, typeMock, setupClauses)
     {
-        public readonly SimpleNameSyntax DelegateMethod;
-        public readonly Type DelegateType;
-
-        public DelegateMockInfo(
-            SimpleNameSyntax mockName,
-            Mocking.Type typeMock,
-            List<(MethodInfo, Type, SimpleNameSyntax)> setupClauses,
-            SimpleNameSyntax delegateMethod,
-            Type delegateType) : base(mockName, typeMock, setupClauses)
-        {
-            DelegateMethod = delegateMethod;
-            DelegateType = delegateType;
-        }
+        public readonly SimpleNameSyntax DelegateMethod = delegateMethod;
+        public readonly Type DelegateType = delegateType;
     }
 
     public static readonly bool RenderDefaultValues = true;
@@ -177,12 +160,12 @@ internal class CodeRenderer
 
     public static bool IsGetItem(MethodBase method)
     {
-        return method.IsSpecialName && method.Name == "get_Item";
+        return method is { IsSpecialName: true, Name: "get_Item" };
     }
 
     public static bool IsSetItem(MethodBase method)
     {
-        return method.IsSpecialName && method.Name == "set_Item";
+        return method is { IsSpecialName: true, Name: "set_Item" };
     }
 
     public static bool IsIndexer(MethodBase method)
@@ -280,19 +263,19 @@ internal class CodeRenderer
             [typeof(string)] = "string"
         };
 
-    internal static readonly HashSet<string> CSharpKeywords = new()
-        {
-            "bool", "byte", "sbyte", "short", "ushort", "int", "uint", "long", "ulong",
-            "double", "float", "decimal", "string", "char", "void", "object", "typeof",
-            "sizeof", "null", "true", "false", "if", "else", "while", "for", "foreach",
-            "do", "switch", "case", "default", "lock", "try", "throw", "catch", "finally",
-            "goto", "break", "continue", "return", "public", "private", "internal", "protected",
-            "static", "readonly", "sealed", "const", "fixed", "stackalloc", "volatile", "new",
-            "override", "abstract", "virtual", "event", "extern", "ref", "out", "in", "is", "as",
-            "params", "__arglist", "__makeref", "__reftype", "__refvalue", "this", "base",
-            "namespace", "using", "class", "struct", "interface", "enum", "delegate", "checked",
-            "unchecked", "unsafe", "operator", "implicit", "explicit"
-        };
+    internal static readonly HashSet<string> CSharpKeywords =
+    [
+        "bool", "byte", "sbyte", "short", "ushort", "int", "uint", "long", "ulong",
+        "double", "float", "decimal", "string", "char", "void", "object", "typeof",
+        "sizeof", "null", "true", "false", "if", "else", "while", "for", "foreach",
+        "do", "switch", "case", "default", "lock", "try", "throw", "catch", "finally",
+        "goto", "break", "continue", "return", "public", "private", "internal", "protected",
+        "static", "readonly", "sealed", "const", "fixed", "stackalloc", "volatile", "new",
+        "override", "abstract", "virtual", "event", "extern", "ref", "out", "in", "is", "as",
+        "params", "__arglist", "__makeref", "__reftype", "__refvalue", "this", "base",
+        "namespace", "using", "class", "struct", "interface", "enum", "delegate", "checked",
+        "unchecked", "unsafe", "operator", "implicit", "explicit"
+    ];
 
     private static ArrayTypeSyntax RenderArrayType(TypeSyntax elemType, int rank)
     {
@@ -387,7 +370,7 @@ internal class CodeRenderer
 
     private void ReferenceAssembly(Assembly assembly)
     {
-        _referenceManager.AddAssembly(assembly);
+        referenceManager.AddAssembly(assembly);
     }
 
     private void ReferenceType(Type type)
@@ -396,7 +379,7 @@ internal class CodeRenderer
 
         var typeNamespace = type.Namespace;
         if (typeNamespace != null)
-            _referenceManager.AddUsing(typeNamespace);
+            referenceManager.AddUsing(typeNamespace);
     }
 
     private (NameSyntax, int) RenderTypeNameRec(Type type, TypeSyntax[]? typeArgs = null)
@@ -443,7 +426,7 @@ internal class CodeRenderer
             return (result, allGenericsLength);
         }
 
-        Debug.Assert(type.IsNested && type.DeclaringType != null);
+        Debug.Assert(type is { IsNested: true, DeclaringType: not null });
         return (QualifiedName(RenderTypeName(type.DeclaringType), IdentifierName(typeName)), 0);
     }
 
@@ -481,7 +464,7 @@ internal class CodeRenderer
 
         var typeNamespace = type.Namespace;
         if (typeNamespace != null)
-            _referenceManager.AddUsing(typeNamespace);
+            referenceManager.AddUsing(typeNamespace);
 
         // TODO: instead of usings use full name of method?
         return methodName;
@@ -490,7 +473,7 @@ internal class CodeRenderer
     // Prerendered extern functions
     public ExpressionSyntax CompareObjects()
     {
-        _referenceManager.AddObjectsComparer();
+        referenceManager.AddObjectsComparer();
         return IdentifierName(nameof(ObjectsComparer.CompareObjects));
     }
 
@@ -512,14 +495,14 @@ internal class CodeRenderer
 
     public TypeSyntax AllocatorType(TypeSyntax typeArg)
     {
-        _referenceManager.AddTestExtensions();
+        referenceManager.AddTestExtensions();
         var type = typeof(Allocator<int>).GetGenericTypeDefinition();
         return RenderGenericName(type.Name, typeArg);
     }
 
     public TypeSyntax AllocatorType()
     {
-        _referenceManager.AddTestExtensions();
+        referenceManager.AddTestExtensions();
         return RenderType(typeof(Allocator));
     }
 

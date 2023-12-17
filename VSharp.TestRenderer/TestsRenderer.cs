@@ -39,9 +39,9 @@ public static class TestsRenderer
     private class IndentsRewriter : CSharpSyntaxRewriter
     {
         private const int TabSize = 4;
-        private int _currentOffset = 0;
+        private int _currentOffset;
         private MethodFormat _format = new();
-        private string? _firstArrangeExpr = null;
+        private string? _firstArrangeExpr;
         private static readonly SyntaxTrivia ArrangeComment = Comment("// arrange");
         private static readonly SyntaxTrivia ActComment = Comment("// act");
         private static readonly SyntaxTrivia AssertComment = Comment("// assert");

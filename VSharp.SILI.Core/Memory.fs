@@ -2225,7 +2225,7 @@ module internal Memory =
 
     let private dumpInitializedTypes (sb : StringBuilder) initializedTypes =
         if SymbolicSet.isEmpty initializedTypes then sb
-        else sprintf "Initialized types = %s" (SymbolicSet.print initializedTypes) |> PrettyPrinting.appendLine sb
+        else $"Initialized types = %s{SymbolicSet.print initializedTypes}" |> PrettyPrinting.appendLine sb
 
     let private dumpEvaluationStack (sb : StringBuilder) evaluationStack =
         if EvaluationStack.length evaluationStack = 0 then sb

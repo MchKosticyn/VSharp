@@ -5,7 +5,6 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.Serialization;
 
 namespace VSharp.TestExtensions;
 
@@ -26,12 +25,12 @@ internal static class CartesianProductExtension
 
 public static class Allocator
 {
-    private static void FillFast<TElem>(Array? arr, TElem value)
+    private static void FillFast<Elem>(Array? arr, Elem value)
     {
         if (arr != null)
         {
             ref var bytePtr = ref MemoryMarshal.GetArrayDataReference(arr);
-            ref var ptr = ref Unsafe.As<byte, TElem>(ref bytePtr);
+            ref var ptr = ref Unsafe.As<byte, Elem>(ref bytePtr);
             var span = MemoryMarshal.CreateSpan(ref ptr, arr.Length);
             span.Fill(value);
         }
@@ -48,7 +47,7 @@ public static class Allocator
 
         var t = value.GetType();
         if (arr != null && (!t.IsValueType || Nullable.GetUnderlyingType(t) != null ||
-                            value != FormatterServices.GetUninitializedObject(t)))
+                            value != RuntimeHelpers.GetUninitializedObject(t)))
         {
             var elementType = arr.GetType().GetElementType();
             switch (value)
@@ -150,14 +149,14 @@ public class Allocator<T>
 
     public Allocator()
     {
-        _toAllocate = FormatterServices.GetUninitializedObject(_objectType);
+        _toAllocate = RuntimeHelpers.GetUninitializedObject(_objectType);
     }
 
     public Allocator(string typeName)
     {
         Type? notPublicType = Type.GetType(typeName);
         _objectType = notPublicType ?? _objectType;
-        _toAllocate = FormatterServices.GetUninitializedObject(_objectType);
+        _toAllocate = RuntimeHelpers.GetUninitializedObject(_objectType);
     }
 
     public Allocator(object? defaultValue, params int[] lengths)

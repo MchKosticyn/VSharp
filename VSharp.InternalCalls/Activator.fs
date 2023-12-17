@@ -1,6 +1,5 @@
 namespace VSharp.System
 
-open VSharp
 open VSharp.Core
 
 module internal Activator =

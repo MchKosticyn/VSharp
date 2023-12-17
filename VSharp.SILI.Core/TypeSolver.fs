@@ -13,7 +13,7 @@ open VSharp.TestExtensions
 
 type TypeMock(supertypes : Type seq) =
     do
-        if supertypes |> Seq.exists (fun s -> s.ContainsGenericParameters) then
+        if supertypes |> Seq.exists _.ContainsGenericParameters then
             __insufficientInformation__ "Mocks of generic types are not completely supported yet..."
 
     let mutable supertypes = supertypes
@@ -22,7 +22,7 @@ type TypeMock(supertypes : Type seq) =
     interface ITypeMock with
         override x.Name =
             // TODO: generate prettier name without GUIDs
-            let supertypeNames = supertypes |> Seq.map (fun t -> t.Name) |> join "_"
+            let supertypeNames = supertypes |> Seq.map _.Name |> join "_"
             $"Mock_{supertypeNames}_{uid}"
         override x.SuperTypes = supertypes
         override x.IsValueType = supertypes |> Seq.exists (fun t -> t.IsAssignableTo typeof<ValueType> || t.IsValueType)
@@ -409,7 +409,7 @@ module TypeSolver =
         }
 
     let rec private solve (getMock : ITypeMock option -> Type list -> ITypeMock) (inputConstraints : typeConstraints list) (typeParameters : Type[]) =
-        if inputConstraints |> List.exists (fun c -> c.IsContradicting()) then None
+        if inputConstraints |> List.exists _.IsContradicting() then None
         else
             let decodeTypeSubst (subst : substitution) = CommonUtils.decodeTypeSubst subst typeParameters
             let collectVars acc constraints =
@@ -576,7 +576,7 @@ module TypeSolver =
         let constraints = typeStorage.Constraints
         let mutable hasInterface = false
         for KeyValue(_, addressConstraints) in constraints do
-            hasInterface <- hasInterface || addressConstraints.supertypes |> List.exists (fun t -> t.IsInterface)
+            hasInterface <- hasInterface || addressConstraints.supertypes |> List.exists _.IsInterface
         if not hasInterface then constraints.CheckInequality()
         else
             match solveTypesWithoutModel state with
@@ -601,7 +601,7 @@ module TypeSolver =
 
     let refineTypes (state : state) =
         match solveTypes state.model state with
-        | TypeSat _ -> ()
+        | TypeSat -> ()
         | TypeUnsat -> internalfail "Refining types: branch is unreachable"
 
     let keepOnlyMock state thisRef =

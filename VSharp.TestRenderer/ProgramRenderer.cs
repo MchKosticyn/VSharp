@@ -102,7 +102,7 @@ internal class ProgramRenderer
     }
 
     // TODO: if type or method was not rendered, exclude it's usings
-    private class ReferenceManager : IReferenceManager
+    private class ReferenceManager(IEnumerable<string> nonIncludingNamespaces) : IReferenceManager
     {
         // Needed usings
         private readonly HashSet<string> _usings = new ();
@@ -111,18 +111,12 @@ internal class ProgramRenderer
         private readonly HashSet<string> _staticUsings = new ();
 
         // Namespaces, that should not be included to usings
-        private readonly HashSet<string> _nonIncludingNamespaces;
+        private readonly HashSet<string> _nonIncludingNamespaces = [..nonIncludingNamespaces];
 
         // Used assemblies
         private readonly HashSet<Assembly> _assemblies = new ();
 
         private bool _objectsComparerAdded;
-
-        public ReferenceManager(IEnumerable<string> nonIncludingNamespaces)
-        {
-            _objectsComparerAdded = false;
-            _nonIncludingNamespaces = new HashSet<string>(nonIncludingNamespaces);
-        }
 
         public void AddUsing(string name)
         {

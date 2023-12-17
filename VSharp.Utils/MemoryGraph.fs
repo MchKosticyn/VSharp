@@ -4,6 +4,7 @@ open System
 open System.Collections.Generic
 open System.Diagnostics
 open System.Reflection
+open System.Runtime.CompilerServices
 open System.Xml.Serialization
 open Microsoft.FSharp.Collections
 
@@ -293,12 +294,12 @@ type MemoryGraph(repr : memoryRepr, mockStorage : MockStorage, createCompactRepr
             // Case for structs or classes of .NET type
             let t = sourceTypes[repr.typ]
             if t.IsByRefLike then
-                internalfailf "Generating test: unable to create byref-like object (type = %O)" t
+                internalfail $"Generating test: unable to create byref-like object (type = {t})"
             if t.ContainsGenericParameters then
-                internalfailf "Generating test: unable to create object with generic type parameters (type = %O)" t
+                internalfail $"Generating test: unable to create object with generic type parameters (type = {t})"
             else
                 assert(Reflection.isInstanceOfType t |> not)
-                let obj = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(t)
+                let obj = RuntimeHelpers.GetUninitializedObject(t)
                 GC.SuppressFinalize(obj)
                 obj
         | :? structureRepr as repr ->
@@ -344,8 +345,8 @@ type MemoryGraph(repr : memoryRepr, mockStorage : MockStorage, createCompactRepr
                 if index <> nullSourceIndex then
                     // Case for pointer, attached to address 'index'
                     let obj = sourceObjects[repr.index]
-                    let ptr = System.Runtime.CompilerServices.Unsafe.AsPointer(ref obj)
-                    System.Runtime.CompilerServices.Unsafe.Add<byte>(ptr, int shift)
+                    let ptr = Unsafe.AsPointer(ref obj)
+                    Unsafe.Add<byte>(ptr, int shift)
                 else
                     // Case for detached pointer
                     (nativeint shift).ToPointer()
@@ -355,7 +356,7 @@ type MemoryGraph(repr : memoryRepr, mockStorage : MockStorage, createCompactRepr
             let t = sourceTypes[repr.typ]
             assert(Reflection.isInstanceOfType t |> not)
             if not t.IsValueType then
-                internalfailf "Expected value type inside object, but got representation of %s!" t.FullName
+                internalfail $"Expected value type inside object, but got representation of {t.FullName}!"
             let obj = allocateDefault repr
             decodeStructure repr obj
             obj
@@ -461,7 +462,9 @@ type MemoryGraph(repr : memoryRepr, mockStorage : MockStorage, createCompactRepr
 
     member private x.IsSerializable (t : Type) =
         // TODO: find out which types can be serialized by XMLSerializer
-        (t.IsPrimitive && not t.IsEnum) || t = typeof<string> || (t.IsArray && (x.IsSerializable <| t.GetElementType()))
+        (t.IsPrimitive && not t.IsEnum)
+        || t = typeof<string>
+        || (t.IsArray && (x.IsSerializable <| t.GetElementType()))
 
     member private x.CreateArray (arr : Array) =
         let lowerBounds =
