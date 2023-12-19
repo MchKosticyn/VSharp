@@ -486,7 +486,11 @@ public class TestSvmAttribute : NUnitAttribute, IWrapTestMethod, ISimpleTestBuil
                 }
                 else
                 {
-                    context.CurrentResult.SetResult(ResultState.Success);
+                    context.CurrentResult.SetResult(
+                        _expectedCoverage is not null
+                            ? ResultState.Failure
+                            : ResultState.Success
+                    );
                     reporter?.Report(stats);
                 }
             }
