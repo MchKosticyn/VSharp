@@ -92,7 +92,8 @@ type exceptionRegisterStack =
             head, { stack = tail }
         | _ -> internalfail "Pop: exceptionRegisterStack is empty!"
     member x.Push elem = { stack = Stack.push x.stack elem }
-    static member singleton x = { stack = Stack.singleton x }
+    static member Initial = { stack = Stack.singleton NoException }
+    static member Singleton x = { stack = Stack.singleton x }
     static member map f stack = { stack = Stack.map (exceptionRegister.map f) stack.stack }
 
 type arrayCopyInfo =
@@ -182,7 +183,7 @@ and
         mutable startingTime : vectorTime                                  // Timestamp before which all allocated addresses will be considered symbolic
         mutable exceptionsRegister : exceptionRegisterStack                // Heap-address of exception objects, multiple if nested 'try' blocks
         mutable model : model                                              // Concrete valuation of symbolics
-        complete : bool                                                    // If true, reading of undefined locations would result in default values
+        mutable complete : bool                                            // If true, reading of undefined locations would result in default values
         memoryMode : memoryMode                                            // If 'ConcreteMode', allocating concrete .NET objects inside 'ConcreteMemory'
         methodMocks : IDictionary<IMethod, IMethodMock>
     }

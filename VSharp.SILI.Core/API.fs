@@ -578,6 +578,11 @@ module API =
 
         let CallStackContainsFunction state method = CallStack.containsFunc state.stack method
         let CallStackSize state = CallStack.size state.stack
+        let ClearStack state =
+            state.stack <- CallStack.empty
+            state.evaluationStack <- EvaluationStack.empty
+            state.exceptionsRegister <- exceptionRegisterStack.Initial
+
         let GetCurrentExploringFunction state = CallStack.getCurrentFunc state.stack
         let EntryFunction state = CallStack.entryFunction state.stack
 
