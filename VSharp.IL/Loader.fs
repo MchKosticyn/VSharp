@@ -677,6 +677,10 @@ module Loader =
             "Microsoft.EntityFrameworkCore.ChangeTracking.Internal.InternalEntityEntry Microsoft.EntityFrameworkCore.ChangeTracking.Internal.StateManager.GetOrCreateEntry(this, System.Object)"
             "System.Void Microsoft.EntityFrameworkCore.DbContext.Dispose(this)"
             "System.Void Microsoft.EntityFrameworkCore.Infrastructure.EntityFrameworkEventSource..ctor(this)"
+            "System.Void Microsoft.EntityFrameworkCore.Internal.InternalDbSet`1[TEntity].CheckState(this)"
+            "Microsoft.EntityFrameworkCore.Query.Internal.EntityQueryable`1[TEntity] Microsoft.EntityFrameworkCore.Internal.InternalDbSet`1[TEntity].get_EntityQueryable(this)"
+            "System.Linq.IQueryProvider Microsoft.EntityFrameworkCore.Internal.InternalDbSet`1[TEntity].System.Linq.IQueryable.get_Provider(this)"
+            "System.Linq.IOrderedQueryable`1[TSource] System.Linq.Queryable.OrderBy(System.Linq.IQueryable`1[TSource], System.Linq.Expressions.Expression`1[System.Func`2[TSource, TKey]])"
 
             // DependencyInjection
             "Microsoft.Extensions.DependencyInjection.ServiceLookup.ServiceProviderEngine Microsoft.Extensions.DependencyInjection.ServiceProvider.GetEngine(this)"
