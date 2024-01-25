@@ -529,6 +529,7 @@ module Loader =
             "System.Boolean System.Collections.Generic.Dictionary`2[TKey,TValue].ContainsKey(this, TKey)"
             "System.Boolean System.Collections.Generic.Dictionary`2[TKey,TValue].TryGetValue(this, TKey, TValue&)"
             "System.Void System.Collections.Generic.SortedDictionary`2+KeyValuePairComparer[TKey,TValue]..ctor(this, System.Collections.Generic.IComparer`1[TKey])"
+            "TValue System.Collections.Generic.Dictionary`2[TKey,TValue].get_Item(this, TKey)"
 
             // ConcurrentDictionary
             "System.Boolean System.Collections.Concurrent.ConcurrentDictionary`2[TKey,TValue].TryAdd(this, System.Type, System.Object[])"
@@ -555,6 +556,7 @@ module Loader =
             // String
             "System.String System.String.ToUpperInvariant(this)"
             "System.Boolean System.Text.Unicode.Utf16Utility.AllCharsInUInt32AreAscii(System.UInt32)"
+            "System.String System.Int32.ToString(this)"
             "System.String System.Int32.ToString(this, System.IFormatProvider)"
             "System.String System.Number.FormatInt32(System.Int32, System.Int32, System.String, System.IFormatProvider)"
             "System.String System.String.FormatHelper(System.IFormatProvider, System.String, System.ReadOnlySpan`1[System.Object])"
@@ -666,9 +668,12 @@ module Loader =
             "Microsoft.AspNetCore.Builder.IApplicationBuilder Microsoft.AspNetCore.Builder.UseMiddlewareExtensions.UseMiddleware(Microsoft.AspNetCore.Builder.IApplicationBuilder, System.Object[])"
             "Microsoft.AspNetCore.Builder.ControllerActionEndpointConventionBuilder Microsoft.AspNetCore.Builder.ControllerEndpointRouteBuilderExtensions.MapControllers(Microsoft.AspNetCore.Routing.IEndpointRouteBuilder)"
             "Microsoft.Extensions.DependencyInjection.IServiceCollection Microsoft.AspNetCore.Builder.WebApplicationBuilder.get_Services(this)"
+            "System.IServiceProvider Microsoft.AspNetCore.Builder.ApplicationBuilder.GetProperty(this, System.String)"
+            "System.IServiceProvider Microsoft.AspNetCore.Builder.ApplicationBuilder.get_ApplicationServices(this)"
 
             // ConfigurationManager
             "System.Void Microsoft.Extensions.Configuration.ConfigurationManager.ReloadSources(this)"
+            "System.String Microsoft.Extensions.Configuration.ConfigurationManager.get_Item(this, System.String)"
 
             // EntityFramework
             "System.Void Microsoft.EntityFrameworkCore.DbContext..ctor(this)"
@@ -696,6 +701,8 @@ module Loader =
             "System.Object Microsoft.Extensions.DependencyInjection.ServiceLookup.ServiceProviderEngineScope.GetService(this, System.Type)"
             "System.Object Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService(System.IServiceProvider, System.Type)"
             "T Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService(System.IServiceProvider)"
+            "Microsoft.Extensions.DependencyInjection.IServiceCollection Microsoft.Extensions.DependencyInjection.ServiceCollectionHostedServiceExtensions.AddHostedService(Microsoft.Extensions.DependencyInjection.IServiceCollection)"
+            "System.Void Microsoft.Extensions.DependencyInjection.ServiceCollection.RemoveAt(this, System.Int32)"
 
             // Mvc
             "System.Collections.Generic.IEnumerable`1[System.Reflection.TypeInfo] Microsoft.AspNetCore.Mvc.ApplicationParts.AssemblyPart.get_Types(this)"
