@@ -61,7 +61,7 @@ namespace IntegrationTests
     [TestSvmFixture]
     public static class StaticClassTests
     {
-        [Ignore("Exceptions handling")]
+        [TestSvm(100)]
         public static bool CheckStatic()
         {
             var t = typeof(StaticClass);
