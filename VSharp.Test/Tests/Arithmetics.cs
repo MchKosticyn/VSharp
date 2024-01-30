@@ -162,12 +162,6 @@ namespace IntegrationTests
             return checked(a * b);
         }
 
-        [TestSvm]
-        public static IntPtr Mul_Ovf_Un1(int x)
-        {
-            return checked(unchecked((IntPtr)(uint)x) * sizeof(long));
-        }
-
         // overflow exceptions possible
         [TestSvm]
         public static int Mul_Ovf(int a, int b)
@@ -185,6 +179,12 @@ namespace IntegrationTests
         public static UInt64 Mul_Ovf_U64(UInt64 a, UInt64 b)
         {
             return checked(a * b);
+        }
+
+        [TestSvm]
+        public static IntPtr Mul_Ovf_IntPtr(int x)
+        {
+            return checked(unchecked((IntPtr)(uint)x) * sizeof(long));
         }
 
         [TestSvm]

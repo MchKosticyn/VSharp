@@ -64,6 +64,14 @@ module TypeUtils =
     module UInt64 =
         let Zero() = MakeNumber 0UL
         let MaxValue() = MakeNumber UInt64.MaxValue
+    module IntPtr =
+        let Zero() = MakeNumber IntPtr.Zero
+        let MinusOne() = MakeNumber (IntPtr(-1))
+        let MinValue() = MakeNumber IntPtr.MinValue
+        let MaxValue() = MakeNumber IntPtr.MaxValue
+    module UIntPtr =
+        let Zero() = MakeNumber UIntPtr.Zero
+        let MaxValue() = MakeNumber UIntPtr.MaxValue
 
 module internal InstructionsSet =
 
@@ -266,12 +274,23 @@ module internal InstructionsSet =
             else Types.Cast parameter parInfo.ParameterType
         Seq.map2 castParameter (List.rev parameters) method.Parameters |> List.ofSeq
 
-    let makeUnsignedInteger term k =
+    let commonMakeUnsignedInteger (unsignedType : Type option) term k =
         match TypeOf term with
         | Types.Bool -> k <| Types.Cast term TypeUtils.uint32Type
         | t when t = typeof<double> || t = typeof<float> -> k term
-        | t when TypeUtils.isIntegral t -> k <| Types.Cast term (TypeUtils.signedToUnsigned t) // no specs found about overflows
+        | t when TypeUtils.isIntegral t ->
+            let t =
+                match unsignedType with
+                | Some t -> t
+                | None -> TypeUtils.signedToUnsigned t
+            k <| Types.Cast term t // no specs found about overflows
         | _ -> k term
+
+    let makeUnsignedInteger term k =
+        commonMakeUnsignedInteger None term k
+
+    let makeUnsignedIntegerWithType t term k =
+        commonMakeUnsignedInteger (Some t) term k
 
     let performUnsignedIntegerOperation op (cilState : cilState) =
         let arg2, arg1 = cilState.Peek2()
@@ -783,7 +802,7 @@ type ILInterpreter() as this =
             | _ ->
                 try
                     try
-                        Logger.trace $"Invoking method {method.FullName}"
+                        Logger.info $"Invoking method {method.FullName}"
                         let result = method.Invoke thisObj (List.toArray objArgs)
                         let resultType = TypeUtils.getTypeOfConcrete result
                         let returnType = method.ReturnType
@@ -1740,42 +1759,68 @@ type ILInterpreter() as this =
     member private this.UnsignedCheckOverflow checkOverflowForUnsigned (cilState : cilState) =
         let y, x = cilState.Pop2()
         match y, x with
+        | IntPtrT, _
+        | _, IntPtrT
+        | UIntPtrT, _
+        | _, UIntPtrT ->
+            let x = makeUnsignedIntegerWithType typeof<UIntPtr> x id
+            let y = makeUnsignedIntegerWithType typeof<UIntPtr> y id
+            let max = TypeUtils.UIntPtr.MaxValue()
+            let zero = TypeUtils.UIntPtr.Zero()
+            checkOverflowForUnsigned zero max x y cilState
         | Int64T, _
         | _, Int64T
         | UInt64T, _
         | _, UInt64T ->
-            let x = makeUnsignedInteger x id
-            let y = makeUnsignedInteger y id
+            let x = makeUnsignedIntegerWithType typeof<UInt64> x id
+            let y = makeUnsignedIntegerWithType typeof<UInt64> y id
             let max = TypeUtils.UInt64.MaxValue()
             let zero = TypeUtils.UInt64.Zero()
-            checkOverflowForUnsigned zero max x y cilState // TODO: maybe rearrange x and y if y is concrete and x is symbolic
+            checkOverflowForUnsigned zero max x y cilState
         | _ when TypeUtils.isIntegralTerm x && TypeUtils.isIntegralTerm y ->
-            let x, y = makeUnsignedInteger x id, makeUnsignedInteger y id
+            let x = makeUnsignedIntegerWithType typeof<UInt32> x id
+            let y = makeUnsignedIntegerWithType typeof<UInt32> y id
             let max = TypeUtils.UInt32.MaxValue()
             let zero = TypeUtils.UInt32.Zero()
-            checkOverflowForUnsigned zero max x y cilState // TODO: maybe rearrange x and y if y is concrete and x is symbolic
+            checkOverflowForUnsigned zero max x y cilState
         | _ -> internalfail "incompatible operands for UnsignedCheckOverflow"
 
     member private this.SignedCheckOverflow checkOverflow (cilState : cilState) =
         let y, x = cilState.Pop2()
         match y, x with
+        | IntPtrT, _
+        | _, IntPtrT ->
+            let x = Types.Cast x typeof<IntPtr>
+            let y = Types.Cast y typeof<IntPtr>
+            let min = TypeUtils.IntPtr.MinValue()
+            let max = TypeUtils.IntPtr.MaxValue()
+            let zero = TypeUtils.IntPtr.Zero()
+            let minusOne = TypeUtils.IntPtr.MinusOne()
+            checkOverflow min max zero minusOne x y cilState
         | Int64T, _
         | _, Int64T ->
+            let x = Types.Cast x typeof<Int64>
+            let y = Types.Cast y typeof<Int64>
             let min = TypeUtils.Int64.MinValue()
             let max = TypeUtils.Int64.MaxValue()
             let zero = TypeUtils.Int64.Zero()
             let minusOne = TypeUtils.Int64.MinusOne()
-            checkOverflow min max zero minusOne x y cilState // TODO: maybe rearrange x and y if y is concrete and x is symbolic
+            checkOverflow min max zero minusOne x y cilState
+        | UIntPtrT, _
+        | _, UIntPtrT
         | UInt64T, _
-        | _, UInt64T -> __unreachable__() // instead of add_ovf should be called add_ovf_un
+        | _, UInt64T -> __unreachable__() // instead of *_ovf should be called *_ovf_un
         | FloatT, _
         | _, FloatT -> __unreachable__() // only integers
         | _ ->
+            assert(TypeUtils.isIntegralTerm x && TypeUtils.isIntegralTerm y)
+            let x = Types.Cast x typeof<Int32>
+            let y = Types.Cast y typeof<Int32>
             let min = TypeUtils.Int32.MinValue()
             let max = TypeUtils.Int32.MaxValue()
             let zero = TypeUtils.Int32.Zero()
             let minusOne = TypeUtils.Int32.MinusOne()
-            checkOverflow min max zero minusOne x y cilState // TODO: maybe rearrange x and y if y is concrete and x is symbolic
+            checkOverflow min max zero minusOne x y cilState
 
     member private this.Add_ovf (cilState : cilState) =
         // min <= x + y <= max
@@ -1791,8 +1836,8 @@ type ILInterpreter() as this =
                 k (x >>= diff, state))
             let add (cilState : cilState) k = // no overflow
                 PerformBinaryOperation OperationType.Add x y (fun sum ->
-                    cilState.Push sum
-                    k [cilState])
+                cilState.Push sum
+                k [cilState])
             cilState.StatedConditionalExecutionCIL xMoreThan0
                 (fun cilState -> // x >= 0
                     cilState.StatedConditionalExecutionCIL yMoreThan0
@@ -1869,14 +1914,15 @@ type ILInterpreter() as this =
 
     member private this.Add_ovf_un (cilState : cilState) =
         let checkOverflowForUnsigned _ max x y (cilState : cilState) =
-            let (>>=) = API.Arithmetics.(>>=)
-            cilState.StatedConditionalExecutionCIL
-                (fun state k ->
-                    PerformBinaryOperation OperationType.Subtract max x (fun diff ->
-                    k (diff >>= y, state)))
-                (fun cilState k -> PerformBinaryOperation OperationType.Add x y (fun res ->
-                    cilState.Push res
-                    k [cilState]))
+            let fits state k =
+                PerformBinaryOperation OperationType.Subtract max x (fun diff ->
+                k (Arithmetics.GreaterOrEqualUn diff y, state))
+            let add (cilState : cilState) k =
+                PerformBinaryOperation OperationType.Add x y (fun res ->
+                cilState.Push res
+                k [cilState])
+            cilState.StatedConditionalExecutionCIL fits
+                add
                 (this.Raise this.OverflowException)
                 id
         this.UnsignedCheckOverflow checkOverflowForUnsigned cilState
@@ -1888,14 +1934,14 @@ type ILInterpreter() as this =
                 cilState.Push zero
                 List.singleton cilState |> k
             let checkOverflow (cilState : cilState) k =
-                let evalCondition state k =
-                    PerformBinaryOperation OperationType.Divide max x (fun quotient ->
+                let fits state k =
+                    PerformBinaryOperation OperationType.Divide_Un max x (fun quotient ->
                     k (Arithmetics.GreaterOrEqualUn quotient y, state))
                 let mul (cilState : cilState) k =
                     PerformBinaryOperation OperationType.Multiply x y (fun res ->
                     cilState.Push res
                     List.singleton cilState |> k)
-                cilState.StatedConditionalExecutionCIL evalCondition
+                cilState.StatedConditionalExecutionCIL fits
                     mul
                     (this.Raise this.OverflowException)
                     k
@@ -1907,9 +1953,8 @@ type ILInterpreter() as this =
 
     member private this.Sub_ovf_un (cilState : cilState) =
         let checkOverflowForUnsigned _ _ x y (cilState : cilState) =
-            let (>>=) = API.Arithmetics.(>>=)
             cilState.StatedConditionalExecutionCIL
-                (fun state k -> k (x >>= y, state))
+                (fun state k -> k (Arithmetics.GreaterOrEqualUn x y, state))
                 (fun (cilState : cilState) k -> // no overflow
                     PerformBinaryOperation OperationType.Subtract x y (fun res ->
                     cilState.Push res
