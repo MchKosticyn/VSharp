@@ -114,6 +114,7 @@ module CilState =
             /// </summary>
             internalId : uint
             webConfiguration : webConfiguration option
+            internalStatistics : Dictionary<Method, System.Diagnostics.Stopwatch>
         }
 
         static member private CommonCreateInitial (m : Method) (state : state) webConfiguration =
@@ -138,6 +139,7 @@ module CilState =
                 entryMethod = Some m
                 internalId = getNextStateId()
                 webConfiguration = webConfiguration
+                internalStatistics = Dictionary<Method, System.Diagnostics.Stopwatch>()
             }
 
         static member CreateInitial (m : Method) (state : state) =
@@ -145,6 +147,17 @@ module CilState =
 
         static member CreateWebInitial (m : Method) (state : state) (webConfiguration : webConfiguration) =
             cilState.CommonCreateInitial m state (Some webConfiguration)
+
+        member x.GetElapsedAndStop(m : Method) =
+            let exists, stopwatch = x.internalStatistics.TryGetValue m
+            if exists then
+                stopwatch.Stop()
+                Some stopwatch.Elapsed
+            else None
+        member x.AddStopwatch(m : Method) =
+            let stopwatch = System.Diagnostics.Stopwatch()
+            if x.internalStatistics.TryAdd(m, stopwatch) then
+                stopwatch.Start()
 
         member private x.ErrorReporter = lazy ErrorReporter(x)
 
@@ -427,6 +440,7 @@ module CilState =
         member x.ClearStack() =
             Memory.ClearStack x.state
             x.ipStack <- List.empty
+            x.internalStatistics.Clear()
 
         member x.Read ref =
             Memory.ReadUnsafe x.ErrorReporter.Value x.state ref
