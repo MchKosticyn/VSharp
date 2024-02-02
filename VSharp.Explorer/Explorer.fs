@@ -134,6 +134,7 @@ type private SVMExplorer(explorationOptions: ExplorationOptions, statistics: SVM
     let reportIncomplete = reporter.ReportIIE
 
     let reportState (suite : testSuite) (cilState : cilState) =
+        if cilState.WebExploration then Logger.error "reportFinished" else
         try
             let isNewHistory() =
                 let methodHistory = Set.filter (fun h -> h.method.InCoverageZone) cilState.history
