@@ -829,6 +829,20 @@ type ILInterpreter() as this =
                     for arg in objArgs do
                         ReTrackObject state arg
                 true
+        elif method.IsConcretelyInvokable then
+            let objArgs = List.choose (TryTermToFullyConcreteObj state) termArgs
+            let declaringType = method.DeclaringType
+            let thisIsStruct = declaringType.IsValueType
+            let thisObj =
+                match thisOption with
+                | Some thisRef when thisIsStruct ->
+                    let structTerm = Memory.Read state thisRef
+                    TryTermToFullyConcreteObj state structTerm
+                | Some thisRef -> TryTermToFullyConcreteObj state thisRef
+                | None -> None
+            if List.length objArgs = List.length termArgs && (not (Option.isSome thisOption) || (Option.isSome thisObj)) then
+                Logger.error $"{method.FullGenericMethodName} can be added"
+            false
         else false
 
     member private x.StartAspNet (cilState : cilState) args =
