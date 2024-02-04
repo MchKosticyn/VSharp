@@ -454,7 +454,7 @@ type symbolicTypeKey =
 and ISymbolicTypeKey = IMemoryKey<symbolicTypeKey, freeRegion<typeWrapper>>
 
 type updateTreeKey<'key, 'value when 'key : equality> =
-    {key : 'key; value : 'value}
+    {key : 'key; value : 'value; guard : term option; time : vectorTime}
     interface IRegionTreeKey<updateTreeKey<'key, 'value>> with
         override x.Hides y = x.key = y.key
     override x.ToString() = (x.key, x.value).ToString()
@@ -467,94 +467,104 @@ module private UpdateTree =
 
     let isEmpty tree = RegionTree.isEmpty tree
 
-    let rec private splitRead (tree : updateTree<'key, 'value, 'reg>) key predicate notMatchKeys =
+    let rec private splitReadingResult tree key predicate notMatchKeys =
         match tree with
-        | Node tree ->
+        | Node d ->
+            let splittingTree, restTree = PersistentDict.partition (fun _ (k, _) -> predicate k) d
             let notMatchPath = List.fold (fun acc (k, reg) -> acc &&& !!((key :> IMemoryKey<'key,'reg>).MatchCondition k reg)) (True()) notMatchKeys
-            let collectUpdates (accUnion, accMst) reg (utKey, subtree) =
-                let subtreeUnion, subtreeMst = splitRead subtree key predicate ((utKey.key, reg)::notMatchKeys)
-                let keysAreEqual = key.MatchCondition utKey.key reg
+            let collectUnionAndMst (accUnion, accMst) stReg (stUtKey, st) =
+                let stUnion, stMakeSymbolic = splitReadingResult st key predicate ((stUtKey.key, stReg)::notMatchKeys)
+                let keysAreEqual = key.MatchCondition stUtKey.key stReg
                 let guard = simplifyAndWithDisjunctions notMatchPath keysAreEqual
-                let union = List.append subtreeUnion accUnion
-                let addTreeToAcc acc tree =
-                    PersistentDict.fold (fun acc k v -> PersistentDict.add k v acc) acc tree
-                if ((predicate utKey) && (guard <> False())) then // skipping utKey to build tree
-                    let makeSymbolicTree =
-                        match accMst, subtreeMst with
-                        | Some (Node acc), Some (Node t) -> Some(addTreeToAcc acc t |> Node)
-                        | Some acc, None -> Some acc
-                        | None, Some t -> Some t
-                        | None, None -> None
-                    (guard,utKey.value)::union, makeSymbolicTree
-                else if (guard <> False()) then // hanging recursive found tree by the utKey
-                    let makeSymbolicTree = 
-                        match accMst, subtreeMst with
-                        | Some (Node acc), Some t -> Some (PersistentDict.add reg (utKey, t) acc |> Node)
-                        | Some (Node acc), None -> Some (PersistentDict.add reg (utKey, PersistentDict.empty |> Node) acc |> Node)
-                        | None, Some t -> Some (PersistentDict.add reg (utKey, t) PersistentDict.empty |> Node) 
-                        | None, None -> Some (PersistentDict.add reg (utKey, PersistentDict.empty |> Node) PersistentDict.empty |> Node)
-                    union, makeSymbolicTree
-                else // skip node with False() read guard
-                    let makeSymbolicTree =
-                        match accMst, subtreeMst with
-                        | Some (Node acc), Some (Node t) -> Some (addTreeToAcc acc t |> Node)
-                        | Some acc, None -> Some acc
-                        | None, Some t -> Some t
-                        | None, None -> None
-                    union, makeSymbolicTree
-            PersistentDict.fold collectUpdates (List.empty, None) tree
+                let guard = guard &&& Option.defaultValue (True()) stUtKey.guard
+                let union = stUnion @ accUnion
+                let union = (guard, stUtKey.value)::union
+                union, PersistentDict.append accMst stMakeSymbolic
+            PersistentDict.fold collectUnionAndMst (List.empty, restTree) splittingTree
 
-    let private splitReadingResult d key value predicate makeSymbolic =
-        let gvs, symbolicTree = splitRead (Node d) key predicate []
-        let symbolicCase =
-            match symbolicTree, value with
-            | Some t, Some v -> makeSymbolic t (Some v)
-            | Some t, None -> makeSymbolic t None
-            | None, Some v -> makeSymbolic (Node PersistentDict.empty) (Some v)
-            | None, None -> makeSymbolic (Node PersistentDict.empty) None
+    let private splitRead d key value predicate makeSymbolic =
+        let gvs, symbolicTree = splitReadingResult (Node d) key predicate []
+        let symbolicCase = makeSymbolic (symbolicTree |> Node) value
         let symbolicGuard = List.map (fun (g,_) -> !!g) gvs |> conjunction
         let result = List.append gvs [(symbolicGuard, symbolicCase)]
-        if List.length result = 1 then List.head result |> snd
-        else Union result
+        Merging.merge result
+    
+    // collects nodes that should have been on the top of update tree if we did not use splitting
+    let rec private collectBranchTopNodes tree predicate treeHeadTime =
+        match tree with
+        Node d ->
+            let splittingTree, restTree = PersistentDict.partition (fun _ (k, _) -> predicate k) d
+            let collectSubtreeNodes acc _ (_, st) =
+                let subtreeTopNodes = collectBranchTopNodes st predicate treeHeadTime
+                Seq.append acc subtreeTopNodes
+            let splittingTreeTopNodes = PersistentDict.fold collectSubtreeNodes [] splittingTree
+            let result = PersistentDict.toSeq restTree
+                         |> Seq.choose (fun (_, (k, _)) ->  if VectorTime.greater k.time treeHeadTime then Some k else None)
+                         |> Seq.append splittingTreeTopNodes
+            result
+
+    let rec private collectTreeTopNodes tree predicate =
+        match tree with
+        Node d ->
+            let branches = PersistentDict.toSeq d
+            let branchesHeads = Seq.map (snd >> fst >> Seq.singleton) branches
+            let overlappingNodes = branches |> Seq.map (fun (r, (k, t)) -> collectBranchTopNodes t predicate k.time)
+            Seq.map2 (fun head topNodes -> if Seq.isEmpty topNodes then head else topNodes) branchesHeads overlappingNodes |> Seq.concat
 
     let read (key : 'key) predicate isDefault makeSymbolic makeDefault (tree : updateTree<'key, term, 'reg>) =
         let reg = key.Region
         let d = RegionTree.localize reg tree
         if PersistentDict.isEmpty d then
             if isDefault key then makeDefault() else makeSymbolic (Node d) None
-        elif PersistentDict.size d = 1 then
-            match PersistentDict.tryFind d reg with
-            | Some({key=key'; value=v}, _) when key' = key -> v
-            | Some(value, _) ->
-                if key.IsRange then makeSymbolic (Node d) (Some value)
-                else splitReadingResult d key (Some value) predicate makeSymbolic
+        else
+            let topNodes = collectTreeTopNodes (Node d) predicate
+            match Seq.tryFind (fun k -> k.key = key) topNodes with
+            | Some utKey  -> utKey.value
             | _ ->
                 if key.IsRange then makeSymbolic (Node d) None
-                else splitReadingResult d key None predicate makeSymbolic
-        else
-            if key.IsRange then makeSymbolic (Node d) None
-            else splitReadingResult d key None predicate makeSymbolic
+                else splitRead d key None predicate makeSymbolic
 
     let memset (keyAndValues : seq<'key * 'value>) (tree : updateTree<'key, 'value, 'reg>) =
-        let keyAndRegions = keyAndValues |> Seq.map (fun (key, value) -> key.Region, {key=key; value=value})
+        let keyAndRegions = keyAndValues |> Seq.mapi (fun i (key, value) -> key.Region, {key=key; value=value; guard = None; time = [i]})
         RegionTree.memset keyAndRegions tree
 
-    let write (key : 'key) (value : 'value) (tree : updateTree<'key, 'value, 'reg>) =
-        RegionTree.write key.Region {key=key; value=value} tree
+    let rec private hangRecordUnderSplittingTree utKey region predicate tree =
+        match tree with
+        Node d ->
+            let splittingTree, restTree = PersistentDict.partition (fun _ (k, _) -> predicate k) d
+            let keyGuard treeKey keyRegion =
+                !!((utKey.key :> IMemoryKey<'key, 'reg>).MatchCondition treeKey.key keyRegion) &&&
+                    Option.defaultValue (True()) treeKey.guard
+            let hangUnderSplittingSubtree acc stReg (stUtKey, st) =
+                let modifiedSubtree = hangRecordUnderSplittingTree utKey stReg predicate st
+                let guardedStUtKey = {stUtKey with guard = Some(keyGuard stUtKey stReg)}
+                PersistentDict.add stReg (guardedStUtKey, Node(modifiedSubtree)) acc
+            let splittingTree = PersistentDict.fold hangUnderSplittingSubtree PersistentDict.empty splittingTree
+            let restRegion = PersistentDict.fold (fun acc r _ -> (acc :> IRegion<_>).Subtract r) region splittingTree
+            if restRegion.IsEmpty then splittingTree
+            else PersistentDict.add restRegion (utKey, Node(restTree)) splittingTree
+
+    let write region utKey predicate (tree : updateTree<'key, 'value, 'reg>) =
+        let included, disjoint = RegionTree.localizeFilter region utKey tree
+        if predicate utKey then
+            PersistentDict.add region (utKey, Node included) disjoint |> Node
+        else
+            let included = hangRecordUnderSplittingTree utKey region predicate (Node(included))
+            PersistentDict.append included disjoint |> Node
 
     let map (mapKey : 'reg -> 'key -> 'reg * 'key) mapValue (tree : updateTree<'key, 'value, 'reg>) =
-        let mapper reg {key=k; value=v} =
+        let mapper reg {key=k; value=v; guard = g; time = t} =
             let reg', k' = mapKey reg k
-            reg', k'.Region, {key=k'; value=mapValue v}
+            reg', k'.Region, {key=k'; value=mapValue v; guard=g; time=t}
         RegionTree.map mapper tree
 
-    let compose (earlier : updateTree<'key, 'value, 'reg>) (later : updateTree<'key, 'value, 'reg>) =
+    let compose (earlier : updateTree<'key, 'value, 'reg>) (later : updateTree<'key, 'value, 'reg>) predicate =
         later |> RegionTree.foldr (fun reg key trees ->
             list {
                 let! g, tree = trees
                 let! g', k = key.key.Unguard
                 let key' = {key with key = k}
-                return (g &&& g', RegionTree.write reg key' tree)
+                return (g &&& g', write reg key' predicate tree )
             }) [(True(), earlier)]
 
     let deterministicCompose earlier later = RegionTree.append earlier later
@@ -573,7 +583,7 @@ module private UpdateTree =
 
 [<CustomEquality; NoComparison>]
 type memoryRegion<'key, 'reg when 'key : equality and 'key :> IMemoryKey<'key, 'reg> and 'reg : equality and 'reg :> IRegion<'reg>> =
-    {typ : Type; updates : updateTree<'key, term, 'reg>; defaultValue : term option}
+    {typ : Type; updates : updateTree<'key, term, 'reg>; defaultValue : term option; nextUpdateTime : vectorTime}
     with
     override x.Equals(other : obj) =
         match other with
@@ -596,12 +606,12 @@ type memoryRegion<'key, 'reg when 'key : equality and 'key :> IMemoryKey<'key, '
 
 module MemoryRegion =
 
-    let empty typ =
-        {typ = typ; updates = UpdateTree.empty; defaultValue = None}
+    let empty typ = {typ = typ; updates = UpdateTree.empty; defaultValue = None; nextUpdateTime = [1]}
 
     let valueIsConcrete key =
         match key.value.term with
-        | Concrete _ -> true
+        | Concrete _ when not (key.key :> IMemoryKey<_,_>).IsRange -> true
+        | HeapRef(address, _) when isConcreteHeapAddress address && not (key.key :> IMemoryKey<_,_>).IsRange -> true
         | _ -> false
     let valueIsConcreteHeapAddress key =
         match key.value.term with
@@ -615,7 +625,7 @@ module MemoryRegion =
         RegionTree.foldl (fun m _ {key=_; value=v} -> VectorTime.max m (timeOf v)) startingTime tree
 
     let read mr key isDefault instantiate =
-        let makeSymbolic tree = instantiate mr.typ { typ = mr.typ; updates = tree; defaultValue = mr.defaultValue }
+        let makeSymbolic tree = instantiate mr.typ { typ = mr.typ; updates = tree; defaultValue = mr.defaultValue; nextUpdateTime = mr.nextUpdateTime }
         let makeDefault () =
             match mr.defaultValue with
             | Some d -> d
@@ -627,17 +637,19 @@ module MemoryRegion =
         canCastImplicitly typ cellType || isPointer typ && isIntegral cellType
 
     let memset mr keysAndValues =
-        {typ = mr.typ; updates = UpdateTree.memset keysAndValues mr.updates; defaultValue = mr.defaultValue}
+        {typ = mr.typ; updates = UpdateTree.memset keysAndValues mr.updates; defaultValue = mr.defaultValue; nextUpdateTime = [Seq.length keysAndValues] } // multiple enumeration attention
 
     let write mr key value =
         assert(validateWrite value mr.typ)
-        {typ = mr.typ; updates = UpdateTree.write key value mr.updates; defaultValue = mr.defaultValue}
+        let utKey = {key = key; value = value; guard = None; time = mr.nextUpdateTime}
+        {typ = mr.typ; updates = UpdateTree.write (key :> IMemoryKey<_,_>).Region utKey valueIsConcrete mr.updates; defaultValue = mr.defaultValue
+         nextUpdateTime = VectorTime.next mr.nextUpdateTime}
 
     let map (mapTerm : term -> term) (mapType : Type -> Type) (mapTime : vectorTime -> vectorTime) mr =
         let typ = mapType mr.typ
         let updates = UpdateTree.map (fun reg k -> k.Map mapTerm mapType mapTime reg) mapTerm mr.updates
         let defaultValue = Option.map mapTerm mr.defaultValue
-        {typ = typ; updates = updates; defaultValue = defaultValue}
+        {typ = typ; updates = updates; defaultValue = defaultValue; nextUpdateTime = mr.nextUpdateTime }
 
     let mapKeys<'reg, 'key when 'key : equality and 'key :> IMemoryKey<'key, 'reg> and 'reg : equality and 'reg :> IRegion<'reg>> (mapKey : 'reg -> 'key -> 'reg * 'key) mr =
         {mr with updates = UpdateTree.map mapKey id mr.updates }
@@ -646,7 +658,8 @@ module MemoryRegion =
         assert later.defaultValue.IsNone
         if earlier.typ = later.typ then
             if UpdateTree.isEmpty earlier.updates then { later with defaultValue = earlier.defaultValue }
-            else {typ = earlier.typ; updates = UpdateTree.deterministicCompose earlier.updates later.updates; defaultValue = earlier.defaultValue}
+            else {typ = earlier.typ; updates = UpdateTree.deterministicCompose earlier.updates later.updates; defaultValue = earlier.defaultValue
+                  nextUpdateTime = VectorTime.singletonsSum earlier.nextUpdateTime earlier.nextUpdateTime}
         else internalfail "Composing two incomparable memory objects!"
 
     let compose earlier later =
@@ -654,18 +667,20 @@ module MemoryRegion =
         if later.updates |> UpdateTree.forall (fun k -> not k.key.IsUnion) then
             [(True(), deterministicCompose earlier later)]
         elif earlier.typ = later.typ then
-            UpdateTree.compose earlier.updates later.updates |> List.map (fun (g, tree) -> (g, {typ=earlier.typ; updates = tree; defaultValue = earlier.defaultValue}))
+            UpdateTree.compose earlier.updates later.updates valueIsConcrete
+            |> List.map (fun (g, tree) -> (g, {typ=earlier.typ; updates = tree; defaultValue = earlier.defaultValue;
+                nextUpdateTime = VectorTime.singletonsSum earlier.nextUpdateTime earlier.nextUpdateTime}))
         else internalfail "Composing two incomparable memory objects!"
 
     let toString indent mr = UpdateTree.print indent toString mr.updates
 
     let flatten mr =
-        RegionTree.foldr (fun reg k acc -> (k.key, reg, k.value)::acc) [] mr.updates
+        RegionTree.foldr (fun reg k acc -> (reg, k)::acc) [] mr.updates
 
     let localizeArray address dimension mr =
         let anyIndexRegion = List.replicate dimension points<int>.Universe |> listProductRegion<points<int>>.OfSeq
         let reg = productRegion<vectorTime intervals, int points listProductRegion>.ProductOf (MemoryKeyUtils.regionOfHeapAddress address) anyIndexRegion
-        {typ=mr.typ; updates = UpdateTree.localize reg mr.updates; defaultValue = mr.defaultValue}
+        {typ=mr.typ; updates = UpdateTree.localize reg mr.updates; defaultValue = mr.defaultValue; nextUpdateTime = mr.nextUpdateTime}
 
     // TODO: merging!
 
