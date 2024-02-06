@@ -19,12 +19,12 @@ module Logger =
     let Info = 4
     let Trace = 5
 
-
-    let mutable currentTextWriter = Console.Out
+    let mutable currentTextWriter : System.IO.TextWriter = // Console.Out
+        new System.IO.StreamWriter(System.IO.File.Create("log.txt"))
     let mutable writeTimestamps = true
 
     let private enabledTags = Dictionary([
-        KeyValuePair(defaultTag, Error)
+        KeyValuePair(defaultTag, Info)
     ])
 
     let public configureWriter writer = currentTextWriter <- writer
